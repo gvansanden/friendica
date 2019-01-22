@@ -145,7 +145,7 @@ class ContactSelector
 	public static function gender($current = "", $suffix = "")
 	{
 		$o = '';
-		$select = ['', L10n::t('Male'), L10n::t('Female'), L10n::t('Currently Male'), L10n::t('Currently Female'), L10n::t('Mostly Male'), L10n::t('Mostly Female'), L10n::t('Transgender'), L10n::t('Intersex'), L10n::t('Transsexual'), L10n::t('Hermaphrodite'), L10n::t('Neuter'), L10n::t('Non-specific'), L10n::t('Other'), L10n::t('Undecided')];
+		$select = ['', L10n::t('Male'), L10n::t('Female')];
 
 		Addon::callHooks('gender_selector', $select);
 
@@ -167,7 +167,7 @@ class ContactSelector
 	public static function sexualPreference($current = "", $suffix = "")
 	{
 		$o = '';
-		$select = ['', L10n::t('Males'), L10n::t('Females'), L10n::t('Gay'), L10n::t('Lesbian'), L10n::t('No Preference'), L10n::t('Bisexual'), L10n::t('Autosexual'), L10n::t('Abstinent'), L10n::t('Virgin'), L10n::t('Deviant'), L10n::t('Fetish'), L10n::t('Oodles'), L10n::t('Nonsexual')];
+		$select = ['', L10n::t('Males'), L10n::t('Females')];
 
 
 		Addon::callHooks('sexpref_selector', $select);
@@ -189,7 +189,7 @@ class ContactSelector
 	public static function maritalStatus($current = "")
 	{
 		$o = '';
-		$select = ['', L10n::t('Single'), L10n::t('Lonely'), L10n::t('Available'), L10n::t('Unavailable'), L10n::t('Has crush'), L10n::t('Infatuated'), L10n::t('Dating'), L10n::t('Unfaithful'), L10n::t('Sex Addict'), L10n::t('Friends'), L10n::t('Friends/Benefits'), L10n::t('Casual'), L10n::t('Engaged'), L10n::t('Married'), L10n::t('Imaginarily married'), L10n::t('Partners'), L10n::t('Cohabiting'), L10n::t('Common law'), L10n::t('Happy'), L10n::t('Not looking'), L10n::t('Swinger'), L10n::t('Betrayed'), L10n::t('Separated'), L10n::t('Unstable'), L10n::t('Divorced'), L10n::t('Imaginarily divorced'), L10n::t('Widowed'), L10n::t('Uncertain'), L10n::t('It\'s complicated'), L10n::t('Don\'t care'), L10n::t('Ask me')];
+		$select = ['', L10n::t('Single'), L10n::t('Unavailable'), L10n::t('Engaged'), L10n::t('Married'), L10n::t('Don\'t care'), L10n::t('Ask me')];
 
 		Addon::callHooks('marital_selector', $select);
 

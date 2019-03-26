@@ -4,10 +4,9 @@
  */
 namespace Friendica\Content;
 
-use Friendica\Core\Addon;
+use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Protocol;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
@@ -20,6 +19,8 @@ class ContactSelector
 	/**
 	 * @param string $current     current
 	 * @param string $foreign_net network
+	 * @return string
+	 * @throws \Exception
 	 */
 	public static function profileAssign($current, $foreign_net)
 	{
@@ -74,6 +75,7 @@ class ContactSelector
 	 * @param string $network network
 	 * @param string $profile optional, default empty
 	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function networkToName($network, $profile = "")
 	{
@@ -96,7 +98,7 @@ class ContactSelector
 			Protocol::PNUT      =>   L10n::t('pnut'),
 		];
 
-		Addon::callHooks('network_to_name', $nets);
+		Hook::callAll('network_to_name', $nets);
 
 		$search  = array_keys($nets);
 		$replace = array_values($nets);
@@ -141,19 +143,20 @@ class ContactSelector
 	/**
 	 * @param string $current optional, default empty
 	 * @param string $suffix  optionsl, default empty
+	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function gender($current = "", $suffix = "")
 	{
 		$o = '';
 		$select = ['', L10n::t('Male'), L10n::t('Female')];
-
-		Addon::callHooks('gender_selector', $select);
+		Hook::callAll('gender_selector', $select);
 
 		$o .= "<select name=\"gender$suffix\" id=\"gender-select$suffix\" size=\"1\" >";
-		foreach ($select as $selection) {
+		foreach ($select as $neutral => $selection) {
 			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($selection == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$selection\" $selected >$selection</option>";
+				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
+				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
 			}
 		}
 		$o .= '</select>';
@@ -163,20 +166,21 @@ class ContactSelector
 	/**
 	 * @param string $current optional, default empty
 	 * @param string $suffix  optionsl, default empty
+	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function sexualPreference($current = "", $suffix = "")
 	{
 		$o = '';
 		$select = ['', L10n::t('Males'), L10n::t('Females')];
 
-
-		Addon::callHooks('sexpref_selector', $select);
+		Hook::callAll('sexpref_selector', $select);
 
 		$o .= "<select name=\"sexual$suffix\" id=\"sexual-select$suffix\" size=\"1\" >";
-		foreach ($select as $selection) {
+		foreach ($select as $neutral => $selection) {
 			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($selection == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$selection\" $selected >$selection</option>";
+				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
+				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
 			}
 		}
 		$o .= '</select>';
@@ -185,19 +189,21 @@ class ContactSelector
 
 	/**
 	 * @param string $current optional, default empty
+	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function maritalStatus($current = "")
 	{
 		$o = '';
 		$select = ['', L10n::t('Single'), L10n::t('Unavailable'), L10n::t('Engaged'), L10n::t('Married'), L10n::t('Don\'t care'), L10n::t('Ask me')];
-
-		Addon::callHooks('marital_selector', $select);
+	
+		Hook::callAll('marital_selector', $select);
 
 		$o .= '<select name="marital" id="marital-select" size="1" >';
-		foreach ($select as $selection) {
+		foreach ($select as $neutral => $selection) {
 			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($selection == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$selection\" $selected >$selection</option>";
+				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
+				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
 			}
 		}
 		$o .= '</select>';

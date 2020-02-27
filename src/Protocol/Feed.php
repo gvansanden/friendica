@@ -14,6 +14,8 @@ use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
+use Friendica\Protocol\ActivityNamespace;
+use Friendica\Util\ParseUrl;
 use Friendica\Util\Network;
 use Friendica\Util\XML;
 
@@ -59,13 +61,13 @@ class Feed {
 		$doc = new DOMDocument();
 		@$doc->loadXML(trim($xml));
 		$xpath = new DOMXPath($doc);
-		$xpath->registerNamespace('atom', NAMESPACE_ATOM1);
+		$xpath->registerNamespace('atom', ActivityNamespace::ATOM1);
 		$xpath->registerNamespace('dc', "http://purl.org/dc/elements/1.1/");
 		$xpath->registerNamespace('content', "http://purl.org/rss/1.0/modules/content/");
 		$xpath->registerNamespace('rdf', "http://www.w3.org/1999/02/22-rdf-syntax-ns#");
 		$xpath->registerNamespace('rss', "http://purl.org/rss/1.0/");
 		$xpath->registerNamespace('media', "http://search.yahoo.com/mrss/");
-		$xpath->registerNamespace('poco', NAMESPACE_POCO);
+		$xpath->registerNamespace('poco', ActivityNamespace::POCO);
 
 		$author = [];
 		$entries = null;
@@ -198,8 +200,8 @@ class Feed {
 		$header["origin"] = 0;
 		$header["gravity"] = GRAVITY_PARENT;
 		$header["private"] = 2;
-		$header["verb"] = ACTIVITY_POST;
-		$header["object-type"] = ACTIVITY_OBJ_NOTE;
+		$header["verb"] = Activity::POST;
+		$header["object-type"] = Activity\ObjectType::NOTE;
 
 		$header["contact-id"] = $contact["id"];
 
@@ -266,6 +268,9 @@ class Feed {
 			if (empty($item["title"])) {
 				$item["title"] = XML::getFirstNodeValue($xpath, 'rss:title/text()', $entry);
 			}
+
+			$item["title"] = html_entity_decode($item["title"], ENT_QUOTES, 'UTF-8');
+
 			$published = XML::getFirstNodeValue($xpath, 'atom:published/text()', $entry);
 
 			if (empty($published)) {
@@ -395,7 +400,7 @@ class Feed {
 
 				// Remove a possible link to the item itself
 				$item["body"] = str_replace($item["plink"], '', $item["body"]);
-				$item["body"] = preg_replace('/\[url\=\](\w+.*?)\[\/url\]/i', '', $item["body"]);
+				$item["body"] = trim(preg_replace('/\[url\=\](\w+.*?)\[\/url\]/i', '', $item["body"]));
 
 				// Replace the content when the title is longer than the body
 				$replace = (strlen($item["title"]) > strlen($item["body"]));
@@ -411,13 +416,26 @@ class Feed {
 				}
 
 				if ($replace) {
-					$item["body"] = $item["title"];
+					$item["body"] = trim($item["title"]);
 				}
+
+			        $data = ParseUrl::getSiteinfoCached($item['plink'], true);
+				if (!empty($data['text']) && !empty($data['title']) && (mb_strlen($item['body']) < mb_strlen($data['text']))) {
+					// When the fetched page info text is longer than the body, we do try to enhance the body
+					if (!empty($item['body']) && (strpos($data['title'], $item['body']) === false) && (strpos($data['text'], $item['body']) === false)) {
+						// The body is not part of the fetched page info title or page info text. So we add the text to the body
+						$item['body'] .= "\n\n" . $data['text'];
+					} else {
+						// Else we replace the body with the page info text
+						$item['body'] = $data['text'];
+					}
+				}
+
 				// We always strip the title since it will be added in the page information
 				$item["title"] = "";
 				$item["body"] = $item["body"].add_page_info($item["plink"], false, $preview, ($contact["fetch_further_information"] == 2), $contact["ffi_keyword_blacklist"]);
 				$item["tag"] = add_page_keywords($item["plink"], $preview, ($contact["fetch_further_information"] == 2), $contact["ffi_keyword_blacklist"]);
-				$item["object-type"] = ACTIVITY_OBJ_BOOKMARK;
+				$item["object-type"] = Activity\ObjectType::BOOKMARK;
 				unset($item["attach"]);
 			} else {
 				if (!empty($summary)) {

@@ -38,17 +38,17 @@ function crepair_post(App $a)
 		return;
 	}
 
-	$name        = defaults($_POST, 'name'       , $contact['name']);
-	$nick        = defaults($_POST, 'nick'       , '');
-	$url         = defaults($_POST, 'url'        , '');
-	$alias       = defaults($_POST, 'alias'      , '');
-	$request     = defaults($_POST, 'request'    , '');
-	$confirm     = defaults($_POST, 'confirm'    , '');
-	$notify      = defaults($_POST, 'notify'     , '');
-	$poll        = defaults($_POST, 'poll'       , '');
-	$attag       = defaults($_POST, 'attag'      , '');
-	$photo       = defaults($_POST, 'photo'      , '');
-	$remote_self = defaults($_POST, 'remote_self', false);
+	$name        = ($_POST['name']        ?? '') ?: $contact['name'];
+	$nick        =  $_POST['nick']        ?? '';
+	$url         =  $_POST['url']         ?? '';
+	$alias       =  $_POST['alias']       ?? '';
+	$request     =  $_POST['request']     ?? '';
+	$confirm     =  $_POST['confirm']     ?? '';
+	$notify      =  $_POST['notify']      ?? '';
+	$poll        =  $_POST['poll']        ?? '';
+	$attag       =  $_POST['attag']       ?? '';
+	$photo       =  $_POST['photo']       ?? '';
+	$remote_self =  $_POST['remote_self'] ?? false;
 	$nurl        = Strings::normaliseLink($url);
 
 	$r = DBA::update(
@@ -132,9 +132,9 @@ function crepair_content(App $a)
 		$remote_self_options = ['0' => L10n::t('No mirroring'), '2' => L10n::t('Mirror as my own posting')];
 	}
 
-	$update_profile = in_array($contact['network'], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS]);
+	$update_profile = in_array($contact['network'], Protocol::FEDERATED);
 
-	$tab_str = Module\Contact::getTabsHTML($a, $contact, 5);
+	$tab_str = Module\Contact::getTabsHTML($a, $contact, 6);
 
 	$tpl = Renderer::getMarkupTemplate('crepair.tpl');
 	$o = Renderer::replaceMacros($tpl, [

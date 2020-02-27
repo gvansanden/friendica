@@ -249,8 +249,8 @@ function message_content(App $a)
 			'$prefill'    => $prefill,
 			'$preid'      => $preid,
 			'$subject'    => L10n::t('Subject:'),
-			'$subjtxt'    => defaults($_REQUEST, 'subject', ''),
-			'$text'       => defaults($_REQUEST, 'body', ''),
+			'$subjtxt'    => $_REQUEST['subject'] ?? '',
+			'$text'       => $_REQUEST['body'] ?? '',
 			'$readonly'   => '',
 			'$yourmessage'=> L10n::t('Your message:'),
 			'$select'     => $select,
@@ -384,7 +384,7 @@ function message_content(App $a)
 
 			$from_name_e = $message['from-name'];
 			$subject_e = $message['title'];
-			$body_e = Smilies::replace(BBCode::convert($message['body']));
+			$body_e = BBCode::convert($message['body']);
 			$to_name_e = $message['name'];
 
 			$contact = Contact::getDetailsByURL($message['from-url']);
@@ -530,7 +530,7 @@ function render_messages(array $msg, $t)
 			'$id' => $rr['id'],
 			'$from_name' => $participants,
 			'$from_url' => Contact::magicLink($rr['url']),
-			'$from_addr' => defaults($contact, 'addr', ''),
+			'$from_addr' => $contact['addr'] ?? '',
 			'$sparkle' => ' sparkle',
 			'$from_photo' => ProxyUtils::proxifyUrl($from_photo, false, ProxyUtils::SIZE_THUMB),
 			'$subject' => $rr['title'],

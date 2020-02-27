@@ -15,21 +15,22 @@ use Friendica\Model\Contact;
 use Friendica\Model\User;
 use Friendica\Protocol\DFRN;
 use Friendica\Protocol\Diaspora;
+use Friendica\Util\Network;
 use Friendica\Util\Strings;
 
 function dfrn_notify_post(App $a) {
 	Logger::log(__function__, Logger::TRACE);
 
-	$postdata = file_get_contents('php://input');
+	$postdata = Network::postdata();
 
 	if (empty($_POST) || !empty($postdata)) {
 		$data = json_decode($postdata);
 		if (is_object($data)) {
-			$nick = defaults($a->argv, 1, '');
+			$nick = $a->argv[1] ?? '';
 
 			$user = DBA::selectFirst('user', [], ['nickname' => $nick, 'account_expired' => false, 'account_removed' => false]);
 			if (!DBA::isResult($user)) {
-				System::httpExit(500);
+				throw new \Friendica\Network\HTTPException\InternalServerErrorException();
 			}
 			dfrn_dispatch_private($user, $postdata);
 		} elseif (!dfrn_dispatch_public($postdata)) {
@@ -41,8 +42,8 @@ function dfrn_notify_post(App $a) {
 	$dfrn_id      = (!empty($_POST['dfrn_id'])      ? Strings::escapeTags(trim($_POST['dfrn_id']))   : '');
 	$dfrn_version = (!empty($_POST['dfrn_version']) ? (float) $_POST['dfrn_version']    : 2.0);
 	$challenge    = (!empty($_POST['challenge'])    ? Strings::escapeTags(trim($_POST['challenge'])) : '');
-	$data         = defaults($_POST, 'data', '');
-	$key          = defaults($_POST, 'key', '');
+	$data         = $_POST['data'] ?? '';
+	$key          = $_POST['key'] ?? '';
 	$rino_remote  = (!empty($_POST['rino'])         ? intval($_POST['rino'])            :  0);
 	$dissolve     = (!empty($_POST['dissolve'])     ? intval($_POST['dissolve'])        :  0);
 	$perm         = (!empty($_POST['perm'])         ? Strings::escapeTags(trim($_POST['perm']))      : 'r');
@@ -183,20 +184,20 @@ function dfrn_notify_post(App $a) {
 
 function dfrn_dispatch_public($postdata)
 {
-	$msg = Diaspora::decodeRaw([], $postdata, true);
+	$msg = Diaspora::decodeRaw($postdata, '', true);
 	if (!$msg) {
 		// We have to fail silently to be able to hand it over to the salmon parser
 		return false;
 	}
 
 	// Fetch the corresponding public contact
-	$contact = Contact::getDetailsByAddr($msg['author'], 0);
-	if (!$contact) {
+	$contact_id = Contact::getIdForURL($msg['author']);
+	if (empty($contact_id)) {
 		Logger::log('Contact not found for address ' . $msg['author']);
 		System::xmlExit(3, 'Contact ' . $msg['author'] . ' not found');
 	}
 
-	$importer = DFRN::getImporter($contact['id']);
+	$importer = DFRN::getImporter($contact_id);
 
 	// This should never fail
 	if (empty($importer)) {
@@ -213,7 +214,7 @@ function dfrn_dispatch_public($postdata)
 
 function dfrn_dispatch_private($user, $postdata)
 {
-	$msg = Diaspora::decodeRaw($user, $postdata);
+	$msg = Diaspora::decodeRaw($postdata, $user['prvkey'] ?? '');
 	if (!$msg) {
 		System::xmlExit(4, 'Unable to parse message');
 	}

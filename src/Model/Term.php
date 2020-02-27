@@ -4,6 +4,7 @@
  */
 namespace Friendica\Model;
 
+use Friendica\Core\Cache;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
@@ -46,6 +47,94 @@ class Term
 
     const OBJECT_TYPE_POST  = 1;
     const OBJECT_TYPE_PHOTO = 2;
+
+	/**
+	 * Returns a list of the most frequent global hashtags over the given period
+	 *
+	 * @param int $period Period in hours to consider posts
+	 * @return array
+	 * @throws \Exception
+	 */
+	public static function getGlobalTrendingHashtags(int $period, $limit = 10)
+	{
+		$tags = Cache::get('global_trending_tags');
+
+		if (!$tags) {
+			$tagsStmt = DBA::p("SELECT t.`term`, COUNT(*) AS `score`
+				FROM `term` t
+				 JOIN `item` i ON i.`id` = t.`oid` AND i.`uid` = t.`uid`
+				 JOIN `thread` ON `thread`.`iid` = i.`id`
+				WHERE `thread`.`visible`
+				  AND NOT `thread`.`deleted`
+				  AND NOT `thread`.`moderated`
+				  AND NOT `thread`.`private`
+				  AND t.`uid` = 0
+				  AND t.`otype` = ?
+				  AND t.`type` = ?
+				  AND t.`term` != ''
+				  AND i.`received` > DATE_SUB(NOW(), INTERVAL ? HOUR)
+				GROUP BY `term`
+				ORDER BY `score` DESC
+				LIMIT ?",
+				Term::OBJECT_TYPE_POST,
+				Term::HASHTAG,
+				$period,
+				$limit
+			);
+
+			if (DBA::isResult($tagsStmt)) {
+				$tags = DBA::toArray($tagsStmt);
+				Cache::set('global_trending_tags', $tags, Cache::HOUR);
+			}
+		}
+
+		return $tags ?: [];
+	}
+
+	/**
+	 * Returns a list of the most frequent local hashtags over the given period
+	 *
+	 * @param int $period Period in hours to consider posts
+	 * @return array
+	 * @throws \Exception
+	 */
+	public static function getLocalTrendingHashtags(int $period, $limit = 10)
+	{
+		$tags = Cache::get('local_trending_tags');
+
+		if (!$tags) {
+			$tagsStmt = DBA::p("SELECT t.`term`, COUNT(*) AS `score`
+				FROM `term` t
+				JOIN `item` i ON i.`id` = t.`oid` AND i.`uid` = t.`uid`
+				JOIN `thread` ON `thread`.`iid` = i.`id`
+				JOIN `user` ON `user`.`uid` = `thread`.`uid` AND NOT `user`.`hidewall`
+				WHERE `thread`.`visible`
+				  AND NOT `thread`.`deleted`
+				  AND NOT `thread`.`moderated`
+				  AND NOT `thread`.`private`
+				  AND `thread`.`wall`
+				  AND `thread`.`origin`
+				  AND t.`otype` = ?
+				  AND t.`type` = ?
+				  AND t.`term` != ''
+				  AND i.`received` > DATE_SUB(NOW(), INTERVAL ? HOUR)
+				GROUP BY `term`
+				ORDER BY `score` DESC
+				LIMIT ?",
+				Term::OBJECT_TYPE_POST,
+				Term::HASHTAG,
+				$period,
+				$limit
+			);
+
+			if (DBA::isResult($tagsStmt)) {
+				$tags = DBA::toArray($tagsStmt);
+				Cache::set('local_trending_tags', $tags, Cache::HOUR);
+			}
+		}
+
+		return $tags ?: [];
+	}
 
 	/**
 	 * Generates the legacy item.tag field comma-separated BBCode string from an item ID.
@@ -121,7 +210,7 @@ class Term
 	{
 		$profile_base = System::baseUrl();
 		$profile_data = parse_url($profile_base);
-		$profile_path = defaults($profile_data, 'path', '');
+		$profile_path = $profile_data['path'] ?? '';
 		$profile_base_friendica = $profile_data['host'] . $profile_path . '/profile/';
 		$profile_base_diaspora = $profile_data['host'] . $profile_path . '/u/';
 

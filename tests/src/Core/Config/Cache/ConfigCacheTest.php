@@ -4,6 +4,7 @@ namespace Friendica\Test\src\Core\Config\Cache;
 
 use Friendica\Core\Config\Cache\ConfigCache;
 use Friendica\Test\MockedTest;
+use ParagonIE\HiddenString\HiddenString;
 
 class ConfigCacheTest extends MockedTest
 {
@@ -28,15 +29,11 @@ class ConfigCacheTest extends MockedTest
 		];
 	}
 
-	private function assertConfigValues($data, ConfigCache $configCache, $uid = null)
+	private function assertConfigValues($data, ConfigCache $configCache)
 	{
 		foreach ($data as $cat => $values) {
 			foreach ($values as $key => $value) {
-				if (isset($uid)) {
-					$this->assertEquals($data[$cat][$key], $configCache->getP($uid, $cat, $key));
-				} else {
-					$this->assertEquals($data[$cat][$key], $configCache->get($cat, $key));
-				}
+				$this->assertEquals($data[$cat][$key], $configCache->get($cat, $key));
 			}
 		}
 	}
@@ -160,6 +157,12 @@ class ConfigCacheTest extends MockedTest
 			'key1' => 'value1',
 			'key2' => 'value2',
 		], $configCache->get('system'));
+
+		// explicit null as key
+		$this->assertEquals([
+			'key1' => 'value1',
+			'key2' => 'value2',
+		], $configCache->get('system', null));
 	}
 
 	/**
@@ -180,69 +183,106 @@ class ConfigCacheTest extends MockedTest
 	}
 
 	/**
-	 * Test the setP() and getP() methods
+	 * Test the keyDiff() method with result
 	 * @dataProvider dataTests
 	 */
-	public function testSetGetP($data)
+	public function testKeyDiffWithResult($data)
 	{
-		$configCache = new ConfigCache();
-		$uid = 345;
+		$configCache = new ConfigCache($data);
 
-		foreach ($data as $cat => $values) {
-			foreach ($values as $key => $value) {
-				$configCache->setP($uid, $cat, $key, $value);
-			}
-		}
+		$diffConfig = [
+			'fakeCat' => [
+				'fakeKey' => 'value',
+			]
+		];
 
-		$this->assertConfigValues($data, $configCache, $uid);
+		$this->assertEquals($diffConfig, $configCache->keyDiff($diffConfig));
 	}
 
+	/**
+	 * Test the keyDiff() method without result
+	 * @dataProvider dataTests
+	 */
+	public function testKeyDiffWithoutResult($data)
+	{
+		$configCache = new ConfigCache($data);
+
+		$diffConfig = $configCache->getAll();
+
+		$this->assertEmpty($configCache->keyDiff($diffConfig));
+	}
 
 	/**
-	 * Test the getP() method with a category
+	 * Test the default hiding of passwords inside the cache
 	 */
-	public function testGetPCat()
+	public function testPasswordHide()
 	{
-		$configCache = new ConfigCache();
-		$uid = 345;
-
-		$configCache->loadP($uid, [
-			'system' => [
-				'key1' => 'value1',
-				'key2' => 'value2',
-			],
-			'config' => [
-				'key3' => 'value3',
+		$configCache = new ConfigCache([
+			'database' => [
+				'password' => 'supersecure',
+				'username' => 'notsecured',
 			],
 		]);
 
-		$this->assertEquals([
-			'key1' => 'value1',
-			'key2' => 'value2',
-		], $configCache->get($uid, 'system'));
+		$this->assertEquals('supersecure', $configCache->get('database', 'password'));
+		$this->assertNotEquals('supersecure', print_r($configCache->get('database', 'password'), true));
+		$this->assertEquals('notsecured', print_r($configCache->get('database', 'username'), true));
 	}
 
 	/**
-	 * Test the deleteP() method
-	 * @dataProvider dataTests
+	 * Test disabling the hiding of passwords inside the cache
 	 */
-	public function testDeleteP($data)
+	public function testPasswordShow()
 	{
-		$configCache = new ConfigCache();
-		$uid = 345;
+		$configCache = new ConfigCache([
+			'database' => [
+				'password' => 'supersecure',
+				'username' => 'notsecured',
+			],
+		], false);
 
-		foreach ($data as $cat => $values) {
-			foreach ($values as $key => $value) {
-				$configCache->setP($uid, $cat, $key, $value);
-			}
-		}
+		$this->assertEquals('supersecure', $configCache->get('database', 'password'));
+		$this->assertEquals('supersecure', print_r($configCache->get('database', 'password'), true));
+		$this->assertEquals('notsecured', print_r($configCache->get('database', 'username'), true));
+	}
 
-		foreach ($data as $cat => $values) {
-			foreach ($values as $key => $value) {
-				$configCache->deleteP($uid, $cat, $key);
-			}
-		}
+	/**
+	 * Test a empty password
+	 */
+	public function testEmptyPassword()
+	{
+		$configCache = new ConfigCache([
+			'database' => [
+				'password' => '',
+				'username' => '',
+			]
+		]);
 
-		$this->assertEmpty($configCache->getAll());
+		$this->assertNotEmpty($configCache->get('database', 'password'));
+		$this->assertInstanceOf(HiddenString::class, $configCache->get('database', 'password'));
+		$this->assertEmpty($configCache->get('database', 'username'));
+	}
+
+	public function testWrongTypePassword()
+	{
+		$configCache = new ConfigCache([
+			'database' => [
+				'password' => new \stdClass(),
+				'username' => '',
+			]
+		]);
+
+		$this->assertNotEmpty($configCache->get('database', 'password'));
+		$this->assertEmpty($configCache->get('database', 'username'));
+
+		$configCache = new ConfigCache([
+			'database' => [
+				'password' => 23,
+				'username' => '',
+			]
+		]);
+
+		$this->assertEquals(23, $configCache->get('database', 'password'));
+		$this->assertEmpty($configCache->get('database', 'username'));
 	}
 }

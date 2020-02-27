@@ -7,8 +7,11 @@ namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Core\Authentication;
+use Friendica\Core\Cache;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
+use Friendica\Core\System;
+use Friendica\Model\Profile;
 
 /**
  * Logout module
@@ -20,11 +23,22 @@ class Logout extends BaseModule
 	/**
 	 * @brief Process logout requests
 	 */
-	public static function init()
+	public static function init(array $parameters = [])
 	{
+		$visitor_home = null;
+		if (remote_user()) {
+			$visitor_home = Profile::getMyURL();
+			Cache::delete('zrlInit:' . $visitor_home);
+		}
+
 		Hook::callAll("logging_out");
 		Authentication::deleteSession();
-		info(L10n::t('Logged out.') . EOL);
-		self::getApp()->internalRedirect();
+
+		if ($visitor_home) {
+			System::externalRedirect($visitor_home);
+		} else {
+			info(L10n::t('Logged out.'));
+			self::getApp()->internalRedirect();
+		}
 	}
 }

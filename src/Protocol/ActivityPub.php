@@ -8,6 +8,7 @@ use Friendica\Util\JsonLD;
 use Friendica\Util\Network;
 use Friendica\Core\Protocol;
 use Friendica\Model\APContact;
+use Friendica\Model\User;
 use Friendica\Util\HTTPSignature;
 
 /**
@@ -44,8 +45,10 @@ class ActivityPub
 		['vcard' => 'http://www.w3.org/2006/vcard/ns#',
 		'dfrn' => 'http://purl.org/macgirvin/dfrn/1.0/',
 		'diaspora' => 'https://diasporafoundation.org/ns/',
+		'litepub' => 'http://litepub.social/ns#',
 		'manuallyApprovesFollowers' => 'as:manuallyApprovesFollowers',
-		'sensitive' => 'as:sensitive', 'Hashtag' => 'as:Hashtag']];
+		'sensitive' => 'as:sensitive', 'Hashtag' => 'as:Hashtag',
+		'directMessage' => 'litepub:directMessage']];
 	const ACCOUNT_TYPES = ['Person', 'Organization', 'Service', 'Group', 'Application'];
 	/**
 	 * Checks if the web request is done for the AP protocol
@@ -54,8 +57,8 @@ class ActivityPub
 	 */
 	public static function isRequest()
 	{
-		return stristr(defaults($_SERVER, 'HTTP_ACCEPT', ''), 'application/activity+json') ||
-			stristr(defaults($_SERVER, 'HTTP_ACCEPT', ''), 'application/ld+json');
+		return stristr($_SERVER['HTTP_ACCEPT'] ?? '', 'application/activity+json') ||
+			stristr($_SERVER['HTTP_ACCEPT'] ?? '', 'application/ld+json');
 	}
 
 	/**
@@ -72,7 +75,7 @@ class ActivityPub
 			return HTTPSignature::fetch($url, $uid);
 		}
 
-		$curlResult = Network::curl($url, false, $redirects, ['accept_content' => 'application/activity+json, application/ld+json']);
+		$curlResult = Network::curl($url, false, ['accept_content' => 'application/activity+json, application/ld+json']);
 		if (!$curlResult->isSuccess() || empty($curlResult->getBody())) {
 			return false;
 		}
@@ -86,17 +89,43 @@ class ActivityPub
 		return $content;
 	}
 
+	private static function getAccountType($apcontact)
+	{
+		$accounttype = -1;
+
+		switch($apcontact['type']) {
+			case 'Person':
+				$accounttype = User::ACCOUNT_TYPE_PERSON;
+				break;
+			case 'Organization':
+				$accounttype = User::ACCOUNT_TYPE_ORGANISATION;
+				break;
+			case 'Service':
+				$accounttype = User::ACCOUNT_TYPE_NEWS;
+				break;
+			case 'Group':
+				$accounttype = User::ACCOUNT_TYPE_COMMUNITY;
+				break;
+			case 'Application':
+				$accounttype = User::ACCOUNT_TYPE_RELAY;
+				break;
+		}
+
+		return $accounttype;
+	}
+
 	/**
 	 * Fetches a profile from the given url into an array that is compatible to Probe::uri
 	 *
-	 * @param string $url profile url
+	 * @param string  $url    profile url
+	 * @param boolean $update Update the profile
 	 * @return array
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 * @throws \ImagickException
 	 */
-	public static function probeProfile($url)
+	public static function probeProfile($url, $update = true)
 	{
-		$apcontact = APContact::getByURL($url, true);
+		$apcontact = APContact::getByURL($url, $update);
 		if (empty($apcontact)) {
 			return false;
 		}
@@ -108,8 +137,14 @@ class ActivityPub
 		$profile['url'] = $apcontact['url'];
 		$profile['addr'] = $apcontact['addr'];
 		$profile['alias'] = $apcontact['alias'];
+		$profile['following'] = $apcontact['following'];
+		$profile['followers'] = $apcontact['followers'];
+		$profile['inbox'] = $apcontact['inbox'];
+		$profile['outbox'] = $apcontact['outbox'];
+		$profile['sharedinbox'] = $apcontact['sharedinbox'];
 		$profile['photo'] = $apcontact['photo'];
-		// $profile['community']
+		$profile['account-type'] = self::getAccountType($apcontact);
+		$profile['community'] = ($profile['account-type'] == User::ACCOUNT_TYPE_COMMUNITY);
 		// $profile['keywords']
 		// $profile['location']
 		$profile['about'] = $apcontact['about'];
@@ -158,5 +193,19 @@ class ActivityPub
 			$ldactivity = JsonLD::compact($activity);
 			ActivityPub\Receiver::processActivity($ldactivity, '', $uid, true);
 		}
+	}
+
+	/**
+	 * Checks if the given contact url does support ActivityPub
+	 *
+	 * @param string  $url    profile url
+	 * @param boolean $update true = always update, false = never update, null = update when not found or outdated
+	 * @return boolean
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 */
+	public static function isSupportedByContactUrl($url, $update = null)
+	{
+		return !empty(APContact::getByURL($url, $update));
 	}
 }

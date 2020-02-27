@@ -14,9 +14,8 @@ use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model;
 use Friendica\Module;
@@ -42,6 +41,14 @@ function frio_init(App $a)
 			</script>
 EOT;
 	}
+
+	$enable_compose = \Friendica\Core\PConfig::get(local_user(), 'frio', 'enable_compose');
+	$compose = $enable_compose === '1' || $enable_compose === null && Config::get('frio', 'enable_compose') ? 1 : 0;
+	$a->page['htmlhead'] .= <<< HTML
+		<script type="text/javascript">
+			var compose = $compose;
+		</script>
+HTML;
 }
 
 function frio_install()
@@ -201,7 +208,7 @@ function frio_remote_nav($a, &$nav)
 	// get the homelink from $_XSESSION
 	$homelink = Model\Profile::getMyURL();
 	if (!$homelink) {
-		$homelink = defaults($_SESSION, 'visitor_home', '');
+		$homelink = Session::get('visitor_home', '');
 	}
 
 	// split up the url in it's parts (protocol,domain/directory, /profile/, nickname
@@ -256,8 +263,6 @@ function frio_remote_nav($a, &$nav)
 	}
 
 	if (!local_user() && !empty($server_url) && !is_null($remoteUser)) {
-		$nav['logout'] = [$server_url . '/logout', L10n::t('Logout'), '', L10n::t('End this session')];
-
 		// user menu
 		$nav['usermenu'][] = [$server_url . '/profile/' . $remoteUser['nick'], L10n::t('Status'), '', L10n::t('Your posts and conversations')];
 		$nav['usermenu'][] = [$server_url . '/profile/' . $remoteUser['nick'] . '?tab=profile', L10n::t('Profile'), '', L10n::t('Your profile page')];

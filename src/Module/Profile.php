@@ -11,12 +11,13 @@ use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
+use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact as ContactModel;
 use Friendica\Model\Group;
 use Friendica\Model\Item;
-use Friendica\Model\Profile AS ProfileModel;
+use Friendica\Model\Profile as ProfileModel;
 use Friendica\Model\User;
 use Friendica\Protocol\ActivityPub;
 use Friendica\Protocol\DFRN;
@@ -32,53 +33,62 @@ class Profile extends BaseModule
 	public static $which = '';
 	public static $profile = 0;
 
-	public static function init()
+	public static function init(array $parameters = [])
 	{
 		$a = self::getApp();
 
+		// @TODO: Replace with parameter from router
 		if ($a->argc < 2) {
-			System::httpExit(400);
+			throw new \Friendica\Network\HTTPException\BadRequestException();
 		}
 
 		self::$which = filter_var($a->argv[1], FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_LOW | FILTER_FLAG_STRIP_HIGH | FILTER_FLAG_STRIP_BACKTICK);
 
+		// @TODO: Replace with parameter from router
 		if (local_user() && $a->argc > 2 && $a->argv[2] === 'view') {
 			self::$which = $a->user['nickname'];
 			self::$profile = filter_var($a->argv[1], FILTER_SANITIZE_NUMBER_INT);
-		} else {
-			DFRN::autoRedir($a, self::$which);
 		}
 	}
 
-	public static function rawContent()
+	public static function rawContent(array $parameters = [])
 	{
 		if (ActivityPub::isRequest()) {
 			$user = DBA::selectFirst('user', ['uid'], ['nickname' => self::$which]);
 			if (DBA::isResult($user)) {
+				// The function returns an empty array when the account is removed, expired or blocked
 				$data = ActivityPub\Transmitter::getProfile($user['uid']);
-				System::jsonExit($data, 'application/activity+json');
-			} elseif (DBA::exists('userd', ['username' => self::$which])) {
+				if (!empty($data)) {
+					System::jsonExit($data, 'application/activity+json');
+				}
+			}
+
+			if (DBA::exists('userd', ['username' => self::$which])) {
 				// Known deleted user
-				System::httpExit(410);
+				$data = ActivityPub\Transmitter::getDeletedUser(self::$which);
+
+				System::jsonError(410, $data);
 			} else {
-				// Unknown user
-				System::httpExit(404);
+				// Any other case (unknown, blocked, unverified, expired, no profile, no self contact)
+				System::jsonError(404, []);
 			}
 		}
 	}
 
-	public static function content($update = 0)
+	public static function content(array $parameters = [], $update = 0)
 	{
 		$a = self::getApp();
 
 		if (!$update) {
 			ProfileModel::load($a, self::$which, self::$profile);
 
-			$blocked   = !local_user() && !remote_user() && Config::get('system', 'block_public');
-			$userblock = !local_user() && !remote_user() && $a->profile['hidewall'];
+			$a->page['htmlhead'] .= "\n";
+
+			$blocked   = !local_user() && !Session::getRemoteContactID($a->profile['profile_uid']) && Config::get('system', 'block_public');
+			$userblock = !local_user() && !Session::getRemoteContactID($a->profile['profile_uid']) && $a->profile['hidewall'];
 
 			if (!empty($a->profile['page-flags']) && $a->profile['page-flags'] == User::PAGE_FLAGS_COMMUNITY) {
-				$a->page['htmlhead'] .= '<meta name="friendica.community" content="true" />';
+				$a->page['htmlhead'] .= '<meta name="friendica.community" content="true" />' . "\n";
 			}
 
 			if (!empty($a->profile['openidserver'])) {
@@ -92,13 +102,18 @@ class Profile extends BaseModule
 
 			// site block
 			if (!$blocked && !$userblock) {
-				$keywords = str_replace(['#', ',', ' ', ',,'], ['', ' ', ',', ','], defaults($a->profile, 'pub_keywords', ''));
+				$keywords = str_replace(['#', ',', ' ', ',,'], ['', ' ', ',', ','], $a->profile['pub_keywords'] ?? '');
 				if (strlen($keywords)) {
 					$a->page['htmlhead'] .= '<meta name="keywords" content="' . $keywords . '" />' . "\n";
 				}
 			}
 
 			$a->page['htmlhead'] .= '<meta name="dfrn-global-visibility" content="' . ($a->profile['net-publish'] ? 'true' : 'false') . '" />' . "\n";
+
+			if (!$a->profile['net-publish'] || $a->profile['hidewall']) {
+				$a->page['htmlhead'] .= '<meta content="noindex, noarchive" name="robots" />' . "\n";
+			}
+
 			$a->page['htmlhead'] .= '<link rel="alternate" type="application/atom+xml" href="' . System::baseUrl() . '/dfrn_poll/' . self::$which . '" title="DFRN: ' . L10n::t('%s\'s timeline', $a->profile['username']) . '"/>' . "\n";
 			$a->page['htmlhead'] .= '<link rel="alternate" type="application/atom+xml" href="' . System::baseUrl() . '/feed/' . self::$which . '/" title="' . L10n::t('%s\'s posts', $a->profile['username']) . '"/>' . "\n";
 			$a->page['htmlhead'] .= '<link rel="alternate" type="application/atom+xml" href="' . System::baseUrl() . '/feed/' . self::$which . '/comments" title="' . L10n::t('%s\'s comments', $a->profile['username']) . '"/>' . "\n";
@@ -116,9 +131,12 @@ class Profile extends BaseModule
 
 		$category = $datequery = $datequery2 = '';
 
+		/** @var DateTimeFormat $dtFormat */
+		$dtFormat = self::getClass(DateTimeFormat::class);
+
 		if ($a->argc > 2) {
 			for ($x = 2; $x < $a->argc; $x ++) {
-				if (is_a_date_arg($a->argv[$x])) {
+				if ($dtFormat->isYearMonth($a->argv[$x])) {
 					if ($datequery) {
 						$datequery2 = Strings::escapeHtml($a->argv[$x]);
 					} else {
@@ -131,17 +149,14 @@ class Profile extends BaseModule
 		}
 
 		if (empty($category)) {
-			$category = defaults($_GET, 'category', '');
+			$category = $_GET['category'] ?? '';
 		}
 
-		$hashtags = defaults($_GET, 'tag', '');
+		$hashtags = $_GET['tag'] ?? '';
 
-		if (Config::get('system', 'block_public') && !local_user() && !remote_user()) {
+		if (Config::get('system', 'block_public') && !local_user() && !Session::getRemoteContactID($a->profile['profile_uid'])) {
 			return Login::form();
 		}
-
-		$groups = [];
-		$remote_cid = null;
 
 		$o = '';
 
@@ -152,17 +167,9 @@ class Profile extends BaseModule
 			Nav::setSelected('home');
 		}
 
-		$remote_contact = ContactModel::isFollower(remote_user(), $a->profile['profile_uid']);
+		$remote_contact = Session::getRemoteContactID($a->profile['profile_uid']);
 		$is_owner = local_user() == $a->profile['profile_uid'];
-		$last_updated_key = "profile:" . $a->profile['profile_uid'] . ":" . local_user() . ":" . remote_user();
-
-		if ($remote_contact) {
-			$cdata = ContactModel::getPublicAndUserContacID(remote_user(), $a->profile['profile_uid']);
-			if (!empty($cdata['user'])) {
-				$groups = Group::getIdsByContactId($cdata['user']);
-				$remote_cid = $cdata['user'];
-			}
-		}
+		$last_updated_key = "profile:" . $a->profile['profile_uid'] . ":" . local_user() . ":" . $remote_contact;
 
 		if (!empty($a->profile['hidewall']) && !$is_owner && !$remote_contact) {
 			notice(L10n::t('Access to this profile has been restricted.') . EOL);
@@ -170,12 +177,9 @@ class Profile extends BaseModule
 		}
 
 		if (!$update) {
-			$tab = false;
-			if (!empty($_GET['tab'])) {
-				$tab = Strings::escapeTags(trim($_GET['tab']));
-			}
+			$tab = Strings::escapeTags(trim($_GET['tab'] ?? ''));
 
-			$o .= ProfileModel::getTabs($a, $is_owner, $a->profile['nickname']);
+			$o .= ProfileModel::getTabs($a, $tab, $is_owner, $a->profile['nickname']);
 
 			if ($tab === 'profile') {
 				$o .= ProfileModel::getAdvanced($a);
@@ -188,8 +192,8 @@ class Profile extends BaseModule
 			$commpage = $a->profile['page-flags'] == User::PAGE_FLAGS_COMMUNITY;
 			$commvisitor = $commpage && $remote_contact;
 
-			$a->page['aside'] .= posted_date_widget(System::baseUrl(true) . '/profile/' . $a->profile['nickname'], $a->profile['profile_uid'], true);
-			$a->page['aside'] .= Widget::categories(System::baseUrl(true) . '/profile/' . $a->profile['nickname'], (!empty($category) ? XML::escape($category) : ''));
+			$a->page['aside'] .= Widget::postedByYear(System::baseUrl(true) . '/profile/' . $a->profile['nickname'], $a->profile['profile_uid'] ?? 0, true);
+			$a->page['aside'] .= Widget::categories(System::baseUrl(true) . '/profile/' . $a->profile['nickname'], XML::escape($category));
 			$a->page['aside'] .= Widget::tagCloud();
 
 			if (Security::canWriteToUserWall($a->profile['profile_uid'])) {
@@ -204,7 +208,7 @@ class Profile extends BaseModule
 						|| strlen($a->user['deny_cid'])
 						|| strlen($a->user['deny_gid'])
 					) ? 'lock' : 'unlock',
-					'acl' => $is_owner ? ACL::getFullSelectorHTML($a->user, true) : '',
+					'acl' => $is_owner ? ACL::getFullSelectorHTML($a->page, $a->user, true) : '',
 					'bang' => '',
 					'visitor' => $is_owner || $commvisitor ? 'block' : 'none',
 					'profile_uid' => $a->profile['profile_uid'],
@@ -215,11 +219,13 @@ class Profile extends BaseModule
 		}
 
 		// Get permissions SQL - if $remote_contact is true, our remote user has been pre-verified and we already have fetched his/her groups
-		$sql_extra = Item::getPermissionsSQLByUserId($a->profile['profile_uid'], $remote_contact, $groups, $remote_cid);
+		$sql_extra = Item::getPermissionsSQLByUserId($a->profile['profile_uid']);
 		$sql_extra2 = '';
 
+		$last_updated_array = Session::get('last_updated', []);
+
 		if ($update) {
-			$last_updated = (defaults($_SESSION['last_updated'], $last_updated_key, 0));
+			$last_updated = $last_updated_array[$last_updated_key] ?? 0;
 
 			// If the page user is the owner of the page we should query for unseen
 			// items. Otherwise use a timestamp of the last succesful update request.
@@ -244,7 +250,7 @@ class Profile extends BaseModule
 					AND `item`.`wall`
 					$sql_extra4
 					$sql_extra
-				ORDER BY `item`.`created` DESC",
+				ORDER BY `item`.`received` DESC",
 				$a->profile['profile_uid'],
 				GRAVITY_ACTIVITY
 			);
@@ -268,10 +274,10 @@ class Profile extends BaseModule
 			}
 
 			if (!empty($datequery)) {
-				$sql_extra2 .= Strings::protectSprintf(sprintf(" AND `thread`.`created` <= '%s' ", DBA::escape(DateTimeFormat::convert($datequery, 'UTC', date_default_timezone_get()))));
+				$sql_extra2 .= Strings::protectSprintf(sprintf(" AND `thread`.`received` <= '%s' ", DBA::escape(DateTimeFormat::convert($datequery, 'UTC', date_default_timezone_get()))));
 			}
 			if (!empty($datequery2)) {
-				$sql_extra2 .= Strings::protectSprintf(sprintf(" AND `thread`.`created` >= '%s' ", DBA::escape(DateTimeFormat::convert($datequery2, 'UTC', date_default_timezone_get()))));
+				$sql_extra2 .= Strings::protectSprintf(sprintf(" AND `thread`.`received` >= '%s' ", DBA::escape(DateTimeFormat::convert($datequery2, 'UTC', date_default_timezone_get()))));
 			}
 
 			// Does the profile page belong to a forum?
@@ -318,7 +324,7 @@ class Profile extends BaseModule
 					$sql_extra3
 					$sql_extra
 					$sql_extra2
-				ORDER BY `thread`.`created` DESC
+				ORDER BY `thread`.`received` DESC
 				$pager_sql",
 				$a->profile['profile_uid']
 			);
@@ -326,7 +332,8 @@ class Profile extends BaseModule
 
 		// Set a time stamp for this page. We will make use of it when we
 		// search for new items (update routine)
-		$_SESSION['last_updated'][$last_updated_key] = time();
+		$last_updated_array[$last_updated_key] = time();
+		Session::set('last_updated', $last_updated_array);
 
 		if ($is_owner && !$update && !Config::get('theme', 'hide_eventlist')) {
 			$o .= ProfileModel::getBirthdays();
@@ -342,7 +349,13 @@ class Profile extends BaseModule
 
 		$items = DBA::toArray($items_stmt);
 
-		$o .= conversation($a, $items, $pager, 'profile', $update, false, 'created', $a->profile['profile_uid']);
+		if ($pager->getStart() == 0 && !empty($a->profile['profile_uid'])) {
+			$pinned_items = Item::selectPinned($a->profile['profile_uid'], ['uri', 'pinned'], ['true' . $sql_extra]);
+			$pinned = Item::inArray($pinned_items);
+			$items = array_merge($items, $pinned);
+		}
+
+		$o .= conversation($a, $items, $pager, 'profile', $update, false, 'pinned_received', $a->profile['profile_uid']);
 
 		if (!$update) {
 			$o .= $pager->renderMinimal(count($items));

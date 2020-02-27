@@ -72,6 +72,39 @@ class ContactSelector
 	}
 
 	/**
+	 * @param string $profile Profile URL
+	 * @return string Server URL
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	private static function getServerURLForProfile($profile)
+	{
+		$server_url = '';
+
+		// Fetch the server url from the contact table
+		$contact = DBA::selectFirst('contact', ['baseurl'], ['uid' => 0, 'nurl' => Strings::normaliseLink($profile)]);
+		if (DBA::isResult($contact) && !empty($contact['baseurl'])) {
+			$server_url = Strings::normaliseLink($contact['baseurl']);
+		}
+
+		if (empty($server_url)) {
+			// Fetch the server url from the gcontact table
+			$gcontact = DBA::selectFirst('gcontact', ['server_url'], ['nurl' => Strings::normaliseLink($profile)]);
+			if (!empty($gcontact) && !empty($gcontact['server_url'])) {
+				$server_url = Strings::normaliseLink($gcontact['server_url']);
+			}
+		}
+
+		if (empty($server_url)) {
+			// Create the server url out of the profile url
+			$parts = parse_url($profile);
+			unset($parts['path']);
+			$server_url = Strings::normaliseLink(Network::unparseURL($parts));
+		}
+
+		return $server_url;
+	}
+
+	/**
 	 * @param string $network network
 	 * @param string $profile optional, default empty
 	 * @return string
@@ -92,6 +125,7 @@ class ContactSelector
 			Protocol::GPLUS     =>   L10n::t('Google+'),
 			Protocol::PUMPIO    =>   L10n::t('pump.io'),
 			Protocol::TWITTER   =>   L10n::t('Twitter'),
+			Protocol::DISCOURSE =>   L10n::t('Discourse'),
 			Protocol::DIASPORA2 =>   L10n::t('Diaspora Connector'),
 			Protocol::STATUSNET =>   L10n::t('GNU Social Connector'),
 			Protocol::ACTIVITYPUB => L10n::t('ActivityPub'),
@@ -105,17 +139,8 @@ class ContactSelector
 
 		$networkname = str_replace($search, $replace, $network);
 
-		if ((in_array($network, [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])) && ($profile != "")) {
-			// Create the server url out of the profile url
-			$parts = parse_url($profile);
-			unset($parts['path']);
-			$server_url = [Strings::normaliseLink(Network::unparseURL($parts))];
-
-			// Fetch the server url
-			$gcontact = DBA::selectFirst('gcontact', ['server_url'], ['nurl' => Strings::normaliseLink($profile)]);
-			if (!empty($gcontact) && !empty($gcontact['server_url'])) {
-				$server_url[] = Strings::normaliseLink($gcontact['server_url']);
-			}
+		if ((in_array($network, Protocol::FEDERATED)) && ($profile != "")) {
+			$server_url = self::getServerURLForProfile($profile);
 
 			// Now query the GServer for the platform name
 			$gserver = DBA::selectFirst('gserver', ['platform', 'network'], ['nurl' => $server_url]);
@@ -138,6 +163,59 @@ class ContactSelector
 		}
 
 		return $networkname;
+	}
+
+	/**
+	 * @param string $network network
+	 * @param string $profile optional, default empty
+	 * @return string
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	public static function networkToIcon($network, $profile = "")
+	{
+		$nets = [
+			Protocol::DFRN      =>   'friendica',
+			Protocol::OSTATUS   =>   'gnu-social', // There is no generic OStatus icon
+			Protocol::FEED      =>   'rss',
+			Protocol::MAIL      =>   'file-text-o', /// @todo
+			Protocol::DIASPORA  =>   'diaspora',
+			Protocol::ZOT       =>   'hubzilla',
+			Protocol::LINKEDIN  =>   'linkedin',
+			Protocol::XMPP      =>   'xmpp',
+			Protocol::MYSPACE   =>   'file-text-o', /// @todo
+			Protocol::GPLUS     =>   'google-plus',
+			Protocol::PUMPIO    =>   'file-text-o', /// @todo
+			Protocol::TWITTER   =>   'twitter',
+			Protocol::DISCOURSE =>   'dot-circle-o', /// @todo
+			Protocol::DIASPORA2 =>   'diaspora',
+			Protocol::STATUSNET =>   'gnu-social',
+			Protocol::ACTIVITYPUB => 'activitypub',
+			Protocol::PNUT      =>   'file-text-o', /// @todo
+		];
+
+		$platform_icons = ['diaspora' => 'diaspora', 'friendica' => 'friendica', 'friendika' => 'friendica',
+			'GNU Social' => 'gnu-social', 'gnusocial' => 'gnu-social', 'hubzilla' => 'hubzilla',
+			'mastodon' => 'mastodon', 'peertube' => 'peertube', 'pixelfed' => 'pixelfed',
+			'pleroma' => 'pleroma', 'red' => 'hubzilla', 'redmatrix' => 'hubzilla',
+			'socialhome' => 'social-home', 'wordpress' => 'wordpress'];
+
+		$search  = array_keys($nets);
+		$replace = array_values($nets);
+
+		$network_icon = str_replace($search, $replace, $network);
+
+		if ((in_array($network, Protocol::FEDERATED)) && ($profile != "")) {
+			$server_url = self::getServerURLForProfile($profile);
+
+			// Now query the GServer for the platform name
+			$gserver = DBA::selectFirst('gserver', ['platform'], ['nurl' => $server_url]);
+
+			if (DBA::isResult($gserver) && !empty($gserver['platform'])) {
+				$network_icon = $platform_icons[strtolower($gserver['platform'])] ?? $network_icon;
+			}
+		}
+
+		return $network_icon;
 	}
 
 	/**
@@ -196,7 +274,7 @@ class ContactSelector
 	{
 		$o = '';
 		$select = ['', L10n::t('Single'), L10n::t('Unavailable'), L10n::t('Engaged'), L10n::t('Married'), L10n::t('Don\'t care'), L10n::t('Ask me')];
-	
+
 		Hook::callAll('marital_selector', $select);
 
 		$o .= '<select name="marital" id="marital-select" size="1" >';

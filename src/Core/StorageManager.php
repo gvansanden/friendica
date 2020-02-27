@@ -30,6 +30,7 @@ class StorageManager
 
 	/**
 	 * @brief Return current storage backend class
+	 *
 	 * @return string
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
@@ -47,7 +48,7 @@ class StorageManager
 	public static function getByName($name)
 	{
 		self::setup();
-		return defaults(self::$backends, $name, '');
+		return self::$backends[$name] ?? '';
 	}
 
 	/**

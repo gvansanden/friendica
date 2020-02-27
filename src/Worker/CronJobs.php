@@ -10,17 +10,20 @@ use Friendica\Core\Cache;
 use Friendica\Core\Config;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
+use Friendica\Core\StorageManager;
+use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Database\PostUpdate;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
+use Friendica\Model\GServer;
+use Friendica\Model\Nodeinfo;
 use Friendica\Model\Photo;
 use Friendica\Model\User;
 use Friendica\Network\Probe;
-use Friendica\Protocol\PortableContact;
+use Friendica\Util\Network;
 use Friendica\Util\Proxy as ProxyUtils;
-
-require_once 'mod/nodeinfo.php';
+use Friendica\Util\Strings;
 
 class CronJobs
 {
@@ -41,7 +44,14 @@ class CronJobs
 				break;
 
 			case 'nodeinfo':
-				nodeinfo_cron();
+				Logger::info('cron_start');
+				Nodeinfo::update();
+				// Now trying to register
+				$url = 'http://the-federation.info/register/' . $a->getHostName();
+				Logger::debug('Check registering url', ['url' => $url]);
+				$ret = Network::fetchUrl($url);
+				Logger::debug('Check registering answer', ['answer' => $ret]);
+				Logger::info('cron_end');
 				break;
 
 			case 'expire_and_remove_users':
@@ -68,8 +78,12 @@ class CronJobs
 				self::repairDatabase();
 				break;
 
+			case 'move_storage':
+				self::moveStorage();
+				break;
+
 			default:
-				Logger::log("Xronjob " . $command . " is unknown.", Logger::DEBUG);
+				Logger::log("Cronjob " . $command . " is unknown.", Logger::DEBUG);
 		}
 
 		return;
@@ -240,7 +254,7 @@ class CronJobs
 				return;
 			}
 
-			if (!PortableContact::reachable($contact["url"])) {
+			if (!GServer::reachable($contact["url"])) {
 				continue;
 			}
 
@@ -288,5 +302,33 @@ class CronJobs
 		/// - remove sign entries without item
 		/// - remove children when parent got lost
 		/// - set contact-id in item when not present
+
+		// Add intro entries for pending contacts
+		// We don't do this for DFRN entries since such revived contact requests seem to mostly fail.
+		$pending_contacts = DBA::p("SELECT `uid`, `id`, `url`, `network`, `created` FROM `contact`
+			WHERE `pending` AND `rel` IN (?, ?) AND `network` != ?
+				AND NOT EXISTS (SELECT `id` FROM `intro` WHERE `contact-id` = `contact`.`id`)",
+			0, Contact::FOLLOWER, Protocol::DFRN);
+		while ($contact = DBA::fetch($pending_contacts)) {
+			DBA::insert('intro', ['uid' => $contact['uid'], 'contact-id' => $contact['id'], 'blocked' => false,
+				'hash' => Strings::getRandomHex(), 'datetime' => $contact['created']]);
+		}
+		DBA::close($pending_contacts);
+	}
+
+	/**
+	 * Moves up to 5000 attachments and photos to the current storage system.
+	 * Self-replicates if legacy items have been found and moved.
+	 *
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	private static function moveStorage()
+	{
+		$current = StorageManager::getBackend();
+		$moved = StorageManager::move($current);
+
+		if ($moved) {
+			Worker::add(PRIORITY_LOW, "CronJobs", "move_storage");
+		}
 	}
 }

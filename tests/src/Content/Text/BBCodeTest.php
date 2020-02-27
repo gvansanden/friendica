@@ -2,21 +2,17 @@
 
 namespace Friendica\Test\src\Content\Text;
 
+use Friendica\App\BaseURL;
 use Friendica\Content\Text\BBCode;
+use Friendica\Core\L10n\L10n;
 use Friendica\Test\MockedTest;
 use Friendica\Test\Util\AppMockTrait;
-use Friendica\Test\Util\L10nMockTrait;
 use Friendica\Test\Util\VFSTrait;
 
-/**
- * @runTestsInSeparateProcesses
- * @preserveGlobalState disabled
- */
 class BBCodeTest extends MockedTest
 {
 	use VFSTrait;
 	use AppMockTrait;
-	use L10nMockTrait;
 
 	protected function setUp()
 	{
@@ -37,7 +33,24 @@ class BBCodeTest extends MockedTest
 		$this->configMock->shouldReceive('get')
 			->with('system', 'itemcache_duration')
 			->andReturn(-1);
-		$this->mockL10nT();
+		$this->configMock->shouldReceive('get')
+			->with('system', 'url')
+			->andReturn('friendica.local');
+		$this->configMock->shouldReceive('get')
+			->with('system', 'no_smilies')
+			->andReturn(false);
+
+		$l10nMock = \Mockery::mock(L10n::class);
+		$l10nMock->shouldReceive('t')->withAnyArgs()->andReturnUsing(function ($args) { return $args; });
+		$this->dice->shouldReceive('create')
+		           ->with(L10n::class)
+		           ->andReturn($l10nMock);
+
+		$baseUrlMock = \Mockery::mock(BaseURL::class);
+		$baseUrlMock->shouldReceive('get')->withAnyArgs()->andReturn('friendica.local');
+		$this->dice->shouldReceive('create')
+		           ->with(BaseURL::class)
+		           ->andReturn($baseUrlMock);
 	}
 
 	public function dataLinks()
@@ -106,6 +119,18 @@ class BBCodeTest extends MockedTest
 				'data' => "http://example.com<ul>",
 				'assertHTML' => false
 			],
+			'bug-7150' => [
+				'data' => html_entity_decode('http://example.com&nbsp;', ENT_QUOTES, 'UTF-8'),
+				'assertHTML' => false
+			],
+			'bug-7271-query-string-brackets' => [
+				'data' => 'https://example.com/search?q=square+brackets+[url]',
+				'assertHTML' => true
+			],
+			'bug-7271-path-brackets' => [
+				'data' => 'http://example.com/path/to/file[3].html',
+				'assertHTML' => true
+			],
 		];
 	}
 
@@ -126,5 +151,77 @@ class BBCodeTest extends MockedTest
 		} else {
 			$this->assertNotEquals($assert, $output);
 		}
+	}
+
+	public function dataBBCodes()
+	{
+		return [
+			'bug-7271-condensed-space' => [
+				'expectedHtml' => '<ul class="listdecimal" style="list-style-type: decimal;"><li> <a href="http://example.com/" target="_blank">http://example.com/</a></li></ul>',
+				'text' => '[ol][*] http://example.com/[/ol]',
+			],
+			'bug-7271-condensed-nospace' => [
+				'expectedHtml' => '<ul class="listdecimal" style="list-style-type: decimal;"><li><a href="http://example.com/" target="_blank">http://example.com/</a></li></ul>',
+				'text' => '[ol][*]http://example.com/[/ol]',
+			],
+			'bug-7271-indented-space' => [
+				'expectedHtml' => '<ul class="listbullet" style="list-style-type: circle;"><li> <a href="http://example.com/" target="_blank">http://example.com/</a></li></ul>',
+				'text' => '[ul]
+[*] http://example.com/
+[/ul]',
+			],
+			'bug-7271-indented-nospace' => [
+				'expectedHtml' => '<ul class="listbullet" style="list-style-type: circle;"><li><a href="http://example.com/" target="_blank">http://example.com/</a></li></ul>',
+				'text' => '[ul]
+[*]http://example.com/
+[/ul]',
+			],
+			'bug-2199-named-size' => [
+				'expectedHtml' => '<span style="font-size: xx-large; line-height: initial;">Test text</span>',
+				'text' => '[size=xx-large]Test text[/size]',
+			],
+			'bug-2199-numeric-size' => [
+				'expectedHtml' => '<span style="font-size: 24px; line-height: initial;">Test text</span>',
+				'text' => '[size=24]Test text[/size]',
+			],
+			'bug-2199-diaspora-no-named-size' => [
+				'expectedHtml' => 'Test text',
+				'text' => '[size=xx-large]Test text[/size]',
+				'try_oembed' => false,
+				// Triggers the diaspora compatible output
+				'simpleHtml' => 3,
+			],
+			'bug-2199-diaspora-no-numeric-size' => [
+				'expectedHtml' => 'Test text',
+				'text' => '[size=24]Test text[/size]',
+				'try_oembed' => false,
+				// Triggers the diaspora compatible output
+				'simpleHtml' => 3,
+			],
+			'bug-7665-audio-tag' => [
+				'expectedHtml' => '<audio src="http://www.cendrones.fr/colloque2017/jonathanbocquet.mp3" controls="controls"><a href="http://www.cendrones.fr/colloque2017/jonathanbocquet.mp3">http://www.cendrones.fr/colloque2017/jonathanbocquet.mp3</a></audio>',
+				'text' => '[audio]http://www.cendrones.fr/colloque2017/jonathanbocquet.mp3[/audio]',
+				'try_oembed' => true,
+			],
+		];
+	}
+
+	/**
+	 * Test convert bbcodes to HTML
+	 *
+	 * @dataProvider dataBBCodes
+	 *
+	 * @param string $expectedHtml Expected HTML output
+	 * @param string $text         BBCode text
+	 * @param bool   $try_oembed   Whether to convert multimedia BBCode tag
+	 * @param int    $simpleHtml   BBCode::convert method $simple_html parameter value, optional.
+	 * @param bool   $forPlaintext BBCode::convert method $for_plaintext parameter value, optional.
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	public function testConvert($expectedHtml, $text, $try_oembed = false, $simpleHtml = 0, $forPlaintext = false)
+	{
+		$actual = BBCode::convert($text, $try_oembed, $simpleHtml, $forPlaintext);
+
+		$this->assertEquals($expectedHtml, $actual);
 	}
 }

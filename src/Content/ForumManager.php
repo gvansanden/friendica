@@ -43,7 +43,7 @@ class ForumManager
 			$params = ['order' => ['name']];
 		}
 
-		$condition_str = "`network` = ? AND `uid` = ? AND NOT `blocked` AND NOT `pending` AND NOT `archive` AND `success_update` > `failure_update` AND ";
+		$condition_str = "`network` IN (?, ?) AND `uid` = ? AND NOT `blocked` AND NOT `pending` AND NOT `archive` AND ";
 
 		if ($showprivate) {
 			$condition_str .= '(`forum` OR `prv`)';
@@ -58,7 +58,7 @@ class ForumManager
 		$forumlist = [];
 
 		$fields = ['id', 'url', 'name', 'micro', 'thumb'];
-		$condition = [$condition_str, Protocol::DFRN, $uid];
+		$condition = [$condition_str, Protocol::DFRN, Protocol::ACTIVITYPUB, $uid];
 		$contacts = DBA::select('contact', $fields, $condition, $params);
 		if (!$contacts) {
 			return($forumlist);
@@ -111,7 +111,7 @@ class ForumManager
 				$selected = (($cid == $contact['id']) ? ' forum-selected' : '');
 
 				$entry = [
-					'url' => 'network?f=&cid=' . $contact['id'],
+					'url' => 'network?cid=' . $contact['id'],
 					'external_url' => Contact::magicLink($contact['url']),
 					'name' => $contact['name'],
 					'cid' => $contact['id'],
@@ -196,18 +196,17 @@ class ForumManager
 	 */
 	public static function countUnseenItems()
 	{
-		$r = q(
+		$stmtContacts = DBA::p(
 			"SELECT `contact`.`id`, `contact`.`name`, COUNT(*) AS `count` FROM `item`
 				INNER JOIN `contact` ON `item`.`contact-id` = `contact`.`id`
-				WHERE `item`.`uid` = %d AND `item`.`visible` AND NOT `item`.`deleted` AND `item`.`unseen`
+				WHERE `item`.`uid` = ? AND `item`.`visible` AND NOT `item`.`deleted` AND `item`.`unseen`
 				AND `contact`.`network`= 'dfrn' AND (`contact`.`forum` OR `contact`.`prv`)
 				AND NOT `contact`.`blocked` AND NOT `contact`.`hidden`
 				AND NOT `contact`.`pending` AND NOT `contact`.`archive`
-				AND `contact`.`success_update` > `failure_update`
 				GROUP BY `contact`.`id` ",
-			intval(local_user())
+			local_user()
 		);
 
-		return $r;
+		return DBA::toArray($stmtContacts);
 	}
 }

@@ -5,23 +5,22 @@
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
-use Friendica\Protocol\ActivityPub;
 use Friendica\Core\System;
-use Friendica\Model\Item;
 use Friendica\Database\DBA;
-use Friendica\Util\HTTPSignature;
+use Friendica\Model\Item;
+use Friendica\Protocol\ActivityPub;
 
 /**
  * ActivityPub Objects
  */
 class Objects extends BaseModule
 {
-	public static function rawContent()
+	public static function rawContent(array $parameters = [])
 	{
 		$a = self::getApp();
 
 		if (empty($a->argv[1])) {
-			System::httpExit(404);
+			throw new \Friendica\Network\HTTPException\NotFoundException();
 		}
 
 		if (!ActivityPub::isRequest()) {
@@ -32,16 +31,25 @@ class Objects extends BaseModule
 		// $requester = HTTPSignature::getSigner('', $_SERVER);
 
 		// At first we try the original post with that guid
+		// @TODO: Replace with parameter from router
 		$item = Item::selectFirst(['id'], ['guid' => $a->argv[1], 'origin' => true, 'private' => false]);
 		if (!DBA::isResult($item)) {
 			// If no original post could be found, it could possibly be a forum post, there we remove the "origin" field.
+			// @TODO: Replace with parameter from router
 			$item = Item::selectFirst(['id', 'author-link'], ['guid' => $a->argv[1], 'private' => false]);
 			if (!DBA::isResult($item) || !strstr($item['author-link'], System::baseUrl())) {
-				System::httpExit(404);
+				throw new \Friendica\Network\HTTPException\NotFoundException();
 			}
 		}
 
-		$data = ActivityPub\Transmitter::createObjectFromItemID($item['id']);
+		$activity = ActivityPub\Transmitter::createActivityFromItem($item['id'], true);
+		// Only display "Create" activity objects here, no reshares or anything else
+		if (!is_array($activity['object']) || ($activity['type'] != 'Create')) {
+			throw new \Friendica\Network\HTTPException\NotFoundException();
+		}
+
+		$data = ['@context' => ActivityPub::CONTEXT];
+		$data = array_merge($data, $activity['object']);
 
 		header('Content-Type: application/activity+json');
 		echo json_encode($data);

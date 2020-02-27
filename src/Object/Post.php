@@ -7,6 +7,7 @@ namespace Friendica\Object;
 use Friendica\BaseObject;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Feature;
+use Friendica\Content\Item as ContentItem;
 use Friendica\Core\Addon;
 use Friendica\Core\Config;
 use Friendica\Core\Hook;
@@ -15,11 +16,13 @@ use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Model\Term;
 use Friendica\Model\User;
+use Friendica\Protocol\Activity;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Proxy as ProxyUtils;
@@ -70,13 +73,8 @@ class Post extends BaseObject
 		$this->setTemplate('wall');
 		$this->toplevel = $this->getId() == $this->getDataValue('parent');
 
-		if (!empty($_SESSION['remote']) && is_array($_SESSION['remote'])) {
-			foreach ($_SESSION['remote'] as $visitor) {
-				if ($visitor['cid'] == $this->getDataValue('contact-id')) {
-					$this->visiting = true;
-					break;
-				}
-			}
+		if (!empty(Session::getUserIDForVisitorContactID($this->getDataValue('contact-id')))) {
+			$this->visiting = true;
 		}
 
 		$this->writable = $this->getDataValue('writable') || $this->getDataValue('self');
@@ -142,8 +140,11 @@ class Post extends BaseObject
 		$sparkle = '';
 		$buttons = '';
 		$dropping = false;
+		$pinned = '';
+		$pin = false;
 		$star = false;
 		$ignore = false;
+		$ispinned = "unpinned";
 		$isstarred = "unstarred";
 		$indent = '';
 		$shiny = '';
@@ -192,6 +193,8 @@ class Post extends BaseObject
 			if (DBA::isResult($parent)) {
 				$origin = $parent['origin'];
 			}
+		} elseif ($item['pinned']) {
+			$pinned = L10n::t('pinned item');
 		}
 
 		if ($origin && ($item['id'] != $item['parent']) && ($item['network'] == Protocol::ACTIVITYPUB)) {
@@ -223,7 +226,7 @@ class Post extends BaseObject
 		$author = ['uid' => 0, 'id' => $item['author-id'],
 			'network' => $item['author-network'], 'url' => $item['author-link']];
 
-		if (local_user() || remote_user()) {
+		if (Session::isAuthenticated()) {
 			$profile_link = Contact::magicLinkByContact($author);
 		} else {
 			$profile_link = $item['author-link'];
@@ -238,11 +241,11 @@ class Post extends BaseObject
 		$location = ((strlen($locate['html'])) ? $locate['html'] : render_location_dummy($locate));
 
 		// process action responses - e.g. like/dislike/attend/agree/whatever
-		$response_verbs = ['like', 'dislike'];
+		$response_verbs = ['like', 'dislike', 'announce'];
 
 		$isevent = false;
 		$attend = [];
-		if ($item['object-type'] === ACTIVITY_OBJ_EVENT) {
+		if ($item['object-type'] === Activity\ObjectType::EVENT) {
 			$response_verbs[] = 'attendyes';
 			$response_verbs[] = 'attendno';
 			$response_verbs[] = 'attendmaybe';
@@ -286,6 +289,19 @@ class Post extends BaseObject
 				}
 
 				if ($conv->getProfileOwner() == local_user() && ($item['uid'] != 0)) {
+					if ($origin) {
+						$ispinned = ($item['pinned'] ? 'pinned' : 'unpinned');
+
+						$pin = [
+							'do'        => L10n::t('pin'),
+							'undo'      => L10n::t('unpin'),
+							'toggle'    => L10n::t('toggle pin status'),
+							'classdo'   => $item['pinned'] ? 'hidden' : '',
+							'classundo' => $item['pinned'] ? '' : 'hidden',
+							'pinned'   => L10n::t('pinned'),
+						];
+					}
+
 					$isstarred = (($item['starred']) ? "starred" : "unstarred");
 
 					$star = [
@@ -327,7 +343,10 @@ class Post extends BaseObject
 
 		$body = Item::prepareBody($item, true);
 
-		list($categories, $folders) = get_cats_and_terms($item);
+		/** @var ContentItem $contItem */
+		$contItem = self::getClass(ContentItem::class);
+
+		list($categories, $folders) = $contItem->determineCategoriesTerms($item);
 
 		$body_e       = $body;
 		$text_e       = strip_tags($body);
@@ -358,6 +377,12 @@ class Post extends BaseObject
 		}
 
 		$tags = Term::populateTagsFromItem($item);
+
+		$ago = Temporal::getRelativeDate($item['created']);
+		$ago_received = Temporal::getRelativeDate($item['received']);
+		if (Config::get('system', 'show_received') && (abs(strtotime($item['created']) - strtotime($item['received'])) > Config::get('system', 'show_received_seconds')) && ($ago != $ago_received)) {
+			$ago = L10n::t('%s (Received %s)', $ago, $ago_received);
+		}
 
 		$tmp_item = [
 			'template'        => $this->getTemplate(),
@@ -393,19 +418,22 @@ class Post extends BaseObject
 			'sparkle'         => $sparkle,
 			'title'           => $title_e,
 			'localtime'       => DateTimeFormat::local($item['created'], 'r'),
-			'ago'             => $item['app'] ? L10n::t('%s from %s', Temporal::getRelativeDate($item['created']), $item['app']) : Temporal::getRelativeDate($item['created']),
+			'ago'             => $item['app'] ? L10n::t('%s from %s', $ago, $item['app']) : $ago,
 			'app'             => $item['app'],
 			'created'         => Temporal::getRelativeDate($item['created']),
 			'lock'            => $lock,
 			'location'        => $location_e,
 			'indent'          => $indent,
 			'shiny'           => $shiny,
-			'owner_self'      => $item['author-link'] == defaults($_SESSION, 'my_url', null),
+			'owner_self'      => $item['author-link'] == Session::get('my_url'),
 			'owner_url'       => $this->getOwnerUrl(),
 			'owner_photo'     => $a->removeBaseURL(ProxyUtils::proxifyUrl($item['owner-avatar'], false, ProxyUtils::SIZE_THUMB)),
 			'owner_name'      => $owner_name_e,
 			'plink'           => Item::getPlink($item),
 			'edpost'          => $edpost,
+			'ispinned'        => $ispinned,
+			'pin'             => $pin,
+			'pinned'          => $pinned,
 			'isstarred'       => $isstarred,
 			'star'            => $star,
 			'ignore'          => $ignore,
@@ -425,13 +453,14 @@ class Post extends BaseObject
 			'edited'          => $edited,
 			'network'         => $item["network"],
 			'network_name'    => ContactSelector::networkToName($item['network'], $item['author-link']),
+			'network_icon'    => ContactSelector::networkToIcon($item['network'], $item['author-link']),
 			'received'        => $item['received'],
 			'commented'       => $item['commented'],
 			'created_date'    => $item['created'],
 			'return'          => ($a->cmd) ? bin2hex($a->cmd) : '',
 			'delivery'        => [
 				'queue_count'       => $item['delivery_queue_count'],
-				'queue_done'        => $item['delivery_queue_done'],
+				'queue_done'        => $item['delivery_queue_done'] + $item['delivery_queue_failed'], /// @todo Possibly display it separately in the future
 				'notifier_pending'  => L10n::t('Notifier task is pending'),
 				'delivery_pending'  => L10n::t('Delivery to remote servers is pending'),
 				'delivery_underway' => L10n::t('Delivery to remote servers is underway'),
@@ -520,12 +549,17 @@ class Post extends BaseObject
 			Logger::log('[WARN] Post::addChild : Item already exists (' . $item->getId() . ').', Logger::DEBUG);
 			return false;
 		}
+
+		/** @var Activity $activity */
+		$activity = self::getClass(Activity::class);
+
 		/*
 		 * Only add what will be displayed
 		 */
 		if ($item->getDataValue('network') === Protocol::MAIL && local_user() != $item->getDataValue('uid')) {
 			return false;
-		} elseif (activity_match($item->getDataValue('verb'), ACTIVITY_LIKE) || activity_match($item->getDataValue('verb'), ACTIVITY_DISLIKE)) {
+		} elseif ($activity->match($item->getDataValue('verb'), Activity::LIKE) ||
+		          $activity->match($item->getDataValue('verb'), Activity::DISLIKE)) {
 			return false;
 		}
 
@@ -808,7 +842,7 @@ class Post extends BaseObject
 		$terms = Term::tagArrayFromItemId($this->getId(), [Term::MENTION, Term::IMPLICIT_MENTION]);
 		foreach ($terms as $term) {
 			$profile = Contact::getDetailsByURL($term['url']);
-			if (!empty($profile['addr']) && (defaults($profile, 'contact-type', Contact::TYPE_UNKNOWN) != Contact::TYPE_COMMUNITY) &&
+			if (!empty($profile['addr']) && ((($profile['contact-type'] ?? '') ?: Contact::TYPE_UNKNOWN) != Contact::TYPE_COMMUNITY) &&
 				($profile['addr'] != $owner['addr']) && !strstr($text, $profile['addr'])) {
 				$text .= '@' . $profile['addr'] . ' ';
 			}

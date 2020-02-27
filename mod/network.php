@@ -5,6 +5,7 @@
  */
 
 use Friendica\App;
+use Friendica\BaseObject;
 use Friendica\Content\Feature;
 use Friendica\Content\ForumManager;
 use Friendica\Content\Nav;
@@ -19,6 +20,7 @@ use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Group;
@@ -39,22 +41,6 @@ function network_init(App $a)
 
 	Hook::add('head', __FILE__, 'network_infinite_scroll_head');
 
-	$search = (!empty($_GET['search']) ? Strings::escapeHtml($_GET['search']) : '');
-
-	if (($search != '') && !empty($_GET['submit'])) {
-		$a->internalRedirect('search?search=' . urlencode($search));
-	}
-
-	if (!empty($_GET['save'])) {
-		$exists = DBA::exists('search', ['uid' => local_user(), 'term' => $search]);
-		if (!$exists) {
-			DBA::insert('search', ['uid' => local_user(), 'term' => $search]);
-		}
-	}
-	if (!empty($_GET['remove'])) {
-		DBA::delete('search', ['uid' => local_user(), 'term' => $search]);
-	}
-
 	$is_a_date_query = false;
 
 	$group_id = (($a->argc > 1 && is_numeric($a->argv[1])) ? intval($a->argv[1]) : 0);
@@ -66,9 +52,12 @@ function network_init(App $a)
 		$group_id = 0;
 	}
 
+	/** @var DateTimeFormat $dtFormat */
+	$dtFormat = BaseObject::getClass(DateTimeFormat::class);
+
 	if ($a->argc > 1) {
 		for ($x = 1; $x < $a->argc; $x ++) {
-			if (is_a_date_arg($a->argv[$x])) {
+			if ($dtFormat->isYearMonth($a->argv[$x])) {
 				$is_a_date_query = true;
 				break;
 			}
@@ -77,13 +66,11 @@ function network_init(App $a)
 
 	// convert query string to array. remove friendica args
 	$query_array = [];
-	$query_string = str_replace($a->cmd . '?', '', $a->query_string);
-	parse_str($query_string, $query_array);
-	array_shift($query_array);
+	parse_str(parse_url($a->query_string, PHP_URL_QUERY), $query_array);
 
 	// fetch last used network view and redirect if needed
 	if (!$is_a_date_query) {
-		$sel_nets = defaults($_GET, 'nets', '');
+		$sel_nets = $_GET['nets'] ?? '';
 		$sel_tabs = network_query_get_sel_tab($a);
 		$sel_groups = network_query_get_sel_group($a);
 		$last_sel_tabs = PConfig::get(local_user(), 'network.view', 'tab.selected');
@@ -99,7 +86,7 @@ function network_init(App $a)
 
 		if ($remember_tab) {
 			// redirect if current selected tab is '/network' and
-			// last selected tab is _not_ '/network?f=&order=comment'.
+			// last selected tab is _not_ '/network?order=activity'.
 			// and this isn't a date query
 
 			$tab_baseurls = [
@@ -111,12 +98,12 @@ function network_init(App $a)
 				'',     //bookmarked
 			];
 			$tab_args = [
-				'f=&order=comment', //all
-				'f=&order=post',    //postord
-				'f=&conv=1',        //conv
-				'',                 //new
-				'f=&star=1',        //starred
-				'f=&bmark=1',       //bookmarked
+				'order=activity', //all
+				'order=post',     //postord
+				'conv=1',         //conv
+				'',               //new
+				'star=1',         //starred
+				'bmark=1',        //bookmarked
 			];
 
 			$k = array_search('active', $last_sel_tabs);
@@ -140,7 +127,7 @@ function network_init(App $a)
 
 		if ($remember_tab) {
 			$net_args = array_merge($query_array, $net_args);
-			$net_queries = build_querystring($net_args);
+			$net_queries = http_build_query($net_args);
 
 			$redir_url = ($net_queries ? $net_baseurl . '?' . $net_queries : $net_baseurl);
 
@@ -154,63 +141,26 @@ function network_init(App $a)
 
 	$a->page['aside'] .= Group::sidebarWidget('network/0', 'network', 'standard', $group_id);
 	$a->page['aside'] .= ForumManager::widget(local_user(), $cid);
-	$a->page['aside'] .= posted_date_widget('network', local_user(), false);
-	$a->page['aside'] .= Widget::networks('network', defaults($_GET, 'nets', '') );
-	$a->page['aside'] .= saved_searches($search);
-	$a->page['aside'] .= Widget::fileAs('network', defaults($_GET, 'file', '') );
-}
-
-function saved_searches($search)
-{
-	$srchurl = '/network?f='
-		. (!empty($_GET['cid'])   ? '&cid='   . rawurlencode($_GET['cid'])   : '')
-		. (!empty($_GET['star'])  ? '&star='  . rawurlencode($_GET['star'])  : '')
-		. (!empty($_GET['bmark']) ? '&bmark=' . rawurlencode($_GET['bmark']) : '')
-		. (!empty($_GET['conv'])  ? '&conv='  . rawurlencode($_GET['conv'])  : '')
-		. (!empty($_GET['nets'])  ? '&nets='  . rawurlencode($_GET['nets'])  : '')
-		. (!empty($_GET['cmin'])  ? '&cmin='  . rawurlencode($_GET['cmin'])  : '')
-		. (!empty($_GET['cmax'])  ? '&cmax='  . rawurlencode($_GET['cmax'])  : '')
-		. (!empty($_GET['file'])  ? '&file='  . rawurlencode($_GET['file'])  : '');
-	;
-
-	$terms = DBA::select('search', ['id', 'term'], ['uid' => local_user()]);
-	$saved = [];
-
-	while ($rr = DBA::fetch($terms)) {
-		$saved[] = [
-			'id'          => $rr['id'],
-			'term'        => $rr['term'],
-			'encodedterm' => urlencode($rr['term']),
-			'delete'      => L10n::t('Remove term'),
-			'selected'    => ($search == $rr['term']),
-		];
-	}
-
-	$tpl = Renderer::getMarkupTemplate('saved_searches_aside.tpl');
-	$o = Renderer::replaceMacros($tpl, [
-		'$title'     => L10n::t('Saved Searches'),
-		'$add'       => L10n::t('add'),
-		'$searchbox' => HTML::search($search, 'netsearch-box', $srchurl),
-		'$saved'     => $saved,
-	]);
-
-	return $o;
+	$a->page['aside'] .= Widget::postedByYear('network', local_user(), false);
+	$a->page['aside'] .= Widget::networks('network', $_GET['nets'] ?? '');
+	$a->page['aside'] .= Widget\SavedSearches::getHTML($a->query_string);
+	$a->page['aside'] .= Widget::fileAs('network', $_GET['file'] ?? '');
 }
 
 /**
  * Return selected tab from query
  *
  * urls -> returns
- *        '/network'                    => $no_active = 'active'
- *        '/network?f=&order=comment'    => $comment_active = 'active'
- *        '/network?f=&order=post'    => $postord_active = 'active'
- *        '/network?f=&conv=1',        => $conv_active = 'active'
- *        '/network/new',                => $new_active = 'active'
- *        '/network?f=&star=1',        => $starred_active = 'active'
- *        '/network?f=&bmark=1',        => $bookmarked_active = 'active'
+ *        '/network'                => $no_active = 'active'
+ *        '/network?order=activity' => $activity_active = 'active'
+ *        '/network?order=post'     => $postord_active = 'active'
+ *        '/network?conv=1',        => $conv_active = 'active'
+ *        '/network/new',           => $new_active = 'active'
+ *        '/network?star=1',        => $starred_active = 'active'
+ *        '/network?bmark=1',       => $bookmarked_active = 'active'
  *
  * @param App $a
- * @return array ($no_active, $comment_active, $postord_active, $conv_active, $new_active, $starred_active, $bookmarked_active);
+ * @return array ($no_active, $activity_active, $postord_active, $conv_active, $new_active, $starred_active, $bookmarked_active);
  */
 function network_query_get_sel_tab(App $a)
 {
@@ -244,8 +194,8 @@ function network_query_get_sel_tab(App $a)
 
 	if ($no_active == 'active' && !empty($_GET['order'])) {
 		switch($_GET['order']) {
-			case 'post'    : $postord_active = 'active'; $no_active=''; break;
-			case 'comment' : $all_active     = 'active'; $no_active=''; break;
+			case 'post' :     $postord_active = 'active'; $no_active=''; break;
+			case 'activity' : $all_active     = 'active'; $no_active=''; break;
 		}
 	}
 
@@ -410,7 +360,7 @@ function networkFlatView(App $a, $update = 0)
 
 	$o = '';
 
-	$file = defaults($_GET, 'file', '');
+	$file = $_GET['file'] ?? '';
 
 	if (!$update && !$rawmode) {
 		$tabs = network_tabs($a);
@@ -427,7 +377,7 @@ function networkFlatView(App $a, $update = 0)
 			(strlen($a->user['allow_cid']) || strlen($a->user['allow_gid']) ||
 			strlen($a->user['deny_cid']) || strlen($a->user['deny_gid'])) ? 'lock' : 'unlock'),
 			'default_perms' => ACL::getDefaultUserPermissions($a->user),
-			'acl' => ACL::getFullSelectorHTML($a->user, true),
+			'acl' => ACL::getFullSelectorHTML($a->page, $a->user, true),
 			'bang' => '',
 			'visitor' => 'block',
 			'profile_uid' => local_user(),
@@ -515,9 +465,12 @@ function networkThreadedView(App $a, $update, $parent)
 
 	$default_permissions = [];
 
+	/** @var DateTimeFormat $dtFormat */
+	$dtFormat = BaseObject::getClass(DateTimeFormat::class);
+
 	if ($a->argc > 1) {
 		for ($x = 1; $x < $a->argc; $x ++) {
-			if (is_a_date_arg($a->argv[$x])) {
+			if ($dtFormat->isYearMonth($a->argv[$x])) {
 				if ($datequery) {
 					$datequery2 = Strings::escapeHtml($a->argv[$x]);
 				} else {
@@ -533,12 +486,12 @@ function networkThreadedView(App $a, $update, $parent)
 
 	$o = '';
 
-	$cid   = intval(defaults($_GET, 'cid'  , 0));
-	$star  = intval(defaults($_GET, 'star' , 0));
-	$bmark = intval(defaults($_GET, 'bmark', 0));
-	$conv  = intval(defaults($_GET, 'conv' , 0));
-	$order = Strings::escapeTags(defaults($_GET, 'order', 'comment'));
-	$nets  =        defaults($_GET, 'nets' , '');
+	$cid   = intval($_GET['cid']   ?? 0);
+	$star  = intval($_GET['star']  ?? 0);
+	$bmark = intval($_GET['bmark'] ?? 0);
+	$conv  = intval($_GET['conv']  ?? 0);
+	$order = Strings::escapeTags(($_GET['order'] ?? '') ?: 'activity');
+	$nets  =        $_GET['nets']  ?? '';
 
 	$allowedCids = [];
 	if ($cid) {
@@ -601,7 +554,7 @@ function networkThreadedView(App $a, $update, $parent)
 			(strlen($a->user['allow_cid']) || strlen($a->user['allow_gid']) ||
 			strlen($a->user['deny_cid']) || strlen($a->user['deny_gid']))) ? 'lock' : 'unlock'),
 			'default_perms' => ACL::getDefaultUserPermissions($a->user),
-			'acl' => ACL::getFullSelectorHTML($a->user, true, $default_permissions),
+			'acl' => ACL::getFullSelectorHTML($a->page, $a->user, true, $default_permissions),
 			'bang' => (($gid || $cid || $nets) ? '!' : ''),
 			'visitor' => 'block',
 			'profile_uid' => local_user(),
@@ -644,7 +597,7 @@ function networkThreadedView(App $a, $update, $parent)
 			// NOTREACHED
 		}
 
-		$contacts = Group::expand([$gid]);
+		$contacts = Group::expand(local_user(), [$gid]);
 
 		if ((is_array($contacts)) && count($contacts)) {
 			$contact_str_self = '';
@@ -677,7 +630,7 @@ function networkThreadedView(App $a, $update, $parent)
 			$entries[0] = [
 				'id' => 'network',
 				'name' => $contact['name'],
-				'itemurl' => defaults($contact, 'addr', $contact['nurl']),
+				'itemurl' => ($contact['addr'] ?? '') ?: $contact['nurl'],
 				'thumb' => ProxyUtils::proxifyUrl($contact['thumb'], false, ProxyUtils::SIZE_THUMB),
 				'details' => $contact['location'],
 			];
@@ -705,11 +658,11 @@ function networkThreadedView(App $a, $update, $parent)
 	}
 
 	if ($datequery) {
-		$sql_extra3 .= Strings::protectSprintf(sprintf(" AND $sql_table.created <= '%s' ",
+		$sql_extra3 .= Strings::protectSprintf(sprintf(" AND $sql_table.received <= '%s' ",
 				DBA::escape(DateTimeFormat::convert($datequery, 'UTC', date_default_timezone_get()))));
 	}
 	if ($datequery2) {
-		$sql_extra3 .= Strings::protectSprintf(sprintf(" AND $sql_table.created >= '%s' ",
+		$sql_extra3 .= Strings::protectSprintf(sprintf(" AND $sql_table.received >= '%s' ",
 				DBA::escape(DateTimeFormat::convert($datequery2, 'UTC', date_default_timezone_get()))));
 	}
 
@@ -719,8 +672,8 @@ function networkThreadedView(App $a, $update, $parent)
 
 	// Normal conversation view
 	if ($order === 'post') {
-		$ordering = '`created`';
-		$order_mode = 'created';
+		$ordering = '`received`';
+		$order_mode = 'received';
 	} else {
 		$ordering = '`commented`';
 		$order_mode = 'commented';
@@ -854,7 +807,7 @@ function networkThreadedView(App $a, $update, $parent)
 			((time() - $_SESSION['network_last_date_timestamp']) < ($browser_update * 10))) {
 			$bottom_limit = $_SESSION['network_last_date'];
 		}
-		$_SESSION['network_last_date'] = defaults($_SESSION, 'network_last_top_limit', $top_limit);
+		$_SESSION['network_last_date'] = Session::get('network_last_top_limit', $top_limit);
 		$_SESSION['network_last_date_timestamp'] = time();
 
 		if ($last_date > $top_limit) {
@@ -869,10 +822,10 @@ function networkThreadedView(App $a, $update, $parent)
 				(SELECT SUBSTR(`term`, 2) FROM `search` WHERE `uid` = ? AND `term` LIKE '#%') AND `otype` = ? AND `type` = ? AND `uid` = 0) AS `term`
 			ON `item`.`id` = `term`.`oid`
 			STRAIGHT_JOIN `contact` AS `author` ON `author`.`id` = `item`.`author-id`
-			WHERE `item`.`uid` = 0 AND `item`.$ordering < ? AND `item`.$ordering > ?
+			WHERE `item`.`uid` = 0 AND `item`.$ordering < ? AND `item`.$ordering > ? AND `item`.`gravity` = ?
 				AND NOT `author`.`hidden` AND NOT `author`.`blocked`" . $sql_tag_nets,
 			local_user(), TERM_OBJ_POST, TERM_HASHTAG,
-			$top_limit, $bottom_limit);
+			$top_limit, $bottom_limit, GRAVITY_PARENT);
 
 		$data = DBA::toArray($items);
 
@@ -960,9 +913,9 @@ function network_tabs(App $a)
 	// item filter tabs
 	/// @TODO fix this logic, reduce duplication
 	/// $a->page['content'] .= '<div class="tabs-wrapper">';
-	list($no_active, $all_active, $postord_active, $conv_active, $new_active, $starred_active, $bookmarked_active) = network_query_get_sel_tab($a);
+	list($no_active, $all_active, $post_active, $conv_active, $new_active, $starred_active, $bookmarked_active) = network_query_get_sel_tab($a);
 
-	// if no tabs are selected, defaults to comments
+	// if no tabs are selected, defaults to activitys
 	if ($no_active == 'active') {
 		$all_active = 'active';
 	}
@@ -972,26 +925,26 @@ function network_tabs(App $a)
 	// tabs
 	$tabs = [
 		[
-			'label'	=> L10n::t('Commented Order'),
-			'url'	=> str_replace('/new', '', $cmd) . '?f=&order=comment' . (!empty($_GET['cid']) ? '&cid=' . $_GET['cid'] : ''),
+			'label'	=> L10n::t('Latest Activity'),
+			'url'	=> str_replace('/new', '', $cmd) . '?order=activity' . (!empty($_GET['cid']) ? '&cid=' . $_GET['cid'] : ''),
 			'sel'	=> $all_active,
-			'title'	=> L10n::t('Sort by Comment Date'),
-			'id'	=> 'commented-order-tab',
+			'title'	=> L10n::t('Sort by latest activity'),
+			'id'	=> 'activity-order-tab',
 			'accesskey' => 'e',
 		],
 		[
-			'label'	=> L10n::t('Posted Order'),
-			'url'	=> str_replace('/new', '', $cmd) . '?f=&order=post' . (!empty($_GET['cid']) ? '&cid=' . $_GET['cid'] : ''),
-			'sel'	=> $postord_active,
-			'title'	=> L10n::t('Sort by Post Date'),
-			'id'	=> 'posted-order-tab',
+			'label'	=> L10n::t('Latest Posts'),
+			'url'	=> str_replace('/new', '', $cmd) . '?order=post' . (!empty($_GET['cid']) ? '&cid=' . $_GET['cid'] : ''),
+			'sel'	=> $post_active,
+			'title'	=> L10n::t('Sort by post received date'),
+			'id'	=> 'post-order-tab',
 			'accesskey' => 't',
 		],
 	];
 
 	$tabs[] = [
 		'label'	=> L10n::t('Personal'),
-		'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?f=&cid=' . $_GET['cid'] : '/?f=') . '&conv=1',
+		'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : '/?f=') . '&conv=1',
 		'sel'	=> $conv_active,
 		'title'	=> L10n::t('Posts that mention or involve you'),
 		'id'	=> 'personal-tab',
@@ -1001,7 +954,7 @@ function network_tabs(App $a)
 	if (Feature::isEnabled(local_user(), 'new_tab')) {
 		$tabs[] = [
 			'label'	=> L10n::t('New'),
-			'url'	=> 'network/new' . (!empty($_GET['cid']) ? '/?f=&cid=' . $_GET['cid'] : ''),
+			'url'	=> 'network/new' . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : ''),
 			'sel'	=> $new_active,
 			'title'	=> L10n::t('Activity Stream - by date'),
 			'id'	=> 'activitiy-by-date-tab',
@@ -1012,7 +965,7 @@ function network_tabs(App $a)
 	if (Feature::isEnabled(local_user(), 'link_tab')) {
 		$tabs[] = [
 			'label'	=> L10n::t('Shared Links'),
-			'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?f=&cid=' . $_GET['cid'] : '/?f=') . '&bmark=1',
+			'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : '/?f=') . '&bmark=1',
 			'sel'	=> $bookmarked_active,
 			'title'	=> L10n::t('Interesting Links'),
 			'id'	=> 'shared-links-tab',
@@ -1022,7 +975,7 @@ function network_tabs(App $a)
 
 	$tabs[] = [
 		'label'	=> L10n::t('Starred'),
-		'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?f=&cid=' . $_GET['cid'] : '/?f=') . '&star=1',
+		'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : '/?f=') . '&star=1',
 		'sel'	=> $starred_active,
 		'title'	=> L10n::t('Favourite Posts'),
 		'id'	=> 'starred-posts-tab',
@@ -1032,7 +985,7 @@ function network_tabs(App $a)
 	// save selected tab, but only if not in file mode
 	if (empty($_GET['file'])) {
 		PConfig::set(local_user(), 'network.view', 'tab.selected', [
-			$all_active, $postord_active, $conv_active, $new_active, $starred_active, $bookmarked_active
+			$all_active, $post_active, $conv_active, $new_active, $starred_active, $bookmarked_active
 		]);
 	}
 
@@ -1067,7 +1020,7 @@ function network_infinite_scroll_head(App $a, &$htmlhead)
 	global $pager;
 
 	if (PConfig::get(local_user(), 'system', 'infinite_scroll')
-		&& defaults($_GET, 'mode', '') != 'minimal'
+		&& ($_GET['mode'] ?? '') != 'minimal'
 	) {
 		$tpl = Renderer::getMarkupTemplate('infinite_scroll_head.tpl');
 		$htmlhead .= Renderer::replaceMacros($tpl, [

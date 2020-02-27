@@ -9,6 +9,7 @@ use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
+use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Profile;
@@ -28,7 +29,7 @@ class Nav
 		'directory' => null,
 		'settings'  => null,
 		'contacts'  => null,
-		'manage'    => null,
+		'delegation'=> null,
 		'events'    => null,
 		'register'  => null
 	];
@@ -67,7 +68,6 @@ class Nav
 		$tpl = Renderer::getMarkupTemplate('nav.tpl');
 
 		$nav .= Renderer::replaceMacros($tpl, [
-			'$baseurl'      => System::baseUrl(),
 			'$sitelocation' => $nav_info['sitelocation'],
 			'$nav'          => $nav_info['nav'],
 			'$banner'       => $nav_info['banner'],
@@ -149,9 +149,13 @@ class Nav
 		$nav['usermenu'] = [];
 		$userinfo = null;
 
-		if (local_user()) {
+		if (Session::isAuthenticated()) {
 			$nav['logout'] = ['logout', L10n::t('Logout'), '', L10n::t('End this session')];
+		} else {
+			$nav['login'] = ['login', L10n::t('Login'), ($a->module == 'login' ? 'selected' : ''), L10n::t('Sign in')];
+		}
 
+		if (local_user()) {
 			// user menu
 			$nav['usermenu'][] = ['profile/' . $a->user['nickname'], L10n::t('Status'), '', L10n::t('Your posts and conversations')];
 			$nav['usermenu'][] = ['profile/' . $a->user['nickname'] . '?tab=profile', L10n::t('Profile'), '', L10n::t('Your profile page')];
@@ -166,21 +170,19 @@ class Nav
 				'icon' => (DBA::isResult($contact) ? $a->removeBaseURL($contact['micro']) : 'images/person-48.jpg'),
 				'name' => $a->user['username'],
 			];
-		} else {
-			$nav['login'] = ['login', L10n::t('Login'), ($a->module == 'login' ? 'selected' : ''), L10n::t('Sign in')];
 		}
 
 		// "Home" should also take you home from an authenticated remote profile connection
 		$homelink = Profile::getMyURL();
 		if (! $homelink) {
-			$homelink = defaults($_SESSION, 'visitor_home', '');
+			$homelink = Session::get('visitor_home', '');
 		}
 
 		if (($a->module != 'home') && (! (local_user()))) {
 			$nav['home'] = [$homelink, L10n::t('Home'), '', L10n::t('Home Page')];
 		}
 
-		if (intval(Config::get('config', 'register_policy')) === \Friendica\Module\Register::OPEN && !local_user() && !remote_user()) {
+		if (intval(Config::get('config', 'register_policy')) === \Friendica\Module\Register::OPEN && !Session::isAuthenticated()) {
 			$nav['register'] = ['register', L10n::t('Register'), '', L10n::t('Create an account')];
 		}
 
@@ -242,7 +244,7 @@ class Nav
 			$nav['home'] = ['profile/' . $a->user['nickname'], L10n::t('Home'), '', L10n::t('Your posts and conversations')];
 
 			// Don't show notifications for public communities
-			if (defaults($_SESSION, 'page_flags', '') != User::PAGE_FLAGS_COMMUNITY) {
+			if (Session::get('page_flags', '') != User::PAGE_FLAGS_COMMUNITY) {
 				$nav['introductions'] = ['notifications/intros', L10n::t('Introductions'), '', L10n::t('Friend Requests')];
 				$nav['notifications'] = ['notifications',	L10n::t('Notifications'), '', L10n::t('Notifications')];
 				$nav['notifications']['all'] = ['notifications/system', L10n::t('See all notifications'), '', ''];
@@ -255,10 +257,8 @@ class Nav
 			$nav['messages']['new'] = ['message/new', L10n::t('New Message'), '', L10n::t('New Message')];
 
 			if (is_array($a->identities) && count($a->identities) > 1) {
-				$nav['manage'] = ['manage', L10n::t('Manage'), '', L10n::t('Manage other pages')];
+				$nav['delegation'] = ['delegation', L10n::t('Delegation'), '', L10n::t('Manage other pages')];
 			}
-
-			$nav['delegations'] = ['delegate', L10n::t('Delegations'), '', L10n::t('Delegate Page Management')];
 
 			$nav['settings'] = ['settings', L10n::t('Settings'), '', L10n::t('Account settings')];
 

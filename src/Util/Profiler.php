@@ -2,6 +2,8 @@
 
 namespace Friendica\Util;
 
+use Friendica\Core\Config\Cache\ConfigCache;
+use Friendica\Core\Config\Configuration;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
@@ -11,7 +13,7 @@ use Psr\Log\LoggerInterface;
  * A class to store profiling data
  * It can handle different logging data for specific functions or global performance measures
  *
- * It stores the data as log entries (@see LoggerInterface )
+ * It stores the data as log entries (@see LoggerInterface)
  */
 class Profiler implements ContainerInterface
 {
@@ -45,23 +47,21 @@ class Profiler implements ContainerInterface
 	/**
 	 * Updates the enabling of the current profiler
 	 *
-	 * @param bool $enabled
-	 * @param bool $renderTime
+	 * @param Configuration $config
 	 */
-	public function update($enabled = false, $renderTime = false)
+	public function update(Configuration $config)
 	{
-		$this->enabled = $enabled;
-		$this->rendertime = $renderTime;
+		$this->enabled = $config->get('system', 'profiler');
+		$this->rendertime = $config->get('rendertime', 'callstack');
 	}
 
 	/**
-	 * @param bool $enabled           True, if the Profiler is enabled
-	 * @param bool $renderTime        True, if the Profiler should measure the whole rendertime including functions
+	 * @param ConfigCache $configCache The configuration cache
 	 */
-	public function __construct($enabled = false, $renderTime = false)
+	public function __construct(ConfigCache $configCache)
 	{
-		$this->enabled = $enabled;
-		$this->rendertime = $renderTime;
+		$this->enabled = $configCache->get('system', 'profiler');
+		$this->rendertime = $configCache->get('rendertime', 'callstack');
 		$this->reset();
 	}
 
@@ -79,7 +79,7 @@ class Profiler implements ContainerInterface
 			return;
 		}
 
-		$duration = (float) (microtime(true) - $timestamp);
+		$duration = floatval(microtime(true) - $timestamp);
 
 		if (!isset($this->performance[$value])) {
 			// Prevent ugly E_NOTICE

@@ -2,12 +2,14 @@
 
 namespace Friendica\Core\Config\Cache;
 
+use ParagonIE\HiddenString\HiddenString;
+
 /**
  * The Friendica config cache for the application
  * Initial, all *.config.php files are loaded into this cache with the
- * ConfigCacheLoader ( @see ConfigCacheLoader )
+ * ConfigFileLoader ( @see ConfigFileLoader )
  */
-class ConfigCache implements IConfigCache, IPConfigCache
+class ConfigCache
 {
 	/**
 	 * @var array
@@ -15,17 +17,28 @@ class ConfigCache implements IConfigCache, IPConfigCache
 	private $config;
 
 	/**
-	 * @param array $config    A initial config array
+	 * @var bool
 	 */
-	public function __construct(array $config = [])
+	private $hidePasswordOutput;
+
+	/**
+	 * @param array $config             A initial config array
+	 * @param bool  $hidePasswordOutput True, if cache variables should take extra care of password values
+	 */
+	public function __construct(array $config = [], bool $hidePasswordOutput = true)
 	{
+		$this->hidePasswordOutput = $hidePasswordOutput;
 		$this->load($config);
 	}
 
 	/**
-	 * {@inheritdoc}
+	 * Tries to load the specified configuration array into the config array.
+	 * Doesn't overwrite previously set values by default to prevent default config files to supersede DB Config.
+	 *
+	 * @param array $config
+	 * @param bool  $overwrite Force value overwrite if the config key already exists
 	 */
-	public function load(array $config, $overwrite = false)
+	public function load(array $config, bool $overwrite = false)
 	{
 		$categories = array_keys($config);
 
@@ -48,9 +61,14 @@ class ConfigCache implements IConfigCache, IPConfigCache
 	}
 
 	/**
-	 * {@inheritdoc}
+	 * Gets a value from the config cache.
+	 *
+	 * @param string $cat Config category
+	 * @param string $key Config key
+	 *
+	 * @return null|mixed Returns the value of the Config entry or null if not set
 	 */
-	public function get($cat, $key = null)
+	public function get(string $cat, string $key = null)
 	{
 		if (isset($this->config[$cat][$key])) {
 			return $this->config[$cat][$key];
@@ -64,115 +82,57 @@ class ConfigCache implements IConfigCache, IPConfigCache
 	/**
 	 * Sets a default value in the config cache. Ignores already existing keys.
 	 *
-	 * @param string $cat Config category
-	 * @param string $k   Config key
-	 * @param mixed  $v   Default value to set
+	 * @param string $cat   Config category
+	 * @param string $key   Config key
+	 * @param mixed  $value Default value to set
 	 */
-	private function setDefault($cat, $k, $v)
+	private function setDefault(string $cat, string $key, $value)
 	{
-		if (!isset($this->config[$cat][$k])) {
-			$this->set($cat, $k, $v);
+		if (!isset($this->config[$cat][$key])) {
+			$this->set($cat, $key, $value);
 		}
 	}
 
 	/**
-	 * {@inheritdoc}
+	 * Sets a value in the config cache. Accepts raw output from the config table
+	 *
+	 * @param string $cat   Config category
+	 * @param string $key   Config key
+	 * @param mixed  $value Value to set
+	 *
+	 * @return bool True, if the value is set
 	 */
-	public function set($cat, $key, $value)
+	public function set(string $cat, string $key, $value)
 	{
 		if (!isset($this->config[$cat])) {
 			$this->config[$cat] = [];
 		}
 
-		$this->config[$cat][$key] = $value;
-
+		if ($this->hidePasswordOutput &&
+		    $key == 'password' &&
+		    is_string($value)) {
+			$this->config[$cat][$key] = new HiddenString((string)$value);
+		} else {
+			$this->config[$cat][$key] = $value;
+		}
 		return true;
 	}
 
 	/**
-	 * {@inheritdoc}
+	 * Deletes a value from the config cache.
+	 *
+	 * @param string $cat Config category
+	 * @param string $key Config key
+	 *
+	 * @return bool true, if deleted
 	 */
-	public function delete($cat, $key)
+	public function delete(string $cat, string $key)
 	{
 		if (isset($this->config[$cat][$key])) {
 			unset($this->config[$cat][$key]);
 			if (count($this->config[$cat]) == 0) {
 				unset($this->config[$cat]);
 			}
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	/**
-	 * {@inheritdoc}
-	 */
-	public function loadP($uid, array $config)
-	{
-		$categories = array_keys($config);
-
-		foreach ($categories as $category) {
-			if (isset($config[$category]) && is_array($config[$category])) {
-
-				$keys = array_keys($config[$category]);
-
-				foreach ($keys as $key) {
-					$value = $config[$category][$key];
-					if (isset($value)) {
-						$this->setP($uid, $category, $key, $value);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * {@inheritdoc}
-	 */
-	public function getP($uid, $cat, $key = null)
-	{
-		if (isset($this->config[$uid][$cat][$key])) {
-			return $this->config[$uid][$cat][$key];
-		} elseif (!isset($key) && isset($this->config[$uid][$cat])) {
-			return $this->config[$uid][$cat];
-		} else {
-			return null;
-		}
-	}
-
-	/**
-	 * {@inheritdoc}
-	 */
-	public function setP($uid, $cat, $key, $value)
-	{
-		if (!isset($this->config[$uid]) || !is_array($this->config[$uid])) {
-			$this->config[$uid] = [];
-		}
-
-		if (!isset($this->config[$uid][$cat])) {
-			$this->config[$uid][$cat] = [];
-		}
-
-		$this->config[$uid][$cat][$key] = $value;
-
-		return true;
-	}
-
-	/**
-	 * {@inheritdoc}
-	 */
-	public function deleteP($uid, $cat, $key)
-	{
-		if (isset($this->config[$uid][$cat][$key])) {
-			unset($this->config[$uid][$cat][$key]);
-			if (count($this->config[$uid][$cat]) == 0) {
-				unset($this->config[$uid][$cat]);
-				if (count($this->config[$uid]) == 0) {
-					unset($this->config[$uid]);
-				}
-			}
-
 			return true;
 		} else {
 			return false;
@@ -187,5 +147,33 @@ class ConfigCache implements IConfigCache, IPConfigCache
 	public function getAll()
 	{
 		return $this->config;
+	}
+
+	/**
+	 * Returns an array with missing categories/Keys
+	 *
+	 * @param array $config The array to check
+	 *
+	 * @return array
+	 */
+	public function keyDiff(array $config)
+	{
+		$return = [];
+
+		$categories = array_keys($config);
+
+		foreach ($categories as $category) {
+			if (is_array($config[$category])) {
+				$keys = array_keys($config[$category]);
+
+				foreach ($keys as $key) {
+					if (!isset($this->config[$category][$key])) {
+						$return[$category][$key] = $config[$category][$key];
+					}
+				}
+			}
+		}
+
+		return $return;
 	}
 }

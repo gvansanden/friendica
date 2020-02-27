@@ -2,7 +2,7 @@
 
 // Local configuration
 
-// If you're unsure about what any of the config keys below do, please check the config/defaults.config.php for detailed
+// If you're unsure about what any of the config keys below do, please check the static/defaults.config.php for detailed
 // documentation of their data type and behavior.
 
 return [
@@ -24,11 +24,15 @@ return [
 		'php_path' => '{{$phpath}}',
 		'admin_email' => '{{$adminmail}}',
 		'sitename' => 'Friendica Social Network',
+		'hostname' => '{{$hostname}}',
 		'register_policy' => \Friendica\Module\Register::OPEN,
 		'max_import_size' => 200000,
 	],
 	'system' => [
 		'urlpath' => '{{$urlpath}}',
+		'url' => '{{$baseurl}}',
+		'ssl_policy' => {{$sslpolicy}},
+		'basepath' => '{{$basepath}}',
 		'default_timezone' => '{{$timezone}}',
 		'language' => '{{$language}}',
 	],

@@ -10,6 +10,8 @@ use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 
+require_once __DIR__ . '/theme.php';
+
 function theme_content(App $a)
 {
 	if (!local_user()) {
@@ -118,7 +120,6 @@ function vier_form(App $a, $style, $show_pages, $show_profiles, $show_helpers, $
 	$t = Renderer::getMarkupTemplate("theme_settings.tpl");
 	$o = Renderer::replaceMacros($t, [
 		'$submit' => L10n::t('Submit'),
-		'$baseurl' => System::baseUrl(),
 		'$title' => L10n::t("Theme settings"),
 		'$style' => ['vier_style', L10n::t('Set style'), $style, '', $styles],
 		'$show_pages' => ['vier_show_pages', L10n::t('Community Pages'), $show_pages, '', $show_or_not],

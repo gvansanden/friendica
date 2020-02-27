@@ -1,8 +1,33 @@
 -- ------------------------------------------
--- Friendica 2019.03-dev (The Tazmans Flax-lily)
--- DB_UPDATE_VERSION 1300
+-- Friendica 2019.12-rc (Dalmatian Bellflower)
+-- DB_UPDATE_VERSION 1326
 -- ------------------------------------------
 
+
+--
+-- TABLE 2fa_app_specific_password
+--
+CREATE TABLE IF NOT EXISTS `2fa_app_specific_password` (
+	`id` mediumint unsigned NOT NULL auto_increment COMMENT 'Password ID for revocation',
+	`uid` mediumint unsigned NOT NULL COMMENT 'User ID',
+	`description` varchar(255) COMMENT 'Description of the usage of the password',
+	`hashed_password` varchar(255) NOT NULL COMMENT 'Hashed password',
+	`generated` datetime NOT NULL COMMENT 'Datetime the password was generated',
+	`last_used` datetime COMMENT 'Datetime the password was last used',
+	 PRIMARY KEY(`id`),
+	 INDEX `uid_description` (`uid`,`description`(190))
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Two-factor app-specific _password';
+
+--
+-- TABLE 2fa_recovery_codes
+--
+CREATE TABLE IF NOT EXISTS `2fa_recovery_codes` (
+	`uid` mediumint unsigned NOT NULL COMMENT 'User ID',
+	`code` varchar(50) NOT NULL COMMENT 'Recovery code string',
+	`generated` datetime NOT NULL COMMENT 'Datetime the code was generated',
+	`used` datetime COMMENT 'Datetime the code was used',
+	 PRIMARY KEY(`uid`,`code`)
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Two-factor authentication recovery codes';
 
 --
 -- TABLE addon
@@ -40,6 +65,10 @@ CREATE TABLE IF NOT EXISTS `apcontact` (
 	`alias` varchar(255) COMMENT '',
 	`pubkey` text COMMENT '',
 	`baseurl` varchar(255) COMMENT 'baseurl of the ap contact',
+	`generator` varchar(255) COMMENT 'Name of the contact\'s system',
+	`following_count` int unsigned DEFAULT 0 COMMENT 'Number of following contacts',
+	`followers_count` int unsigned DEFAULT 0 COMMENT 'Number of followers',
+	`statuses_count` int unsigned DEFAULT 0 COMMENT 'Number of posts',
 	`updated` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	 PRIMARY KEY(`url`),
 	 INDEX `addr` (`addr`(32)),
@@ -138,14 +167,16 @@ CREATE TABLE IF NOT EXISTS `contact` (
 	`id` int unsigned NOT NULL auto_increment COMMENT 'sequential ID',
 	`uid` mediumint unsigned NOT NULL DEFAULT 0 COMMENT 'Owner User id',
 	`created` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
+	`updated` datetime DEFAULT '0001-01-01 00:00:00' COMMENT 'Date of last contact update',
 	`self` boolean NOT NULL DEFAULT '0' COMMENT '1 if the contact is the user him/her self',
 	`remote_self` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`rel` tinyint unsigned NOT NULL DEFAULT 0 COMMENT 'The kind of the relation between the user and the contact',
 	`duplex` boolean NOT NULL DEFAULT '0' COMMENT '',
-	`network` char(4) NOT NULL DEFAULT '' COMMENT 'Network protocol of the contact',
+	`network` char(4) NOT NULL DEFAULT '' COMMENT 'Network of the contact',
+	`protocol` char(4) NOT NULL DEFAULT '' COMMENT 'Protocol of the contact',
 	`name` varchar(255) NOT NULL DEFAULT '' COMMENT 'Name that this contact is known by',
 	`nick` varchar(255) NOT NULL DEFAULT '' COMMENT 'Nick- and user name of the contact',
-	`location` varchar(255) NOT NULL DEFAULT '' COMMENT '',
+	`location` varchar(255) DEFAULT '' COMMENT '',
 	`about` text COMMENT '',
 	`keywords` text COMMENT 'public keywords (interests) of the contact',
 	`gender` varchar(32) NOT NULL DEFAULT '' COMMENT '',
@@ -184,7 +215,8 @@ CREATE TABLE IF NOT EXISTS `contact` (
 	`term-date` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`last-item` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'date of the last post',
 	`priority` tinyint unsigned NOT NULL DEFAULT 0 COMMENT '',
-	`blocked` boolean NOT NULL DEFAULT '1' COMMENT '',
+	`blocked` boolean NOT NULL DEFAULT '1' COMMENT 'Node-wide block status',
+	`block_reason` text COMMENT 'Node-wide block reason',
 	`readonly` boolean NOT NULL DEFAULT '0' COMMENT 'posts of the contact are readonly',
 	`writable` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`forum` boolean NOT NULL DEFAULT '0' COMMENT 'contact is a forum',
@@ -195,6 +227,9 @@ CREATE TABLE IF NOT EXISTS `contact` (
 	`pending` boolean NOT NULL DEFAULT '1' COMMENT '',
 	`deleted` boolean NOT NULL DEFAULT '0' COMMENT 'Contact has been deleted',
 	`rating` tinyint NOT NULL DEFAULT 0 COMMENT '',
+	`unsearchable` boolean NOT NULL DEFAULT '0' COMMENT 'Contact prefers to not be searchable',
+	`sensitive` boolean NOT NULL DEFAULT '0' COMMENT 'Contact posts sensitive content',
+	`baseurl` varchar(255) DEFAULT '' COMMENT 'baseurl of the contact',
 	`reason` text COMMENT '',
 	`closeness` tinyint unsigned NOT NULL DEFAULT 99 COMMENT '',
 	`info` mediumtext COMMENT '',
@@ -357,6 +392,8 @@ CREATE TABLE IF NOT EXISTS `gcontact` (
 	`updated` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`last_contact` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`last_failure` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
+	`archive_date` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
+	`archived` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`location` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`about` text COMMENT '',
 	`keywords` text COMMENT 'puplic keywords (interests)',
@@ -471,6 +508,20 @@ CREATE TABLE IF NOT EXISTS `hook` (
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='addon hook registry';
 
 --
+-- TABLE inbox-status
+--
+CREATE TABLE IF NOT EXISTS `inbox-status` (
+	`url` varbinary(255) NOT NULL COMMENT 'URL of the inbox',
+	`created` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Creation date of this entry',
+	`success` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Date of the last successful delivery',
+	`failure` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Date of the last failed delivery',
+	`previous` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Previous delivery date',
+	`archive` boolean NOT NULL DEFAULT '0' COMMENT 'Is the inbox archived?',
+	`shared` boolean NOT NULL DEFAULT '0' COMMENT 'Is it a shared inbox?',
+	 PRIMARY KEY(`url`)
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Status of ActivityPub inboxes';
+
+--
 -- TABLE intro
 --
 CREATE TABLE IF NOT EXISTS `intro` (
@@ -571,21 +622,22 @@ CREATE TABLE IF NOT EXISTS `item` (
 	 INDEX `extid` (`extid`(191)),
 	 INDEX `uid_id` (`uid`,`id`),
 	 INDEX `uid_contactid_id` (`uid`,`contact-id`,`id`),
-	 INDEX `uid_created` (`uid`,`created`),
+	 INDEX `uid_received` (`uid`,`received`),
 	 INDEX `uid_commented` (`uid`,`commented`),
 	 INDEX `uid_unseen_contactid` (`uid`,`unseen`,`contact-id`),
 	 INDEX `uid_network_received` (`uid`,`network`,`received`),
 	 INDEX `uid_network_commented` (`uid`,`network`,`commented`),
 	 INDEX `uid_thrparent` (`uid`,`thr-parent`(190)),
 	 INDEX `uid_parenturi` (`uid`,`parent-uri`(190)),
-	 INDEX `uid_contactid_created` (`uid`,`contact-id`,`created`),
-	 INDEX `authorid_created` (`author-id`,`created`),
+	 INDEX `uid_contactid_received` (`uid`,`contact-id`,`received`),
+	 INDEX `authorid_received` (`author-id`,`received`),
 	 INDEX `ownerid` (`owner-id`),
 	 INDEX `contact-id` (`contact-id`),
 	 INDEX `uid_uri` (`uid`,`uri`(190)),
 	 INDEX `resource-id` (`resource-id`),
 	 INDEX `deleted_changed` (`deleted`,`changed`),
 	 INDEX `uid_wall_changed` (`uid`,`wall`,`changed`),
+	 INDEX `mention_uid_id` (`mention`,`uid`,`id`),
 	 INDEX `uid_eventid` (`uid`,`event-id`),
 	 INDEX `icid` (`icid`),
 	 INDEX `iaid` (`iaid`),
@@ -633,6 +685,7 @@ CREATE TABLE IF NOT EXISTS `item-content` (
 	 PRIMARY KEY(`id`),
 	 UNIQUE INDEX `uri-plink-hash` (`uri-plink-hash`),
 	 INDEX `uri` (`uri`(191)),
+	 INDEX `plink` (`plink`(191)),
 	 INDEX `uri-id` (`uri-id`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Content for all posts';
 
@@ -645,6 +698,12 @@ CREATE TABLE IF NOT EXISTS `item-delivery-data` (
 	`inform` mediumtext COMMENT 'Additional receivers of the linked item',
 	`queue_count` mediumint NOT NULL DEFAULT 0 COMMENT 'Initial number of delivery recipients, used as item.delivery_queue_count',
 	`queue_done` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of successful deliveries, used as item.delivery_queue_done',
+	`queue_failed` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of unsuccessful deliveries, used as item.delivery_queue_failed',
+	`activitypub` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of successful deliveries via ActivityPub',
+	`dfrn` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of successful deliveries via DFRN',
+	`legacy_dfrn` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of successful deliveries via legacy DFRN',
+	`diaspora` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of successful deliveries via Diaspora',
+	`ostatus` mediumint NOT NULL DEFAULT 0 COMMENT 'Number of successful deliveries via OStatus',
 	 PRIMARY KEY(`iid`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Delivery data for items';
 
@@ -738,7 +797,6 @@ CREATE TABLE IF NOT EXISTS `manage` (
 --
 CREATE TABLE IF NOT EXISTS `notify` (
 	`id` int unsigned NOT NULL auto_increment COMMENT 'sequential ID',
-	`hash` varchar(64) NOT NULL DEFAULT '' COMMENT '',
 	`type` smallint unsigned NOT NULL DEFAULT 0 COMMENT '',
 	`name` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`url` varchar(255) NOT NULL DEFAULT '' COMMENT '',
@@ -755,7 +813,6 @@ CREATE TABLE IF NOT EXISTS `notify` (
 	`name_cache` tinytext COMMENT 'Cached bbcode parsing of name',
 	`msg_cache` mediumtext COMMENT 'Cached bbcode parsing of msg',
 	 PRIMARY KEY(`id`),
-	 INDEX `hash_uid` (`hash`,`uid`),
 	 INDEX `seen_uid_date` (`seen`,`uid`,`date`),
 	 INDEX `uid_date` (`uid`,`date`),
 	 INDEX `uid_type_link` (`uid`,`type`,`link`(190))
@@ -879,7 +936,7 @@ CREATE TABLE IF NOT EXISTS `photo` (
 	`deny_gid` mediumtext COMMENT 'Access Control - list of denied groups',
 	`backend-class` tinytext COMMENT 'Storage backend class',
 	`backend-ref` text COMMENT 'Storage backend data reference',
-	`updated` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'edited timestamp',
+	`updated` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	 PRIMARY KEY(`id`),
 	 INDEX `contactid` (`contact-id`),
 	 INDEX `uid_contactid` (`uid`,`contact-id`),
@@ -1014,25 +1071,6 @@ CREATE TABLE IF NOT EXISTS `push_subscriber` (
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Used for OStatus: Contains feed subscribers';
 
 --
--- TABLE queue
---
-CREATE TABLE IF NOT EXISTS `queue` (
-	`id` int unsigned NOT NULL auto_increment COMMENT 'sequential ID',
-	`cid` int unsigned NOT NULL DEFAULT 0 COMMENT 'Message receiver',
-	`network` char(4) NOT NULL DEFAULT '' COMMENT 'Receiver\'s network',
-	`guid` varchar(255) NOT NULL DEFAULT '' COMMENT 'Unique GUID of the message',
-	`created` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Date, when the message was created',
-	`last` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Date of last trial',
-	`next` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Next retrial date',
-	`retrial` tinyint NOT NULL DEFAULT 0 COMMENT 'Retrial counter',
-	`content` mediumtext COMMENT '',
-	`batch` boolean NOT NULL DEFAULT '0' COMMENT '',
-	 PRIMARY KEY(`id`),
-	 INDEX `last` (`last`),
-	 INDEX `next` (`next`)
-) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Queue for messages that couldn\'t be delivered';
-
---
 -- TABLE register
 --
 CREATE TABLE IF NOT EXISTS `register` (
@@ -1099,6 +1137,7 @@ CREATE TABLE IF NOT EXISTS `term` (
 	`global` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`uid` mediumint unsigned NOT NULL DEFAULT 0 COMMENT 'User id',
 	 PRIMARY KEY(`tid`),
+	 INDEX `term_type` (`term`(64),`type`),
 	 INDEX `oid_otype_type_term` (`oid`,`otype`,`type`,`term`(32)),
 	 INDEX `uid_otype_type_term_global_created` (`uid`,`otype`,`type`,`term`(32),`global`,`created`),
 	 INDEX `uid_otype_type_url` (`uid`,`otype`,`type`,`url`(64)),
@@ -1136,15 +1175,15 @@ CREATE TABLE IF NOT EXISTS `thread` (
 	`bookmark` boolean COMMENT '',
 	 PRIMARY KEY(`iid`),
 	 INDEX `uid_network_commented` (`uid`,`network`,`commented`),
-	 INDEX `uid_network_created` (`uid`,`network`,`created`),
+	 INDEX `uid_network_received` (`uid`,`network`,`received`),
 	 INDEX `uid_contactid_commented` (`uid`,`contact-id`,`commented`),
-	 INDEX `uid_contactid_created` (`uid`,`contact-id`,`created`),
+	 INDEX `uid_contactid_received` (`uid`,`contact-id`,`received`),
 	 INDEX `contactid` (`contact-id`),
 	 INDEX `ownerid` (`owner-id`),
 	 INDEX `authorid` (`author-id`),
-	 INDEX `uid_created` (`uid`,`created`),
+	 INDEX `uid_received` (`uid`,`received`),
 	 INDEX `uid_commented` (`uid`,`commented`),
-	 INDEX `uid_wall_created` (`uid`,`wall`,`created`),
+	 INDEX `uid_wall_received` (`uid`,`wall`,`received`),
 	 INDEX `private_wall_origin_commented` (`private`,`wall`,`origin`,`commented`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Thread related data';
 
@@ -1244,7 +1283,9 @@ CREATE TABLE IF NOT EXISTS `user-item` (
 	`uid` mediumint unsigned NOT NULL DEFAULT 0 COMMENT 'User id',
 	`hidden` boolean NOT NULL DEFAULT '0' COMMENT 'Marker to hide an item from the user',
 	`ignored` boolean COMMENT 'Ignore this thread if set',
-	 PRIMARY KEY(`uid`,`iid`)
+	`pinned` boolean COMMENT 'The item is pinned on the profile page',
+	 PRIMARY KEY(`uid`,`iid`),
+	 INDEX `uid_pinned` (`uid`,`pinned`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='User specific item data';
 
 --
@@ -1270,13 +1311,12 @@ CREATE TABLE IF NOT EXISTS `workerqueue` (
 	`retrial` tinyint NOT NULL DEFAULT 0 COMMENT 'Retrial counter',
 	`done` boolean NOT NULL DEFAULT '0' COMMENT 'Marked 1 when the task was done - will be deleted later',
 	 PRIMARY KEY(`id`),
-	 INDEX `pid` (`pid`),
-	 INDEX `parameter` (`parameter`(64)),
-	 INDEX `priority_created_next_try` (`priority`,`created`,`next_try`),
-	 INDEX `done_priority_executed_next_try` (`done`,`priority`,`executed`,`next_try`),
-	 INDEX `done_executed_next_try` (`done`,`executed`,`next_try`),
+	 INDEX `done_parameter` (`done`,`parameter`(64)),
+	 INDEX `done_executed` (`done`,`executed`),
+	 INDEX `done_priority_created` (`done`,`priority`,`created`),
 	 INDEX `done_priority_next_try` (`done`,`priority`,`next_try`),
-	 INDEX `done_next_try` (`done`,`next_try`)
+	 INDEX `done_pid_next_try` (`done`,`pid`,`next_try`),
+	 INDEX `done_pid_priority_created` (`done`,`pid`,`priority`,`created`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Background tasks queue entries';
 
 --

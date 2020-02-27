@@ -13,6 +13,7 @@ use Friendica\Model\GContact;
 use Friendica\Model\Item;
 use Friendica\Model\User;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Worker\Delivery;
 
 /**
  *
@@ -21,7 +22,7 @@ use Friendica\Util\DateTimeFormat;
  * This function is responsible for doing post update changes to the data
  * (not the structure) in the database.
  *
- * Database structure changes are done in config/dbstructure.config.php
+ * Database structure changes are done in static/dbstructure.config.php
  *
  * If there is a need for a post process to a structure change, update this file
  * by adding a new function at the end with the number of the new DB_UPDATE_VERSION.
@@ -32,8 +33,8 @@ use Friendica\Util\DateTimeFormat;
  * You are currently on version 4711 and you are preparing changes that demand an update script.
  *
  * 1. Create a function "update_4712()" here in the update.php
- * 2. Apply the needed structural changes in config/dbStructure.php
- * 3. Set DB_UPDATE_VERSION in config/dbstructure.config.php to 4712.
+ * 2. Apply the needed structural changes in static/dbStructure.php
+ * 3. Set DB_UPDATE_VERSION in static/dbstructure.config.php to 4712.
  *
  * If you need to run a script before the database update, name the function "pre_update_4712()"
  */
@@ -334,7 +335,7 @@ function update_1298()
 					DBA::update('profile', [$translateKey => $key], ['id' => $data['id']]);
 					Logger::notice('Updated contact', ['action' => 'update', 'contact' => $data['id'], "$translateKey" => $key,
 						'was' => $data[$translateKey]]);
-					Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);		
+					Worker::add(PRIORITY_LOW, 'ProfileUpdate', $data['id']);
 					Contact::updateSelfFromUserID($data['id']);
 					GContact::updateForUser($data['id']);
 					$success++;
@@ -346,3 +347,64 @@ function update_1298()
 	}
 	return Update::SUCCESS;
 }
+
+function update_1309()
+{
+	$queue = DBA::select('queue', ['id', 'cid', 'guid']);
+	while ($entry = DBA::fetch($queue)) {
+		$contact = DBA::selectFirst('contact', ['uid'], ['id' => $entry['cid']]);
+		if (!DBA::isResult($contact)) {
+			continue;
+		}
+
+		$item = Item::selectFirst(['id', 'gravity'], ['uid' => $contact['uid'], 'guid' => $entry['guid']]);
+		if (!DBA::isResult($item)) {
+			continue;
+		}
+
+		$deliver_options = ['priority' => PRIORITY_MEDIUM, 'dont_fork' => true];
+		Worker::add($deliver_options, 'Delivery', Delivery::POST, $item['id'], $entry['cid']);
+		Logger::info('Added delivery worker', ['command' => $cmd, 'item' => $item['id'], 'contact' => $entry['cid']]);
+		DBA::delete('queue', ['id' => $entry['id']]);
+	}
+	return Update::SUCCESS;
+}
+
+function update_1315()
+{
+	DBA::delete('item-delivery-data', ['postopts' => '', 'inform' => '', 'queue_count' => 0, 'queue_done' => 0]);
+	return Update::SUCCESS;
+}
+
+function update_1318()
+{
+	DBA::update('profile', ['marital' => "In a relation"], ['marital' => "Unavailable"]);
+	DBA::update('profile', ['marital' => "Single"], ['marital' => "Available"]);
+
+	Worker::add(PRIORITY_LOW, 'ProfileUpdate');
+	return Update::SUCCESS;
+}
+
+function update_1323()
+{
+	$users = DBA::select('user', ['uid']);
+	while ($user = DBA::fetch($users)) {
+		Contact::updateSelfFromUserID($user['uid']);
+	}
+	DBA::close($users);
+
+	return Update::SUCCESS;
+}
+
+function update_1327()
+{
+	$contacts = DBA::select('contact', ['uid', 'id', 'blocked', 'readonly'], ["`uid` != ? AND (`blocked` OR `readonly`) AND NOT `pending`", 0]);
+	while ($contact = DBA::fetch($contacts)) {
+		Contact::setBlockedForUser($contact['id'], $contact['uid'], $contact['blocked']);
+		Contact::setIgnoredForUser($contact['id'], $contact['uid'], $contact['readonly']);
+	}
+	DBA::close($contacts);
+
+	return Update::SUCCESS;
+}
+

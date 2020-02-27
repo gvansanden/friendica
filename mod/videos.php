@@ -10,6 +10,7 @@ use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Attach;
 use Friendica\Model\Contact;
@@ -22,11 +23,7 @@ use Friendica\Util\Security;
 
 function videos_init(App $a)
 {
-	if ($a->argc > 1) {
-		DFRN::autoRedir($a, $a->argv[1]);
-	}
-
-	if ((Config::get('system', 'block_public')) && (!local_user()) && (!remote_user())) {
+	if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
 		return;
 	}
 
@@ -49,14 +46,14 @@ function videos_init(App $a)
 
 		$account_type = Contact::getAccountType($profile);
 
-		$tpl = Renderer::getMarkupTemplate("vcard-widget.tpl");
+		$tpl = Renderer::getMarkupTemplate("widget/vcard.tpl");
 
 		$vcard_widget = Renderer::replaceMacros($tpl, [
 			'$name' => $profile['name'],
 			'$photo' => $profile['photo'],
-			'$addr' => defaults($profile, 'addr', ''),
+			'$addr' => $profile['addr'] ?? '',
 			'$account_type' => $account_type,
-			'$pdesc' => defaults($profile, 'pdesc', ''),
+			'$pdesc' => $profile['pdesc'] ?? '',
 		]);
 
 		// If not there, create 'aside' empty
@@ -67,9 +64,7 @@ function videos_init(App $a)
 		$a->page['aside'] .= $vcard_widget;
 
 		$tpl = Renderer::getMarkupTemplate("videos_head.tpl");
-		$a->page['htmlhead'] .= Renderer::replaceMacros($tpl,[
-			'$baseurl' => System::baseUrl(),
-		]);
+		$a->page['htmlhead'] .= Renderer::replaceMacros($tpl);
 	}
 
 	return;
@@ -84,33 +79,6 @@ function videos_post(App $a)
 	}
 
 	if (($a->argc == 2) && !empty($_POST['delete']) && !empty($_POST['id'])) {
-		// Check if we should do HTML-based delete confirmation
-		if (empty($_REQUEST['confirm'])) {
-			if (!empty($_REQUEST['canceled'])) {
-				$a->internalRedirect('videos/' . $a->data['user']['nickname']);
-			}
-
-			$drop_url = $a->query_string;
-
-			$a->page['content'] = Renderer::replaceMacros(Renderer::getMarkupTemplate('confirm.tpl'), [
-				'$method' => 'post',
-				'$message' => L10n::t('Do you really want to delete this video?'),
-				'$extra_inputs' => [
-					['name' => 'id'    , 'value' => $_POST['id']],
-					['name' => 'delete', 'value' => 'x']
-				],
-				'$confirm' => L10n::t('Delete Video'),
-				'$confirm_url' => $drop_url,
-				'$confirm_name' => 'confirm', // Needed so that confirmation will bring us back into this if statement
-				'$cancel' => L10n::t('Cancel'),
-
-			]);
-
-			$a->error = 1; // Set $a->error so the other module functions don't execute
-
-			return;
-		}
-
 		$video_id = $_POST['id'];
 
 		if (Attach::exists(['id' => $video_id, 'uid' => local_user()])) {
@@ -143,7 +111,7 @@ function videos_content(App $a)
 	// videos/name/video/xxxxx/edit
 
 
-	if ((Config::get('system', 'block_public')) && (!local_user()) && (!remote_user())) {
+	if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
 		notice(L10n::t('Public access denied.') . EOL);
 		return;
 	}
@@ -183,70 +151,31 @@ function videos_content(App $a)
 
 	if ((local_user()) && (local_user() == $owner_uid)) {
 		$can_post = true;
-	} elseif ($community_page && remote_user()) {
-		if (!empty($_SESSION['remote'])) {
-			foreach ($_SESSION['remote'] as $v) {
-				if ($v['uid'] == $owner_uid) {
-					$contact_id = $v['cid'];
-					break;
-				}
-			}
-		}
-
-		if ($contact_id > 0) {
-			$r = q("SELECT `uid` FROM `contact` WHERE `blocked` = 0 AND `pending` = 0 AND `id` = %d AND `uid` = %d LIMIT 1",
-				intval($contact_id),
-				intval($owner_uid)
-			);
-
-			if (DBA::isResult($r)) {
-				$can_post = true;
-				$remote_contact = true;
-				$visitor = $contact_id;
-			}
-		}
+	} elseif ($community_page && !empty(Session::getRemoteContactID($owner_uid))) {
+		$contact_id = Session::getRemoteContactID($owner_uid);
+		$can_post = true;
+		$remote_contact = true;
+		$visitor = $contact_id;
 	}
-
-	$groups = [];
 
 	// perhaps they're visiting - but not a community page, so they wouldn't have write access
-	if (remote_user() && (!$visitor)) {
-		$contact_id = 0;
-
-		if (!empty($_SESSION['remote'])) {
-			foreach($_SESSION['remote'] as $v) {
-				if($v['uid'] == $owner_uid) {
-					$contact_id = $v['cid'];
-					break;
-				}
-			}
-		}
-
-		if ($contact_id > 0) {
-			$groups = Group::getIdsByContactId($contact_id);
-			$r = q("SELECT * FROM `contact` WHERE `blocked` = 0 AND `pending` = 0 AND `id` = %d AND `uid` = %d LIMIT 1",
-				intval($contact_id),
-				intval($owner_uid)
-			);
-
-			if (DBA::isResult($r)) {
-				$remote_contact = true;
-			}
-		}
+	if (!empty(Session::getRemoteContactID($owner_uid)) && !$visitor) {
+		$contact_id = Session::getRemoteContactID($owner_uid);
+		$remote_contact = true;
 	}
 
-	if ($a->data['user']['hidewall'] && (local_user() != $owner_uid) && (!$remote_contact)) {
+	if ($a->data['user']['hidewall'] && (local_user() != $owner_uid) && !$remote_contact) {
 		notice(L10n::t('Access to this item is restricted.') . EOL);
 		return;
 	}
 
-	$sql_extra = Security::getPermissionsSQLByUserId($owner_uid, $remote_contact, $groups);
+	$sql_extra = Security::getPermissionsSQLByUserId($owner_uid);
 
 	$o = "";
 
 	// tabs
 	$_is_owner = (local_user() && (local_user() == $owner_uid));
-	$o .= Profile::getTabs($a, $_is_owner, $a->data['user']['nickname']);
+	$o .= Profile::getTabs($a, 'videos', $_is_owner, $a->data['user']['nickname']);
 
 	//
 	// dispatch request

@@ -14,6 +14,7 @@ use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\Protocol\Activity;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Map;
 use Friendica\Util\Strings;
@@ -226,7 +227,7 @@ class Event extends BaseObject
 			return;
 		}
 
-		DBA::delete('event', ['id' => $event_id]);
+		DBA::delete('event', ['id' => $event_id], ['cascade' => false]);
 		Logger::log("Deleted event ".$event_id, Logger::DEBUG);
 	}
 
@@ -242,30 +243,30 @@ class Event extends BaseObject
 	public static function store($arr)
 	{
 		$event = [];
-		$event['id']        = intval(defaults($arr, 'id'       , 0));
-		$event['uid']       = intval(defaults($arr, 'uid'      , 0));
-		$event['cid']       = intval(defaults($arr, 'cid'      , 0));
-		$event['guid']      =        defaults($arr, 'guid'     , System::createUUID());
-		$event['uri']       =        defaults($arr, 'uri'      , Item::newURI($event['uid'], $event['guid']));
-		$event['type']      =        defaults($arr, 'type'     , 'event');
-		$event['summary']   =        defaults($arr, 'summary'  , '');
-		$event['desc']      =        defaults($arr, 'desc'     , '');
-		$event['location']  =        defaults($arr, 'location' , '');
-		$event['allow_cid'] =        defaults($arr, 'allow_cid', '');
-		$event['allow_gid'] =        defaults($arr, 'allow_gid', '');
-		$event['deny_cid']  =        defaults($arr, 'deny_cid' , '');
-		$event['deny_gid']  =        defaults($arr, 'deny_gid' , '');
-		$event['adjust']    = intval(defaults($arr, 'adjust'   , 0));
-		$event['nofinish']  = intval(defaults($arr, 'nofinish' , !empty($event['start']) && empty($event['finish'])));
+		$event['id']        = intval($arr['id']        ?? 0);
+		$event['uid']       = intval($arr['uid']       ?? 0);
+		$event['cid']       = intval($arr['cid']       ?? 0);
+		$event['guid']      =       ($arr['guid']      ?? '') ?: System::createUUID();
+		$event['uri']       =       ($arr['uri']       ?? '') ?: Item::newURI($event['uid'], $event['guid']);
+		$event['type']      =       ($arr['type']      ?? '') ?: 'event';
+		$event['summary']   =        $arr['summary']   ?? '';
+		$event['desc']      =        $arr['desc']      ?? '';
+		$event['location']  =        $arr['location']  ?? '';
+		$event['allow_cid'] =        $arr['allow_cid'] ?? '';
+		$event['allow_gid'] =        $arr['allow_gid'] ?? '';
+		$event['deny_cid']  =        $arr['deny_cid']  ?? '';
+		$event['deny_gid']  =        $arr['deny_gid']  ?? '';
+		$event['adjust']    = intval($arr['adjust']    ?? 0);
+		$event['nofinish']  = intval($arr['nofinish'] ?? (!empty($event['start']) && empty($event['finish'])));
 
-		$event['created']   = DateTimeFormat::utc(defaults($arr, 'created'  , 'now'));
-		$event['edited']    = DateTimeFormat::utc(defaults($arr, 'edited'   , 'now'));
-		$event['start']     = DateTimeFormat::utc(defaults($arr, 'start'    , DBA::NULL_DATETIME));
-		$event['finish']    = DateTimeFormat::utc(defaults($arr, 'finish'   , DBA::NULL_DATETIME));
+		$event['created']   = DateTimeFormat::utc(($arr['created'] ?? '') ?: 'now');
+		$event['edited']    = DateTimeFormat::utc(($arr['edited']  ?? '') ?: 'now');
+		$event['start']     = DateTimeFormat::utc(($arr['start']   ?? '') ?: DBA::NULL_DATETIME);
+		$event['finish']    = DateTimeFormat::utc(($arr['finish']  ?? '') ?: DBA::NULL_DATETIME);
 		if ($event['finish'] < DBA::NULL_DATETIME) {
 			$event['finish'] = DBA::NULL_DATETIME;
 		}
-		$private = intval(defaults($arr, 'private', 0));
+		$private = intval($arr['private'] ?? 0);
 
 		$conditions = ['uid' => $event['uid']];
 		if ($event['cid']) {
@@ -303,7 +304,7 @@ class Event extends BaseObject
 
 			$item = Item::selectFirst(['id'], ['event-id' => $event['id'], 'uid' => $event['uid']]);
 			if (DBA::isResult($item)) {
-				$object = '<object><type>' . XML::escape(ACTIVITY_OBJ_EVENT) . '</type><title></title><id>' . XML::escape($event['uri']) . '</id>';
+				$object = '<object><type>' . XML::escape(Activity\ObjectType::EVENT) . '</type><title></title><id>' . XML::escape($event['uri']) . '</id>';
 				$object .= '<content>' . XML::escape(self::getBBCode($event)) . '</content>';
 				$object .= '</object>' . "\n";
 
@@ -333,7 +334,7 @@ class Event extends BaseObject
 				$item_arr['uri']           = $event['uri'];
 				$item_arr['parent-uri']    = $event['uri'];
 				$item_arr['guid']          = $event['guid'];
-				$item_arr['plink']         = defaults($arr, 'plink', '');
+				$item_arr['plink']         = $arr['plink'] ?? '';
 				$item_arr['post-type']     = Item::PT_EVENT;
 				$item_arr['wall']          = $event['cid'] ? 0 : 1;
 				$item_arr['contact-id']    = $contact['id'];
@@ -350,13 +351,13 @@ class Event extends BaseObject
 				$item_arr['deny_gid']      = $event['deny_gid'];
 				$item_arr['private']       = $private;
 				$item_arr['visible']       = 1;
-				$item_arr['verb']          = ACTIVITY_POST;
-				$item_arr['object-type']   = ACTIVITY_OBJ_EVENT;
+				$item_arr['verb']          = Activity::POST;
+				$item_arr['object-type']   = Activity\ObjectType::EVENT;
 				$item_arr['origin']        = $event['cid'] === 0 ? 1 : 0;
 				$item_arr['body']          = self::getBBCode($event);
 				$item_arr['event-id']      = $event['id'];
 
-				$item_arr['object']  = '<object><type>' . XML::escape(ACTIVITY_OBJ_EVENT) . '</type><title></title><id>' . XML::escape($event['uri']) . '</id>';
+				$item_arr['object']  = '<object><type>' . XML::escape(Activity\ObjectType::EVENT) . '</type><title></title><id>' . XML::escape($event['uri']) . '</id>';
 				$item_arr['object'] .= '<content>' . XML::escape(self::getBBCode($event)) . '</content>';
 				$item_arr['object'] .= '</object>' . "\n";
 
@@ -911,7 +912,7 @@ class Event extends BaseObject
 		$tpl = Renderer::getMarkupTemplate('event_stream_item.tpl');
 		$return = Renderer::replaceMacros($tpl, [
 			'$id'             => $item['event-id'],
-			'$title'          => prepare_text($item['event-summary']),
+			'$title'          => BBCode::convert($item['event-summary']),
 			'$dtstart_label'  => L10n::t('Starts:'),
 			'$dtstart_title'  => $dtstart_title,
 			'$dtstart_dt'     => $dtstart_dt,
@@ -929,7 +930,7 @@ class Event extends BaseObject
 			'$author_name'    => $item['author-name'],
 			'$author_link'    => $profile_link,
 			'$author_avatar'  => $item['author-avatar'],
-			'$description'    => prepare_text($item['event-desc']),
+			'$description'    => BBCode::convert($item['event-desc']),
 			'$location_label' => L10n::t('Location:'),
 			'$show_map_label' => L10n::t('Show map'),
 			'$hide_map_label' => L10n::t('Hide map'),
@@ -979,7 +980,7 @@ class Event extends BaseObject
 			}
 		}
 
-		$location['name'] = prepare_text($location['name']);
+		$location['name'] = BBCode::convert($location['name']);
 
 		// Construct the map HTML.
 		if (isset($location['address'])) {

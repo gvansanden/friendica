@@ -14,6 +14,7 @@ use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Event;
@@ -26,16 +27,12 @@ use Friendica\Util\Temporal;
 
 function cal_init(App $a)
 {
-	if ($a->argc > 1) {
-		DFRN::autoRedir($a, $a->argv[1]);
-	}
-
-	if (Config::get('system', 'block_public') && !local_user() && !remote_user()) {
-		System::httpExit(403, ['title' => L10n::t('Access denied.')]);
+	if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
+		throw new \Friendica\Network\HTTPException\ForbiddenException(L10n::t('Access denied.'));
 	}
 
 	if ($a->argc < 2) {
-		System::httpExit(403, ['title' => L10n::t('Access denied.')]);
+		throw new \Friendica\Network\HTTPException\ForbiddenException(L10n::t('Access denied.'));
 	}
 
 	Nav::setSelected('events');
@@ -43,7 +40,7 @@ function cal_init(App $a)
 	$nick = $a->argv[1];
 	$user = DBA::selectFirst('user', [], ['nickname' => $nick, 'blocked' => false]);
 	if (!DBA::isResult($user)) {
-		System::httpExit(404, ['title' => L10n::t('Page not found.')]);
+		throw new \Friendica\Network\HTTPException\NotFoundException();
 	}
 
 	$a->data['user'] = $user;
@@ -59,7 +56,7 @@ function cal_init(App $a)
 
 	$account_type = Contact::getAccountType($profile);
 
-	$tpl = Renderer::getMarkupTemplate("vcard-widget.tpl");
+	$tpl = Renderer::getMarkupTemplate("widget/vcard.tpl");
 
 	$vcard_widget = Renderer::replaceMacros($tpl, [
 		'$name' => $profile['name'],
@@ -90,7 +87,6 @@ function cal_content(App $a)
 
 	$htpl = Renderer::getMarkupTemplate('event_head.tpl');
 	$a->page['htmlhead'] .= Renderer::replaceMacros($htpl, [
-		'$baseurl' => System::baseUrl(),
 		'$module_url' => '/cal/' . $a->data['user']['nickname'],
 		'$modparams' => 2,
 		'$i18n' => $i18n,
@@ -111,21 +107,14 @@ function cal_content(App $a)
 	$remote_contact = false;
 	$contact_id = 0;
 
-	$owner_uid = $a->data['user']['uid'];
+	$owner_uid = intval($a->data['user']['uid']);
 	$nick = $a->data['user']['nickname'];
 
-	if (!empty($_SESSION['remote']) && is_array($_SESSION['remote'])) {
-		foreach ($_SESSION['remote'] as $v) {
-			if ($v['uid'] == $a->profile['profile_uid']) {
-				$contact_id = $v['cid'];
-				break;
-			}
-		}
+	if (!empty(Session::getRemoteContactID($a->profile['profile_uid']))) {
+		$contact_id = Session::getRemoteContactID($a->profile['profile_uid']);
 	}
 
-	$groups = [];
 	if ($contact_id) {
-		$groups = Group::getIdsByContactId($contact_id);
 		$r = q("SELECT * FROM `contact` WHERE `id` = %d AND `uid` = %d LIMIT 1",
 			intval($contact_id),
 			intval($a->profile['profile_uid'])
@@ -143,12 +132,12 @@ function cal_content(App $a)
 	}
 
 	// get the permissions
-	$sql_perms = Item::getPermissionsSQLByUserId($owner_uid, $remote_contact, $groups);
+	$sql_perms = Item::getPermissionsSQLByUserId($owner_uid);
 	// we only want to have the events of the profile owner
 	$sql_extra = " AND `event`.`cid` = 0 " . $sql_perms;
 
 	// get the tab navigation bar
-	$tabs = Profile::getTabs($a, false, $a->data['user']['nickname']);
+	$tabs = Profile::getTabs($a, 'cal', false, $a->data['user']['nickname']);
 
 	// The view mode part is similiar to /mod/events.php
 	if ($mode == 'view') {
@@ -211,7 +200,7 @@ function cal_content(App $a)
 
 		// put the event parametes in an array so we can better transmit them
 		$event_params = [
-			'event_id'      => intval(defaults($_GET, 'id', 0)),
+			'event_id'      => intval($_GET['id'] ?? 0),
 			'start'         => $start,
 			'finish'        => $finish,
 			'adjust_start'  => $adjust_start,
@@ -268,7 +257,6 @@ function cal_content(App $a)
 		}
 
 		$o = Renderer::replaceMacros($tpl, [
-			'$baseurl' => System::baseUrl(),
 			'$tabs' => $tabs,
 			'$title' => L10n::t('Events'),
 			'$view' => L10n::t('View'),
@@ -292,14 +280,14 @@ function cal_content(App $a)
 	}
 
 	if ($mode == 'export') {
-		if (!intval($owner_uid)) {
+		if (!$owner_uid) {
 			notice(L10n::t('User not found'));
 			return;
 		}
 
 		// Test permissions
 		// Respect the export feature setting for all other /cal pages if it's not the own profile
-		if ((local_user() !== intval($owner_uid)) && !Feature::isEnabled($owner_uid, "export_calendar")) {
+		if ((local_user() !== $owner_uid) && !Feature::isEnabled($owner_uid, "export_calendar")) {
 			notice(L10n::t('Permission denied.') . EOL);
 			$a->internalRedirect('cal/' . $nick);
 		}
@@ -316,7 +304,7 @@ function cal_content(App $a)
 
 			// If it the own calendar return to the events page
 			// otherwise to the profile calendar page
-			if (local_user() === intval($owner_uid)) {
+			if (local_user() === $owner_uid) {
 				$return_path = "events";
 			} else {
 				$return_path = "cal/" . $nick;

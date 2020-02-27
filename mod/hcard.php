@@ -6,20 +6,19 @@ use Friendica\App;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Model\User;
 
 function hcard_init(App $a)
 {
-	$blocked = Config::get('system', 'block_public') && !local_user() && !remote_user();
+	$blocked = Config::get('system', 'block_public') && !Session::isAuthenticated();
 
 	if ($a->argc > 1) {
 		$which = $a->argv[1];
 	} else {
-		notice(L10n::t('No profile') . EOL);
-		$a->error = 404;
-		return;
+		throw new \Friendica\Network\HTTPException\NotFoundException(L10n::t('No profile'));
 	}
 
 	$profile = 0;
@@ -42,7 +41,7 @@ function hcard_init(App $a)
 	}
 
 	if (!$blocked) {
-		$keywords = defaults($a->profile, 'pub_keywords', '');
+		$keywords = $a->profile['pub_keywords'] ?? '';
 		$keywords = str_replace([',',' ',',,'], [' ',',',','], $keywords);
 		if (strlen($keywords)) {
 			$a->page['htmlhead'] .= '<meta name="keywords" content="' . $keywords . '" />' . "\r\n";

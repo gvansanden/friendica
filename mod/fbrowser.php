@@ -10,7 +10,8 @@ use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
-use Friendica\Object\Image;
+use Friendica\Util\Images;
+use Friendica\Util\Strings;
 
 /**
  * @param App $a
@@ -25,6 +26,12 @@ function fbrowser_content(App $a)
 
 	if ($a->argc == 1) {
 		exit();
+	}
+
+	// Needed to match the correct template in a module that uses a different theme than the user/site/default
+	$theme = Strings::sanitizeFilePathItem($_GET['theme'] ?? null);
+	if ($theme && is_file("view/theme/$theme/config.php")) {
+		$a->setCurrentTheme($theme);
 	}
 
 	$template_file = "filebrowser.tpl";
@@ -72,7 +79,7 @@ function fbrowser_content(App $a)
 			function _map_files1($rr)
 			{
 				$a = \get_app();
-				$types = Image::supportedTypes();
+				$types = Images::supportedTypes();
 				$ext = $types[$rr['type']];
 				$filename_e = $rr['filename'];
 
@@ -97,7 +104,6 @@ function fbrowser_content(App $a)
 
 			$o =  Renderer::replaceMacros($tpl, [
 				'$type'     => 'image',
-				'$baseurl'  => System::baseUrl(),
 				'$path'     => $path,
 				'$folders'  => $albums,
 				'$files'    => $files,
@@ -127,7 +133,6 @@ function fbrowser_content(App $a)
 				$tpl = Renderer::getMarkupTemplate($template_file);
 				$o = Renderer::replaceMacros($tpl, [
 					'$type'     => 'file',
-					'$baseurl'  => System::baseUrl(),
 					'$path'     => [ [ "", L10n::t("Files")] ],
 					'$folders'  => false,
 					'$files'    => $files,

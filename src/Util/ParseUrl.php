@@ -11,13 +11,22 @@ use Friendica\Content\OEmbed;
 use Friendica\Core\Hook;
 use Friendica\Core\Logger;
 use Friendica\Database\DBA;
-use Friendica\Object\Image;
 
 /**
  * @brief Class with methods for extracting certain content from an url
  */
 class ParseUrl
 {
+	/**
+	 * Maximum number of characters for the description
+	 */
+	const MAX_DESC_COUNT = 250;
+
+	/**
+	 * Minimum number of characters for the description
+	 */
+	const MIN_DESC_COUNT = 100;
+
 	/**
 	 * @brief Search for chached embeddable data of an url otherwise fetch it
 	 *
@@ -141,7 +150,7 @@ class ParseUrl
 		}
 
 		// If the file is too large then exit
-		if (defaults($curlResult->getInfo(), 'download_content_length', 0) > 1000000) {
+		if (($curlResult->getInfo()['download_content_length'] ?? 0) > 1000000) {
 			return $siteinfo;
 		}
 
@@ -337,41 +346,12 @@ class ParseUrl
 			$siteinfo['type'] = 'link';
 		}
 
-		if (empty($siteinfo['image']) && !$no_guessing) {
-			$list = $xpath->query('//img[@src]');
-			foreach ($list as $node) {
-				$img_tag = [];
-				if ($node->attributes->length) {
-					foreach ($node->attributes as $attribute) {
-						$img_tag[$attribute->name] = $attribute->value;
-					}
-				}
-
-				$src = self::completeUrl($img_tag['src'], $url);
-				$photodata = Image::getInfoFromURL($src);
-
-				if (($photodata) && ($photodata[0] > 150) && ($photodata[1] > 150)) {
-					if ($photodata[0] > 300) {
-						$photodata[1] = round($photodata[1] * (300 / $photodata[0]));
-						$photodata[0] = 300;
-					}
-					if ($photodata[1] > 300) {
-						$photodata[0] = round($photodata[0] * (300 / $photodata[1]));
-						$photodata[1] = 300;
-					}
-					$siteinfo['images'][] = [
-						'src'    => $src,
-						'width'  => $photodata[0],
-						'height' => $photodata[1]
-					];
-				}
-			}
-		} elseif (!empty($siteinfo['image'])) {
+		if (!empty($siteinfo['image'])) {
 			$src = self::completeUrl($siteinfo['image'], $url);
 
 			unset($siteinfo['image']);
 
-			$photodata = Image::getInfoFromURL($src);
+			$photodata = Images::getInfoFromURLCached($src);
 
 			if (($photodata) && ($photodata[0] > 10) && ($photodata[1] > 10)) {
 				$siteinfo['images'][] = ['src' => $src,
@@ -380,47 +360,15 @@ class ParseUrl
 			}
 		}
 
-		if ((@$siteinfo['text'] == '') && (@$siteinfo['title'] != '') && !$no_guessing) {
-			$text = '';
-
-			$list = $xpath->query('//div[@class="article"]');
-			foreach ($list as $node) {
-				if (strlen($node->nodeValue) > 40) {
-					$text .= ' ' . trim($node->nodeValue);
-				}
-			}
-
-			if ($text == '') {
-				$list = $xpath->query('//div[@class="content"]');
-				foreach ($list as $node) {
-					if (strlen($node->nodeValue) > 40) {
-						$text .= ' ' . trim($node->nodeValue);
-					}
-				}
-			}
-
-			// If none text was found then take the paragraph content
-			if ($text == '') {
-				$list = $xpath->query('//p');
-				foreach ($list as $node) {
-					if (strlen($node->nodeValue) > 40) {
-						$text .= ' ' . trim($node->nodeValue);
-					}
-				}
-			}
-
-			if ($text != '') {
-				$text = trim(str_replace(["\n", "\r"], [' ', ' '], $text));
-
-				while (strpos($text, '  ')) {
-					$text = trim(str_replace('  ', ' ', $text));
-				}
-
-				$siteinfo['text'] = trim(html_entity_decode(substr($text, 0, 350), ENT_QUOTES, 'UTF-8') . '...');
+		if (!empty($siteinfo['text']) && mb_strlen($siteinfo['text']) > self::MAX_DESC_COUNT) {
+			$siteinfo['text'] = mb_substr($siteinfo['text'], 0, self::MAX_DESC_COUNT) . '…';
+			$pos = mb_strrpos($siteinfo['text'], '.');
+			if ($pos > self::MIN_DESC_COUNT) {
+				$siteinfo['text'] = mb_substr($siteinfo['text'], 0, $pos + 1);
 			}
 		}
 
-		Logger::log('Siteinfo for ' . $url . ' ' . print_r($siteinfo, true), Logger::DEBUG);
+		Logger::info('Siteinfo fetched', ['url' => $url, 'siteinfo' => $siteinfo]);
 
 		Hook::callAll('getsiteinfo', $siteinfo);
 

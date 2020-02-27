@@ -32,8 +32,11 @@
  *
  */
 
-use Friendica\Factory;
+use Dice\Dice;
+use Friendica\App\Mode;
+use Friendica\BaseObject;
 use Friendica\Util\ExAuth;
+use Psr\Log\LoggerInterface;
 
 if (sizeof($_SERVER["argv"]) == 0) {
 	die();
@@ -51,9 +54,14 @@ chdir($directory);
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-$a = Factory\DependencyFactory::setUp('auth_ejabbered', dirname(__DIR__));
+$dice = (new Dice())->addRules(include __DIR__ . '/../static/dependencies.config.php');
+$dice = $dice->addRule(LoggerInterface::class,['constructParams' => ['auth_ejabberd']]);
 
-if ($a->getMode()->isNormal()) {
+BaseObject::setDependencyInjection($dice);
+
+$appMode = $dice->create(Mode::class);
+
+if ($appMode->isNormal()) {
 	$oAuth = new ExAuth();
 	$oAuth->readStdin();
 }

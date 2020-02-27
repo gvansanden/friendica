@@ -5,6 +5,7 @@
 namespace Friendica\Core;
 
 use Friendica\BaseObject;
+use Friendica\Util\Logger\WorkerLogger;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 
@@ -39,6 +40,19 @@ class Logger extends BaseObject
 	const ALL = LogLevel::DEBUG;
 
 	/**
+	 * @var LoggerInterface The default Logger type
+	 */
+	const TYPE_LOGGER = LoggerInterface::class;
+	/**
+	 * @var WorkerLogger A specific worker logger type, which can be anabled
+	 */
+	const TYPE_WORKER = WorkerLogger::class;
+	/**
+	 * @var LoggerInterface The current logger type
+	 */
+	private static $type = self::TYPE_LOGGER;
+
+	/**
 	 * @var array the legacy loglevels
 	 * @deprecated 2019.03 use PSR-3 loglevels
 	 * @see https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-3-logger-interface.md#5-psrlogloglevel
@@ -50,37 +64,27 @@ class Logger extends BaseObject
 		self::TRACE => 'Trace',
 		self::DEBUG => 'Debug',
 		self::DATA => 'Data',
-		self::ALL => 'All',
 	];
 
 	/**
-	 * @var LoggerInterface A PSR-3 compliant logger instance
-	 */
-	private static $logger;
-
-	/**
-	 * @var LoggerInterface A PSR-3 compliant logger instance for developing only
-	 */
-	private static $devLogger;
-
-	/**
-	 * Sets the default logging handler for Friendica.
+	 * Enable additional logging for worker usage
 	 *
-	 * @param LoggerInterface $logger The Logger instance of this Application
+	 * @param string $functionName The worker function, which got called
+	 *
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
-	public static function init(LoggerInterface $logger)
+	public static function enableWorker(string $functionName)
 	{
-		self::$logger = $logger;
+		self::$type = self::TYPE_WORKER;
+		self::getClass(self::$type)->setFunctionName($functionName);
 	}
 
 	/**
-	 * Sets the default dev-logging handler for Friendica.
-	 *
-	 * @param LoggerInterface $logger The Logger instance of this Application
+	 * Disable additional logging for worker usage
 	 */
-	public static function setDevLogger(LoggerInterface $logger)
+	public static function disableWorker()
 	{
-		self::$devLogger = $logger;
+		self::$type = self::TYPE_LOGGER;
 	}
 
 	/**
@@ -96,13 +100,7 @@ class Logger extends BaseObject
 	 */
 	public static function emergency($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->emergency($message, $context);
-		self::getApp()->GetProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->emergency($message, $context);
 	}
 
 	/**
@@ -120,13 +118,7 @@ class Logger extends BaseObject
 	 */
 	public static function alert($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->alert($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->alert($message, $context);
 	}
 
 	/**
@@ -143,13 +135,7 @@ class Logger extends BaseObject
 	 */
 	public static function critical($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->critical($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->critical($message, $context);
 	}
 
 	/**
@@ -165,14 +151,7 @@ class Logger extends BaseObject
 	 */
 	public static function error($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			echo "not set!?\n";
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->error($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->error($message, $context);
 	}
 
 	/**
@@ -190,13 +169,7 @@ class Logger extends BaseObject
 	 */
 	public static function warning($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->warning($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->warning($message, $context);
 	}
 
 	/**
@@ -211,13 +184,7 @@ class Logger extends BaseObject
 	 */
 	public static function notice($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->notice($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->notice($message, $context);
 	}
 
 	/**
@@ -234,13 +201,7 @@ class Logger extends BaseObject
 	 */
 	public static function info($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->info($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->info($message, $context);
 	}
 
 	/**
@@ -255,13 +216,7 @@ class Logger extends BaseObject
 	 */
 	public static function debug($message, $context = [])
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->debug($message, $context);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, 'file', System::callstack());
+		self::getClass(self::$type)->debug($message, $context);
 	}
 
 	    /**
@@ -275,13 +230,7 @@ class Logger extends BaseObject
 	 */
 	public static function log($msg, $level = LogLevel::INFO)
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$logger->log($level, $msg);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, "file", System::callstack());
+		self::getClass(self::$type)->log($level, $msg);
 	}
 
 	/**
@@ -296,12 +245,6 @@ class Logger extends BaseObject
 	 */
 	public static function devLog($msg, $level = LogLevel::DEBUG)
 	{
-		if (!isset(self::$logger)) {
-			return;
-		}
-
-		$stamp1 = microtime(true);
-		self::$devLogger->log($level, $msg);
-		self::getApp()->getProfiler()->saveTimestamp($stamp1, "file", System::callstack());
+		self::getClass('$devLogger')->log($level, $msg);
 	}
 }

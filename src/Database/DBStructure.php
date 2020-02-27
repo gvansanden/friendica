@@ -12,7 +12,7 @@ use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Util\DateTimeFormat;
 
-require_once 'include/dba.php';
+require_once __DIR__ . '/../../include/dba.php';
 
 /**
  * @brief This class contain functions for the database management
@@ -40,16 +40,19 @@ class DBStructure
 	 */
 	public static function convertToInnoDB()
 	{
-		$r = q("SELECT `TABLE_NAME` FROM `information_schema`.`tables` WHERE `engine` = 'MyISAM' AND `table_schema` = '%s'",
-			DBA::escape(DBA::databaseName()));
+		$tables = DBA::selectToArray(
+			['information_schema' => 'tables'],
+			['table_name'],
+			['engine' => 'MyISAM', 'table_schema' => DBA::databaseName()]
+		);
 
-		if (!DBA::isResult($r)) {
+		if (!DBA::isResult($tables)) {
 			echo L10n::t('There are no tables on MyISAM.') . "\n";
 			return;
 		}
 
-		foreach ($r AS $table) {
-			$sql = sprintf("ALTER TABLE `%s` engine=InnoDB;", DBA::escape($table['TABLE_NAME']));
+		foreach ($tables AS $table) {
+			$sql = "ALTER TABLE " . DBA::quoteIdentifier($table['TABLE_NAME']) . " engine=InnoDB;";
 			echo $sql . "\n";
 
 			$result = DBA::e($sql);
@@ -96,7 +99,7 @@ class DBStructure
 	 * Loads the database structure definition from the config/dbstructure.config.php file.
 	 * On first pass, defines DB_UPDATE_VERSION constant.
 	 *
-	 * @see config/dbstructure.config.php
+	 * @see static/dbstructure.config.php
 	 * @param boolean $with_addons_structure Whether to tack on addons additional tables
 	 * @param string  $basePath              The base path of this application
 	 * @return array
@@ -106,16 +109,16 @@ class DBStructure
 	{
 		if (!self::$definition) {
 
-			$filename = $basePath . '/config/dbstructure.config.php';
+			$filename = $basePath . '/static/dbstructure.config.php';
 
 			if (!is_readable($filename)) {
-				throw new Exception('Missing database structure config file config/dbstructure.config.php');
+				throw new Exception('Missing database structure config file static/dbstructure.config.php');
 			}
 
 			$definition = require $filename;
 
 			if (!$definition) {
-				throw new Exception('Corrupted database structure config file config/dbstructure.config.php');
+				throw new Exception('Corrupted database structure config file static/dbstructure.config.php');
 			}
 
 			self::$definition = $definition;
@@ -418,7 +421,7 @@ class DBStructure
 				}
 
 				if (isset($database[$name]["table_status"]["Comment"])) {
-					$structurecomment = defaults($structure, "comment", "");
+					$structurecomment = $structure["comment"] ?? '';
 					if ($database[$name]["table_status"]["Comment"] != $structurecomment) {
 						$sql2 = "COMMENT = '" . DBA::escape($structurecomment) . "'";
 
@@ -462,7 +465,7 @@ class DBStructure
 				// Compare the field structure field by field
 				foreach ($structure["fields"] AS $fieldname => $parameters) {
 					// Compare the field definition
-					$field_definition = defaults($database[$name]["fields"], $fieldname, ['Collation' => '']);
+					$field_definition = ($database[$name]["fields"][$fieldname] ?? '') ?: ['Collation' => ''];
 
 					// Define the default collation if not given
 					if (!isset($parameters['Collation']) && !empty($field_definition['Collation'])) {
@@ -714,8 +717,8 @@ class DBStructure
 	 * @todo You cannot rename a primary key if "auto increment" is set
 	 *
 	 * @param string $table            Table name
-	 * @param array  $columns          Columns Syntax for Rename: [ $old1 => [ $new1, $type1 ], $old2 => [ $new2, $type2 ], ... ] )
-	 *                                 Syntax for Primary Key: [ $col1, $col2, ...] )
+	 * @param array  $columns          Columns Syntax for Rename: [ $old1 => [ $new1, $type1 ], $old2 => [ $new2, $type2 ], ... ]
+	 *                                 Syntax for Primary Key: [ $col1, $col2, ...]
 	 * @param int    $type             The type of renaming (Default is Column)
 	 *
 	 * @return boolean Was the renaming successful?
@@ -817,7 +820,7 @@ class DBStructure
 	/**
 	 *    Check if a table exists
 	 *
-	 * @param string $table Table name
+	 * @param string|array $table Table name
 	 *
 	 * @return boolean Does the table exist?
 	 * @throws Exception
@@ -828,20 +831,28 @@ class DBStructure
 			return false;
 		}
 
-		$table = DBA::escape($table);
-
-		$sql = "SHOW TABLES LIKE '" . $table . "';";
-
-		$stmt = DBA::p($sql);
-
-		if (is_bool($stmt)) {
-			$retval = $stmt;
+		if (is_array($table)) {
+			$condition = ['table_schema' => key($table), 'table_name' => current($table)];
 		} else {
-			$retval = (DBA::numRows($stmt) > 0);
+			$condition = ['table_schema' => DBA::databaseName(), 'table_name' => $table];
 		}
 
-		DBA::close($stmt);
+		$result = DBA::exists(['information_schema' => 'tables'], $condition);
 
-		return $retval;
+		return $result;
+	}
+
+	/**
+	 * Returns the columns of a table
+	 *
+	 * @param string $table Table name
+	 *
+	 * @return array An array of the table columns
+	 * @throws Exception
+	 */
+	public static function getColumns($table)
+	{
+		$stmtColumns = DBA::p("SHOW COLUMNS FROM `" . $table . "`");
+		return DBA::toArray($stmtColumns);
 	}
 }

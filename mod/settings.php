@@ -5,6 +5,7 @@
 
 use Friendica\App;
 use Friendica\BaseModule;
+use Friendica\BaseObject;
 use Friendica\Content\Feature;
 use Friendica\Content\Nav;
 use Friendica\Core\ACL;
@@ -14,6 +15,7 @@ use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
+use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Core\Theme;
 use Friendica\Core\Worker;
@@ -24,14 +26,18 @@ use Friendica\Model\Group;
 use Friendica\Model\User;
 use Friendica\Module\Login;
 use Friendica\Protocol\Email;
+use Friendica\Util\ACLFormatter;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
+use Friendica\Worker\Delivery;
 
 function get_theme_config_file($theme)
 {
+	$theme = Strings::sanitizeFilePathItem($theme);
+
 	$a = \get_app();
-	$base_theme = defaults($a->theme_info, 'extends');
+	$base_theme = $a->theme_info['extends'] ?? '';
 
 	if (file_exists("view/theme/$theme/config.php")) {
 		return "view/theme/$theme/config.php";
@@ -63,6 +69,13 @@ function settings_init(App $a)
 			'selected'	=>  (($a->argc == 1) && ($a->argv[0] === 'settings')?'active':''),
 			'accesskey' => 'o',
 		],
+	];
+
+	$tabs[] = [
+		'label' => L10n::t('Two-factor authentication'),
+		'url' => 'settings/2fa',
+		'selected' => (($a->argc > 1) && ($a->argv[1] === '2fa') ? 'active' : ''),
+		'accesskey' => 'o',
 	];
 
 	$tabs[] =	[
@@ -104,8 +117,8 @@ function settings_init(App $a)
 
 	$tabs[] =	[
 		'label'	=> L10n::t('Delegations'),
-		'url' 	=> 'delegate',
-		'selected'	=> (($a->argc == 1) && ($a->argv[0] === 'delegate')?'active':''),
+		'url' 	=> 'settings/delegation',
+		'selected'	=> (($a->argc > 1) && ($a->argv[1] === 'delegation')?'active':''),
 		'accesskey' => 'd',
 	];
 
@@ -118,8 +131,8 @@ function settings_init(App $a)
 
 	$tabs[] =	[
 		'label' => L10n::t('Export personal data'),
-		'url' => 'uexport',
-		'selected' => (($a->argc == 1) && ($a->argv[0] === 'uexport')?'active':''),
+		'url' => 'settings/userexport',
+		'selected' => (($a->argc > 1) && ($a->argv[1] === 'userexport')?'active':''),
 		'accesskey' => 'e',
 	];
 
@@ -169,11 +182,11 @@ function settings_post(App $a)
 	if (($a->argc > 2) && ($a->argv[1] === 'oauth')  && ($a->argv[2] === 'edit'||($a->argv[2] === 'add')) && !empty($_POST['submit'])) {
 		BaseModule::checkFormSecurityTokenRedirectOnError('/settings/oauth', 'settings_oauth');
 
-		$name     = defaults($_POST, 'name'    , '');
-		$key      = defaults($_POST, 'key'     , '');
-		$secret   = defaults($_POST, 'secret'  , '');
-		$redirect = defaults($_POST, 'redirect', '');
-		$icon     = defaults($_POST, 'icon'    , '');
+		$name     = $_POST['name']     ?? '';
+		$key      = $_POST['key']      ?? '';
+		$secret   = $_POST['secret']   ?? '';
+		$redirect = $_POST['redirect'] ?? '';
+		$icon     = $_POST['icon']     ?? '';
 
 		if ($name == "" || $key == "" || $secret == "") {
 			notice(L10n::t("Missing some important data!"));
@@ -223,30 +236,29 @@ function settings_post(App $a)
 		BaseModule::checkFormSecurityTokenRedirectOnError('/settings/connectors', 'settings_connectors');
 
 		if (!empty($_POST['general-submit'])) {
+			PConfig::set(local_user(), 'system', 'accept_only_sharer', intval($_POST['accept_only_sharer']));
 			PConfig::set(local_user(), 'system', 'disable_cw', intval($_POST['disable_cw']));
 			PConfig::set(local_user(), 'system', 'no_intelligent_shortening', intval($_POST['no_intelligent_shortening']));
+			PConfig::set(local_user(), 'system', 'attach_link_title', intval($_POST['attach_link_title']));
 			PConfig::set(local_user(), 'system', 'ostatus_autofriend', intval($_POST['snautofollow']));
 			PConfig::set(local_user(), 'ostatus', 'default_group', $_POST['group-selection']);
 			PConfig::set(local_user(), 'ostatus', 'legacy_contact', $_POST['legacy_contact']);
 		} elseif (!empty($_POST['imap-submit'])) {
+			$mail_server       =                 $_POST['mail_server']       ?? '';
+			$mail_port         =                 $_POST['mail_port']         ?? '';
+			$mail_ssl          = strtolower(trim($_POST['mail_ssl']          ?? ''));
+			$mail_user         =                 $_POST['mail_user']         ?? '';
+			$mail_pass         =            trim($_POST['mail_pass']         ?? '');
+			$mail_action       =            trim($_POST['mail_action']       ?? '');
+			$mail_movetofolder =            trim($_POST['mail_movetofolder'] ?? '');
+			$mail_replyto      =                 $_POST['mail_replyto']      ?? '';
+			$mail_pubmail      =                 $_POST['mail_pubmail']      ?? '';
 
-			$mail_server       = defaults($_POST, 'mail_server', '');
-			$mail_port         = defaults($_POST, 'mail_port', '');
-			$mail_ssl          = (!empty($_POST['mail_ssl']) ? strtolower(trim($_POST['mail_ssl'])) : '');
-			$mail_user         = defaults($_POST, 'mail_user', '');
-			$mail_pass         = (!empty($_POST['mail_pass']) ? trim($_POST['mail_pass']) : '');
-			$mail_action       = (!empty($_POST['mail_action']) ? trim($_POST['mail_action']) : '');
-			$mail_movetofolder = (!empty($_POST['mail_movetofolder']) ? trim($_POST['mail_movetofolder']) : '');
-			$mail_replyto      = defaults($_POST, 'mail_replyto', '');
-			$mail_pubmail      = defaults($_POST, 'mail_pubmail', '');
-
-
-			$mail_disabled = ((function_exists('imap_open') && (!Config::get('system', 'imap_disabled'))) ? 0 : 1);
-			if (Config::get('system', 'dfrn_only')) {
-				$mail_disabled = 1;
-			}
-
-			if (!$mail_disabled) {
+			if (
+				!Config::get('system', 'dfrn_only')
+				&& function_exists('imap_open')
+				&& !Config::get('system', 'imap_disabled')
+			) {
 				$failed = false;
 				$r = q("SELECT * FROM `mailacct` WHERE `uid` = %d LIMIT 1",
 					intval(local_user())
@@ -315,17 +327,17 @@ function settings_post(App $a)
 	if (($a->argc > 1) && ($a->argv[1] === 'display')) {
 		BaseModule::checkFormSecurityTokenRedirectOnError('/settings/display', 'settings_display');
 
-		$theme             = !empty($_POST['theme'])             ? Strings::escapeTags(trim($_POST['theme']))        : $a->user['theme'];
-		$mobile_theme      = !empty($_POST['mobile_theme'])      ? Strings::escapeTags(trim($_POST['mobile_theme'])) : '';
-		$nosmile           = !empty($_POST['nosmile'])           ? intval($_POST['nosmile'])            : 0;
-		$first_day_of_week = !empty($_POST['first_day_of_week']) ? intval($_POST['first_day_of_week'])  : 0;
-		$noinfo            = !empty($_POST['noinfo'])            ? intval($_POST['noinfo'])             : 0;
-		$infinite_scroll   = !empty($_POST['infinite_scroll'])   ? intval($_POST['infinite_scroll'])    : 0;
-		$no_auto_update    = !empty($_POST['no_auto_update'])    ? intval($_POST['no_auto_update'])     : 0;
-		$bandwidth_saver   = !empty($_POST['bandwidth_saver'])   ? intval($_POST['bandwidth_saver'])    : 0;
-		$smart_threading   = !empty($_POST['smart_threading'])   ? intval($_POST['smart_threading'])    : 0;
-		$nowarn_insecure   = !empty($_POST['nowarn_insecure'])   ? intval($_POST['nowarn_insecure'])    : 0;
-		$browser_update    = !empty($_POST['browser_update'])    ? intval($_POST['browser_update'])     : 0;
+		$theme              = !empty($_POST['theme'])              ? Strings::escapeTags(trim($_POST['theme']))        : $a->user['theme'];
+		$mobile_theme       = !empty($_POST['mobile_theme'])       ? Strings::escapeTags(trim($_POST['mobile_theme'])) : '';
+		$nosmile            = !empty($_POST['nosmile'])            ? intval($_POST['nosmile'])            : 0;
+		$first_day_of_week  = !empty($_POST['first_day_of_week'])  ? intval($_POST['first_day_of_week'])  : 0;
+		$noinfo             = !empty($_POST['noinfo'])             ? intval($_POST['noinfo'])             : 0;
+		$infinite_scroll    = !empty($_POST['infinite_scroll'])    ? intval($_POST['infinite_scroll'])    : 0;
+		$no_auto_update     = !empty($_POST['no_auto_update'])     ? intval($_POST['no_auto_update'])     : 0;
+		$bandwidth_saver    = !empty($_POST['bandwidth_saver'])    ? intval($_POST['bandwidth_saver'])    : 0;
+		$no_smart_threading = !empty($_POST['no_smart_threading']) ? intval($_POST['no_smart_threading']) : 0;
+		$nowarn_insecure    = !empty($_POST['nowarn_insecure'])    ? intval($_POST['nowarn_insecure'])    : 0;
+		$browser_update     = !empty($_POST['browser_update'])     ? intval($_POST['browser_update'])     : 0;
 		if ($browser_update != -1) {
 			$browser_update = $browser_update * 1000;
 			if ($browser_update < 10000) {
@@ -356,21 +368,21 @@ function settings_post(App $a)
 		PConfig::set(local_user(), 'system', 'infinite_scroll'         , $infinite_scroll);
 		PConfig::set(local_user(), 'system', 'no_auto_update'          , $no_auto_update);
 		PConfig::set(local_user(), 'system', 'bandwidth_saver'         , $bandwidth_saver);
-		PConfig::set(local_user(), 'system', 'smart_threading'         , $smart_threading);
+		PConfig::set(local_user(), 'system', 'no_smart_threading'      , $no_smart_threading);
 
-		if ($theme == $a->user['theme']) {
-			// call theme_post only if theme has not been changed
-			if (($themeconfigfile = get_theme_config_file($theme)) !== null) {
-				require_once $themeconfigfile;
-				theme_post($a);
+		if (in_array($theme, Theme::getAllowedList())) {
+			if ($theme == $a->user['theme']) {
+				// call theme_post only if theme has not been changed
+				if (($themeconfigfile = get_theme_config_file($theme)) !== null) {
+					require_once $themeconfigfile;
+					theme_post($a);
+				}
+			} else {
+				DBA::update('user', ['theme' => $theme], ['uid' => local_user()]);
 			}
+		} else {
+			notice(L10n::t('The theme you chose isn\'t available.'));
 		}
-		Theme::install($theme);
-
-		q("UPDATE `user` SET `theme` = '%s' WHERE `uid` = %d",
-				DBA::escape($theme),
-				intval(local_user())
-		);
 
 		Hook::callAll('display_settings_post', $_POST);
 		$a->internalRedirect('settings/display');
@@ -379,8 +391,35 @@ function settings_post(App $a)
 
 	BaseModule::checkFormSecurityTokenRedirectOnError('/settings', 'settings');
 
+	// Import Contacts from CSV file
+	if (!empty($_POST['importcontact-submit'])) {
+		if (isset($_FILES['importcontact-filename'])) {
+			// was there an error
+			if ($_FILES['importcontact-filename']['error'] > 0) {
+				Logger::notice('Contact CSV file upload error');
+				info(L10n::t('Contact CSV file upload error'));
+			} else {
+				$csvArray = array_map('str_getcsv', file($_FILES['importcontact-filename']['tmp_name']));
+				// import contacts
+				foreach ($csvArray as $csvRow) {
+					// The 1st row may, or may not contain the headers of the table
+					// We expect the 1st field of the row to contain either the URL
+					// or the handle of the account, therefore we check for either
+					// "http" or "@" to be present in the string.
+					// All other fields from the row will be ignored
+					if ((strpos($csvRow[0],'@') !== false) || (strpos($csvRow[0],'http') !== false)) {
+						$arr = Contact::createFromProbe($_SESSION['uid'], $csvRow[0], '', false);
+					}
+				}
+				info(L10n::t('Importing Contacts done'));
+				// delete temp file
+				unlink($filename);
+			}
+		}
+	}
+
 	if (!empty($_POST['resend_relocate'])) {
-		Worker::add(PRIORITY_HIGH, 'Notifier', 'relocate', local_user());
+		Worker::add(PRIORITY_HIGH, 'Notifier', Delivery::RELOCATION, local_user());
 		info(L10n::t("Relocate message has been send to your contacts"));
 		$a->internalRedirect('settings');
 	}
@@ -417,7 +456,6 @@ function settings_post(App $a)
 	$language         = (!empty($_POST['language'])   ? Strings::escapeTags(trim($_POST['language']))     : '');
 
 	$defloc           = (!empty($_POST['defloc'])     ? Strings::escapeTags(trim($_POST['defloc']))       : '');
-	$openid           = (!empty($_POST['openid_url']) ? Strings::escapeTags(trim($_POST['openid_url']))   : '');
 	$maxreq           = (!empty($_POST['maxreq'])     ? intval($_POST['maxreq'])             : 0);
 	$expire           = (!empty($_POST['expire'])     ? intval($_POST['expire'])             : 0);
 	$def_gid          = (!empty($_POST['group-selection']) ? intval($_POST['group-selection']) : 0);
@@ -428,6 +466,8 @@ function settings_post(App $a)
 	$expire_starred   = (!empty($_POST['expire_starred']) ? intval($_POST['expire_starred']) : 0);
 	$expire_photos    = (!empty($_POST['expire_photos'])? intval($_POST['expire_photos'])	 : 0);
 	$expire_network_only    = (!empty($_POST['expire_network_only'])? intval($_POST['expire_network_only'])	 : 0);
+
+	$delete_openid    = ((!empty($_POST['delete_openid']) && (intval($_POST['delete_openid']) == 1)) ? 1: 0);
 
 	$allow_location   = ((!empty($_POST['allow_location']) && (intval($_POST['allow_location']) == 1)) ? 1: 0);
 	$publish          = ((!empty($_POST['profile_in_directory']) && (intval($_POST['profile_in_directory']) == 1)) ? 1: 0);
@@ -524,25 +564,13 @@ function settings_post(App $a)
 		date_default_timezone_set($timezone);
 	}
 
-	$str_group_allow   = !empty($_POST['group_allow'])   ? perms2str($_POST['group_allow'])   : '';
-	$str_contact_allow = !empty($_POST['contact_allow']) ? perms2str($_POST['contact_allow']) : '';
-	$str_group_deny    = !empty($_POST['group_deny'])    ? perms2str($_POST['group_deny'])    : '';
-	$str_contact_deny  = !empty($_POST['contact_deny'])  ? perms2str($_POST['contact_deny'])  : '';
+	/** @var ACLFormatter $aclFormatter */
+	$aclFormatter = BaseObject::getClass(ACLFormatter::class);
 
-	$openidserver = $a->user['openidserver'];
-	//$openid = Strings::normaliseOpenID($openid);
-
-	// If openid has changed or if there's an openid but no openidserver, try and discover it.
-	if ($openid != $a->user['openid'] || (strlen($openid) && (!strlen($openidserver)))) {
-		if (Network::isUrlValid($openid)) {
-			Logger::log('updating openidserver');
-			$open_id_obj = new LightOpenID($a->getHostName());
-			$open_id_obj->identity = $openid;
-			$openidserver = $open_id_obj->discover($open_id_obj->identity);
-		} else {
-			$openidserver = '';
-		}
-	}
+	$str_group_allow   = !empty($_POST['group_allow'])   ? $aclFormatter->toString($_POST['group_allow'])   : '';
+	$str_contact_allow = !empty($_POST['contact_allow']) ? $aclFormatter->toString($_POST['contact_allow']) : '';
+	$str_group_deny    = !empty($_POST['group_deny'])    ? $aclFormatter->toString($_POST['group_deny'])    : '';
+	$str_contact_deny  = !empty($_POST['contact_deny'])  ? $aclFormatter->toString($_POST['contact_deny'])  : '';
 
 	PConfig::set(local_user(), 'expire', 'items', $expire_items);
 	PConfig::set(local_user(), 'expire', 'notes', $expire_notes);
@@ -567,41 +595,18 @@ function settings_post(App $a)
 		}
 	}
 
+	$fields = ['username' => $username, 'email' => $email, 'timezone' => $timezone,
+		'allow_cid' => $str_contact_allow, 'allow_gid' => $str_group_allow, 'deny_cid' => $str_contact_deny, 'deny_gid' => $str_group_deny,
+		'notify-flags' => $notify, 'page-flags' => $page_flags, 'account-type' => $account_type, 'default-location' => $defloc,
+		'allow_location' => $allow_location, 'maxreq' => $maxreq, 'expire' => $expire, 'def_gid' => $def_gid, 'blockwall' => $blockwall,
+		'hidewall' => $hidewall, 'blocktags' => $blocktags, 'unkmail' => $unkmail, 'cntunkmail' => $cntunkmail, 'language' => $language];
 
-	$r = q("UPDATE `user` SET `username` = '%s', `email` = '%s',
-				`openid` = '%s', `timezone` = '%s',
-				`allow_cid` = '%s', `allow_gid` = '%s', `deny_cid` = '%s', `deny_gid` = '%s',
-				`notify-flags` = %d, `page-flags` = %d, `account-type` = %d, `default-location` = '%s',
-				`allow_location` = %d, `maxreq` = %d, `expire` = %d, `openidserver` = '%s',
-				`def_gid` = %d, `blockwall` = %d, `hidewall` = %d, `blocktags` = %d,
-				`unkmail` = %d, `cntunkmail` = %d, `language` = '%s'
-			WHERE `uid` = %d",
-			DBA::escape($username),
-			DBA::escape($email),
-			DBA::escape($openid),
-			DBA::escape($timezone),
-			DBA::escape($str_contact_allow),
-			DBA::escape($str_group_allow),
-			DBA::escape($str_contact_deny),
-			DBA::escape($str_group_deny),
-			intval($notify),
-			intval($page_flags),
-			intval($account_type),
-			DBA::escape($defloc),
-			intval($allow_location),
-			intval($maxreq),
-			intval($expire),
-			DBA::escape($openidserver),
-			intval($def_gid),
-			intval($blockwall),
-			intval($hidewall),
-			intval($blocktags),
-			intval($unkmail),
-			intval($cntunkmail),
-			DBA::escape($language),
-			intval(local_user())
-	);
-	if (DBA::isResult($r)) {
+	if ($delete_openid) {
+		$fields['openid'] = '';
+		$fields['openidserver'] = '';
+	}
+
+	if (DBA::update('user', $fields, ['uid' => local_user()])) {
 		info(L10n::t('Settings updated.') . EOL);
 	}
 
@@ -775,8 +780,10 @@ function settings_content(App $a)
 	}
 
 	if (($a->argc > 1) && ($a->argv[1] === 'connectors')) {
+		$accept_only_sharer        = intval(PConfig::get(local_user(), 'system', 'accept_only_sharer'));
 		$disable_cw                = intval(PConfig::get(local_user(), 'system', 'disable_cw'));
 		$no_intelligent_shortening = intval(PConfig::get(local_user(), 'system', 'no_intelligent_shortening'));
+		$attach_link_title         = intval(PConfig::get(local_user(), 'system', 'attach_link_title'));
 		$ostatus_autofriend        = intval(PConfig::get(local_user(), 'system', 'ostatus_autofriend'));
 		$default_group             = PConfig::get(local_user(), 'ostatus', 'default_group');
 		$legacy_contact            = PConfig::get(local_user(), 'ostatus', 'legacy_contact');
@@ -822,7 +829,13 @@ function settings_content(App $a)
 
 		$tpl = Renderer::getMarkupTemplate('settings/connectors.tpl');
 
-		$mail_disabled_message = (($mail_disabled) ? L10n::t('Email access is disabled on this site.') : '');
+		$mail_disabled_message = ($mail_disabled ? L10n::t('Email access is disabled on this site.') : '');
+
+		$ssl_options = ['TLS' => 'TLS', 'SSL' => 'SSL'];
+
+		if (Config::get('system', 'insecure_imap')) {
+			$ssl_options['notls'] = L10n::t('None');
+		}
 
 		$o .= Renderer::replaceMacros($tpl, [
 			'$form_security_token' => BaseModule::getFormSecurityToken("settings_connectors"),
@@ -833,8 +846,10 @@ function settings_content(App $a)
 			'$ostat_enabled' => $ostat_enabled,
 
 			'$general_settings' => L10n::t('General Social Media Settings'),
+			'$accept_only_sharer' => ['accept_only_sharer', L10n::t('Accept only top level posts by contacts you follow'), $accept_only_sharer, L10n::t('The system does an auto completion of threads when a comment arrives. This has got the side effect that you can receive posts that had been started by a non-follower but had been commented by someone you follow. This setting deactivates this behaviour. When activated, you strictly only will receive posts from people you really do follow.')],
 			'$disable_cw' => ['disable_cw', L10n::t('Disable Content Warning'), $disable_cw, L10n::t('Users on networks like Mastodon or Pleroma are able to set a content warning field which collapse their post by default. This disables the automatic collapsing and sets the content warning as the post title. Doesn\'t affect any other content filtering you eventually set up.')],
 			'$no_intelligent_shortening' => ['no_intelligent_shortening', L10n::t('Disable intelligent shortening'), $no_intelligent_shortening, L10n::t('Normally the system tries to find the best link to add to shortened posts. If this option is enabled then every shortened post will always point to the original friendica post.')],
+			'$attach_link_title' => ['attach_link_title', L10n::t('Attach the link title'), $attach_link_title, L10n::t('When activated, the title of the attached link will be added as a title on posts to Diaspora. This is mostly helpful with "remote-self" contacts that share feed content.')],
 			'$ostatus_autofriend' => ['snautofollow', L10n::t("Automatically follow any GNU Social \x28OStatus\x29 followers/mentioners"), $ostatus_autofriend, L10n::t('If you receive a message from an unknown OStatus user, this option decides what to do. If it is checked, a new contact will be created for every unknown user.')],
 			'$default_group' => Group::displayGroupSelection(local_user(), $default_group, L10n::t("Default group for OStatus contacts")),
 			'$legacy_contact' => ['legacy_contact', L10n::t('Your legacy GNU Social account'), $legacy_contact, L10n::t("If you enter your old GNU Social/Statusnet account name here \x28in the format user@domain.tld\x29, your contacts will be added automatically. The field will be emptied when done.")],
@@ -848,15 +863,15 @@ function settings_content(App $a)
 			'$imap_desc' => L10n::t("If you wish to communicate with email contacts using this service \x28optional\x29, please specify how to connect to your mailbox."),
 			'$imap_lastcheck' => ['imap_lastcheck', L10n::t('Last successful email check:'), $mail_chk, ''],
 			'$mail_disabled' => $mail_disabled_message,
-			'$mail_server'	=> ['mail_server',  L10n::t('IMAP server name:'), $mail_server, ''],
-			'$mail_port'	=> ['mail_port', 	 L10n::t('IMAP port:'), $mail_port, ''],
-			'$mail_ssl'		=> ['mail_ssl', 	 L10n::t('Security:'), strtoupper($mail_ssl), '', ['notls'=>L10n::t('None'), 'TLS'=>'TLS', 'SSL'=>'SSL']],
-			'$mail_user'	=> ['mail_user',    L10n::t('Email login name:'), $mail_user, ''],
-			'$mail_pass'	=> ['mail_pass', 	 L10n::t('Email password:'), '', ''],
-			'$mail_replyto'	=> ['mail_replyto', L10n::t('Reply-to address:'), $mail_replyto, 'Optional'],
-			'$mail_pubmail'	=> ['mail_pubmail', L10n::t('Send public posts to all email contacts:'), $mail_pubmail, ''],
-			'$mail_action'	=> ['mail_action',	 L10n::t('Action after import:'), $mail_action, '', [0=>L10n::t('None'), /*1=>L10n::t('Delete'),*/ 2=>L10n::t('Mark as seen'), 3=>L10n::t('Move to folder')]],
-			'$mail_movetofolder'	=> ['mail_movetofolder',	 L10n::t('Move to folder:'), $mail_movetofolder, ''],
+			'$mail_server'	=> ['mail_server',	L10n::t('IMAP server name:'), $mail_server, ''],
+			'$mail_port'	=> ['mail_port', 	L10n::t('IMAP port:'), $mail_port, ''],
+			'$mail_ssl'	=> ['mail_ssl',		L10n::t('Security:'), strtoupper($mail_ssl), '', $ssl_options],
+			'$mail_user'	=> ['mail_user',	L10n::t('Email login name:'), $mail_user, ''],
+			'$mail_pass'	=> ['mail_pass',	L10n::t('Email password:'), '', ''],
+			'$mail_replyto'	=> ['mail_replyto',	L10n::t('Reply-to address:'), $mail_replyto, 'Optional'],
+			'$mail_pubmail'	=> ['mail_pubmail',	L10n::t('Send public posts to all email contacts:'), $mail_pubmail, ''],
+			'$mail_action'	=> ['mail_action',	L10n::t('Action after import:'), $mail_action, '', [0 => L10n::t('None'), 1 => L10n::t('Delete'), 2 => L10n::t('Mark as seen'), 3 => L10n::t('Move to folder')]],
+			'$mail_movetofolder' => ['mail_movetofolder', L10n::t('Move to folder:'), $mail_movetofolder, ''],
 			'$submit' => L10n::t('Save Settings'),
 		]);
 
@@ -877,42 +892,32 @@ function settings_content(App $a)
 			$default_mobile_theme = 'none';
 		}
 
-		$allowed_themes_str = Config::get('system', 'allowed_themes');
-		$allowed_themes_raw = explode(',', $allowed_themes_str);
-		$allowed_themes = [];
-		if (count($allowed_themes_raw)) {
-			foreach ($allowed_themes_raw as $x) {
-				if (strlen(trim($x)) && is_dir("view/theme/$x")) {
-					$allowed_themes[] = trim($x);
-				}
-			}
-		}
-
+		$allowed_themes = Theme::getAllowedList();
 
 		$themes = [];
 		$mobile_themes = ["---" => L10n::t('No special theme for mobile devices')];
-		if ($allowed_themes) {
-			foreach ($allowed_themes as $theme) {
-				$is_experimental = file_exists('view/theme/' . $theme . '/experimental');
-				$is_unsupported  = file_exists('view/theme/' . $theme . '/unsupported');
-				$is_mobile       = file_exists('view/theme/' . $theme . '/mobile');
-				if (!$is_experimental || ($is_experimental && (Config::get('experimentals', 'exp_themes')==1 || is_null(Config::get('experimentals', 'exp_themes'))))) {
-					$theme_name = ucfirst($theme);
-					if ($is_unsupported) {
-						$theme_name = L10n::t("%s - \x28Unsupported\x29", $theme_name);
-					} elseif ($is_experimental) {
-						$theme_name = L10n::t("%s - \x28Experimental\x29", $theme_name);
-					}
-					if ($is_mobile) {
-						$mobile_themes[$theme] = $theme_name;
-					} else {
-						$themes[$theme] = $theme_name;
-					}
+		foreach ($allowed_themes as $theme) {
+			$is_experimental = file_exists('view/theme/' . $theme . '/experimental');
+			$is_unsupported  = file_exists('view/theme/' . $theme . '/unsupported');
+			$is_mobile       = file_exists('view/theme/' . $theme . '/mobile');
+			if (!$is_experimental || ($is_experimental && (Config::get('experimentals', 'exp_themes')==1 || is_null(Config::get('experimentals', 'exp_themes'))))) {
+				$theme_name = ucfirst($theme);
+				if ($is_unsupported) {
+					$theme_name = L10n::t('%s - (Unsupported)', $theme_name);
+				} elseif ($is_experimental) {
+					$theme_name = L10n::t('%s - (Experimental)', $theme_name);
+				}
+
+				if ($is_mobile) {
+					$mobile_themes[$theme] = $theme_name;
+				} else {
+					$themes[$theme] = $theme_name;
 				}
 			}
 		}
-		$theme_selected        = defaults($_SESSION, 'theme'       , $default_theme);
-		$mobile_theme_selected = defaults($_SESSION, 'mobile-theme', $default_mobile_theme);
+
+		$theme_selected        = $a->user['theme'] ?: $default_theme;
+		$mobile_theme_selected = Session::get('mobile-theme', $default_mobile_theme);
 
 		$nowarn_insecure = intval(PConfig::get(local_user(), 'system', 'nowarn_insecure'));
 
@@ -934,7 +939,7 @@ function settings_content(App $a)
 		$infinite_scroll = PConfig::get(local_user(), 'system', 'infinite_scroll', 0);
 		$no_auto_update = PConfig::get(local_user(), 'system', 'no_auto_update', 0);
 		$bandwidth_saver = PConfig::get(local_user(), 'system', 'bandwidth_saver', 0);
-		$smart_threading = PConfig::get(local_user(), 'system', 'smart_threading', 0);
+		$no_smart_threading = PConfig::get(local_user(), 'system', 'no_smart_threading', 0);
 
 		$theme_config = "";
 		if (($themeconfigfile = get_theme_config_file($theme_selected)) !== null) {
@@ -963,7 +968,7 @@ function settings_content(App $a)
 			'$infinite_scroll'	=> ['infinite_scroll', L10n::t("Infinite scroll"), $infinite_scroll, ''],
 			'$no_auto_update'	=> ['no_auto_update', L10n::t("Automatic updates only at the top of the network page"), $no_auto_update, L10n::t('When disabled, the network page is updated all the time, which could be confusing while reading.')],
 			'$bandwidth_saver' => ['bandwidth_saver', L10n::t('Bandwidth Saver Mode'), $bandwidth_saver, L10n::t('When enabled, embedded content is not displayed on automatic updates, they only show on page reload.')],
-			'$smart_threading' => ['smart_threading', L10n::t('Smart Threading'), $smart_threading, L10n::t('When enabled, suppress extraneous thread indentation while keeping it where it matters. Only works if threading is available and enabled.')],
+			'$no_smart_threading' => ['no_smart_threading', L10n::t('Disable Smart Threading'), $no_smart_threading, L10n::t('Disable the automatic suppression of extraneous thread indentation.')],
 
 			'$d_tset' => L10n::t('General Theme Settings'),
 			'$d_ctset' => L10n::t('Custom Theme Settings'),
@@ -1074,7 +1079,7 @@ function settings_content(App $a)
 	if ($noid) {
 		$openid_field = false;
 	} else {
-		$openid_field = ['openid_url', L10n::t('OpenID:'), $openid, L10n::t("\x28Optional\x29 Allow this OpenID to login to this account."), "", "", "url"];
+		$openid_field = ['openid_url', L10n::t('OpenID:'), $openid, L10n::t("\x28Optional\x29 Allow this OpenID to login to this account."), "", "readonly", "url"];
 	}
 
 	$opt_tpl = Renderer::getMarkupTemplate("field_yesno.tpl");
@@ -1088,7 +1093,7 @@ function settings_content(App $a)
 
 	if (strlen(Config::get('system', 'directory'))) {
 		$profile_in_net_dir = Renderer::replaceMacros($opt_tpl, [
-			'$field' => ['profile_in_netdirectory', L10n::t('Publish your default profile in the global social directory?'), $profile['net-publish'], L10n::t('Your profile will be published in the global friendica directories (e.g. <a href="%s">%s</a>). Your profile will be visible in public.', Config::get('system', 'directory'), Config::get('system', 'directory')), [L10n::t('No'), L10n::t('Yes')]]
+			'$field' => ['profile_in_netdirectory', L10n::t('Publish your default profile in the global social directory?'), $profile['net-publish'], L10n::t('Your profile will be published in the global friendica directories (e.g. <a href="%s">%s</a>). Your profile will be visible in public.', Config::get('system', 'directory'), Config::get('system', 'directory'))	. " " . L10n::t("This setting also determines whether Friendica will inform search engines that your profile should be indexed or not. Third-party search engines may or may not respect this setting."), [L10n::t('No'), L10n::t('Yes')]]
 		]);
 	} else {
 		$profile_in_net_dir = '';
@@ -1184,6 +1189,7 @@ function settings_content(App $a)
 		'$password4'=> ['mpassword', L10n::t('Password:'), '', L10n::t('Your current password to confirm the changes')],
 		'$oid_enable' => (!Config::get('system', 'no_openid')),
 		'$openid'	=> $openid_field,
+		'$delete_openid' => ['delete_openid', L10n::t('Delete OpenID URL'), false, ''],
 
 		'$h_basic' 	=> L10n::t('Basic Settings'),
 		'$username' => ['username',  L10n::t('Full Name:'), $username, ''],
@@ -1200,7 +1206,7 @@ function settings_content(App $a)
 		'$permissions' => L10n::t('Default Post Permissions'),
 		'$permdesc' => L10n::t("\x28click to open/close\x29"),
 		'$visibility' => $profile['net-publish'],
-		'$aclselect' => ACL::getFullSelectorHTML($a->user),
+		'$aclselect' => ACL::getFullSelectorHTML($a->page, $a->user),
 		'$suggestme' => $suggestme,
 		'$blockwall'=> $blockwall, // array('blockwall', L10n::t('Allow friends to post to your profile page:'), !$blockwall, ''),
 		'$blocktags'=> $blocktags, // array('blocktags', L10n::t('Allow friends to tag your posts:'), !$blocktags, ''),
@@ -1253,6 +1259,10 @@ function settings_content(App $a)
 		'$h_descadvn' => L10n::t('Change the behaviour of this account for special situations'),
 		'$pagetype' => $pagetype,
 
+		'$importcontact' => L10n::t('Import Contacts'),
+		'$importcontact_text' => L10n::t('Upload a CSV file that contains the handle of your followed accounts in the first column you exported from the old account.'),
+		'$importcontact_button' => L10n::t('Upload File'),
+		'$importcontact_maxsize' => Config::get('system', 'max_csv_file_size', 30720), 
 		'$relocate' => L10n::t('Relocate'),
 		'$relocate_text' => L10n::t("If you have moved this profile from another server, and some of your contacts don't receive your updates, try pushing this button."),
 		'$relocate_button' => L10n::t("Resend relocate message to contacts"),

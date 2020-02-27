@@ -19,6 +19,7 @@ use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Group;
@@ -26,6 +27,7 @@ use Friendica\Model\Profile;
 use Friendica\Model\User;
 use Friendica\Module\Login;
 use Friendica\Network\Probe;
+use Friendica\Protocol\Activity;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
@@ -79,7 +81,7 @@ function dfrn_request_post(App $a)
 		if (local_user() && ($a->user['nickname'] == $a->argv[1]) && !empty($_POST['dfrn_url'])) {
 			$dfrn_url    = Strings::escapeTags(trim($_POST['dfrn_url']));
 			$aes_allow   = !empty($_POST['aes_allow']);
-			$confirm_key = defaults($_POST, 'confirm_key', "");
+			$confirm_key = $_POST['confirm_key'] ?? '';
 			$hidden      = (!empty($_POST['hidden-contact']) ? intval($_POST['hidden-contact']) : 0);
 			$contact_record = null;
 			$blocked     = 1;
@@ -168,7 +170,7 @@ function dfrn_request_post(App $a)
 				$r = q("SELECT `id`, `network` FROM `contact` WHERE `uid` = %d AND `url` = '%s' AND `site-pubkey` = '%s' LIMIT 1",
 					intval(local_user()),
 					DBA::escape($dfrn_url),
-					defaults($parms, 'key', '') // Potentially missing
+					$parms['key'] ?? '' // Potentially missing
 				);
 				if (DBA::isResult($r)) {
 					Group::addMember(User::getDefaultGroup(local_user(), $r[0]["network"]), $r[0]['id']);
@@ -422,7 +424,7 @@ function dfrn_request_post(App $a)
 					intval($uid),
 					intval($contact_record['id']),
 					intval(!empty($_POST['knowyou'])),
-					DBA::escape(Strings::escapeTags(trim(defaults($_POST, 'dfrn-request-message', '')))),
+					DBA::escape(Strings::escapeTags(trim($_POST['dfrn-request-message'] ?? ''))),
 					DBA::escape($hash),
 					DBA::escape(DateTimeFormat::utcNow())
 				);
@@ -476,7 +478,7 @@ function dfrn_request_post(App $a)
 
 function dfrn_request_content(App $a)
 {
-	if (($a->argc != 2) || (!count($a->profile))) {
+	if ($a->argc != 2 || empty($a->profile)) {
 		return "";
 	}
 
@@ -498,7 +500,7 @@ function dfrn_request_content(App $a)
 
 		$dfrn_url = Strings::escapeTags(trim(hex2bin($_GET['dfrn_url'])));
 		$aes_allow = !empty($_GET['aes_allow']);
-		$confirm_key = defaults($_GET, 'confirm_key', "");
+		$confirm_key = $_GET['confirm_key'] ?? '';
 
 		// Checking fastlane for validity
 		if (!empty($_SESSION['fastlane']) && (Strings::normaliseLink($_SESSION["fastlane"]) == Strings::normaliseLink($dfrn_url))) {
@@ -560,7 +562,7 @@ function dfrn_request_content(App $a)
 						'source_name'  => ((strlen(stripslashes($r[0]['name']))) ? stripslashes($r[0]['name']) : L10n::t('[Name Withheld]')),
 						'source_link'  => $r[0]['url'],
 						'source_photo' => $r[0]['photo'],
-						'verb'         => ACTIVITY_REQ_FRIEND,
+						'verb'         => Activity::REQ_FRIEND,
 						'otype'        => 'intro'
 					]);
 				}
@@ -592,7 +594,7 @@ function dfrn_request_content(App $a)
 		exit();
 	} else {
 		// Normal web request. Display our user's introduction form.
-		if ((Config::get('system', 'block_public')) && (!local_user()) && (!remote_user())) {
+		if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
 			if (!Config::get('system', 'local_block')) {
 				notice(L10n::t('Public access denied.') . EOL);
 				return;

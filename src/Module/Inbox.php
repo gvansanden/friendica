@@ -6,26 +6,27 @@
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
+use Friendica\Core\Config;
 use Friendica\Core\Logger;
-use Friendica\Protocol\ActivityPub;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\Protocol\ActivityPub;
 use Friendica\Util\HTTPSignature;
-use Friendica\Core\Config;
+use Friendica\Util\Network;
 
 /**
  * ActivityPub Inbox
  */
 class Inbox extends BaseModule
 {
-	public static function rawContent()
+	public static function rawContent(array $parameters = [])
 	{
 		$a = self::getApp();
 
-		$postdata = file_get_contents('php://input');
+		$postdata = Network::postdata();
 
 		if (empty($postdata)) {
-			System::httpExit(400);
+			throw new \Friendica\Network\HTTPException\BadRequestException();
 		}
 
 		if (Config::get('debug', 'ap_inbox_log')) {
@@ -39,10 +40,11 @@ class Inbox extends BaseModule
 			Logger::log('Incoming message stored under ' . $tempfile);
 		}
 
+		// @TODO: Replace with parameter from router
 		if (!empty($a->argv[1])) {
 			$user = DBA::selectFirst('user', ['uid'], ['nickname' => $a->argv[1]]);
 			if (!DBA::isResult($user)) {
-				System::httpExit(404);
+				throw new \Friendica\Network\HTTPException\NotFoundException();
 			}
 			$uid = $user['uid'];
 		} else {
@@ -51,6 +53,6 @@ class Inbox extends BaseModule
 
 		ActivityPub\Receiver::processInbox($postdata, $_SERVER, $uid);
 
-		System::httpExit(202);
+		throw new \Friendica\Network\HTTPException\AcceptedException();
 	}
 }

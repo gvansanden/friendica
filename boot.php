@@ -23,6 +23,7 @@ use Friendica\Core\Config;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
 use Friendica\Model\Term;
@@ -31,7 +32,7 @@ use Friendica\Util\DateTimeFormat;
 
 define('FRIENDICA_PLATFORM',     'Friendica');
 define('FRIENDICA_CODENAME',     'Dalmatian Bellflower');
-define('FRIENDICA_VERSION',      '2019.04');
+define('FRIENDICA_VERSION',      '2019.12');
 define('DFRN_PROTOCOL_VERSION',  '2.23');
 define('NEW_UPDATE_ROUTINE_VERSION', 1170);
 
@@ -81,17 +82,6 @@ define('MAX_IMAGE_LENGTH',        -1);
  * Not yet used
  */
 define('DEFAULT_DB_ENGINE',  'InnoDB');
-
-/**
- * @name SSL Policy
- *
- * SSL redirection policies
- * @{
- */
-define('SSL_POLICY_NONE',         0);
-define('SSL_POLICY_FULL',         1);
-define('SSL_POLICY_SELFSIGN',     2);
-/* @}*/
 
 /** @deprecated since version 2019.03, please use \Friendica\Module\Register::CLOSED instead */
 define('REGISTER_CLOSED',        \Friendica\Module\Register::CLOSED);
@@ -195,77 +185,6 @@ define('TERM_OBJ_POST',  Term::OBJECT_TYPE_POST);
 define('TERM_OBJ_PHOTO', Term::OBJECT_TYPE_PHOTO);
 
 /**
- * @name Namespaces
- *
- * Various namespaces we may need to parse
- * @{
- */
-define('NAMESPACE_ZOT',             'http://purl.org/zot');
-define('NAMESPACE_DFRN',            'http://purl.org/macgirvin/dfrn/1.0');
-define('NAMESPACE_THREAD',          'http://purl.org/syndication/thread/1.0');
-define('NAMESPACE_TOMB',            'http://purl.org/atompub/tombstones/1.0');
-define('NAMESPACE_ACTIVITY',        'http://activitystrea.ms/spec/1.0/');
-define('NAMESPACE_ACTIVITY_SCHEMA', 'http://activitystrea.ms/schema/1.0/');
-define('NAMESPACE_MEDIA',           'http://purl.org/syndication/atommedia');
-define('NAMESPACE_SALMON_ME',       'http://salmon-protocol.org/ns/magic-env');
-define('NAMESPACE_OSTATUSSUB',      'http://ostatus.org/schema/1.0/subscribe');
-define('NAMESPACE_GEORSS',          'http://www.georss.org/georss');
-define('NAMESPACE_POCO',            'http://portablecontacts.net/spec/1.0');
-define('NAMESPACE_FEED',            'http://schemas.google.com/g/2010#updates-from');
-define('NAMESPACE_OSTATUS',         'http://ostatus.org/schema/1.0');
-define('NAMESPACE_STATUSNET',       'http://status.net/schema/api/1/');
-define('NAMESPACE_ATOM1',           'http://www.w3.org/2005/Atom');
-define('NAMESPACE_MASTODON',        'http://mastodon.social/schema/1.0');
-/* @}*/
-
-/**
- * @name Activity
- *
- * Activity stream defines
- * @{
- */
-define('ACTIVITY_LIKE',        NAMESPACE_ACTIVITY_SCHEMA . 'like');
-define('ACTIVITY_DISLIKE',     NAMESPACE_DFRN            . '/dislike');
-define('ACTIVITY_ATTEND',      NAMESPACE_ZOT             . '/activity/attendyes');
-define('ACTIVITY_ATTENDNO',    NAMESPACE_ZOT             . '/activity/attendno');
-define('ACTIVITY_ATTENDMAYBE', NAMESPACE_ZOT             . '/activity/attendmaybe');
-
-define('ACTIVITY_OBJ_HEART',   NAMESPACE_DFRN            . '/heart');
-
-define('ACTIVITY_FRIEND',      NAMESPACE_ACTIVITY_SCHEMA . 'make-friend');
-define('ACTIVITY_REQ_FRIEND',  NAMESPACE_ACTIVITY_SCHEMA . 'request-friend');
-define('ACTIVITY_UNFRIEND',    NAMESPACE_ACTIVITY_SCHEMA . 'remove-friend');
-define('ACTIVITY_FOLLOW',      NAMESPACE_ACTIVITY_SCHEMA . 'follow');
-define('ACTIVITY_UNFOLLOW',    NAMESPACE_ACTIVITY_SCHEMA . 'stop-following');
-define('ACTIVITY_JOIN',        NAMESPACE_ACTIVITY_SCHEMA . 'join');
-
-define('ACTIVITY_POST',        NAMESPACE_ACTIVITY_SCHEMA . 'post');
-define('ACTIVITY_UPDATE',      NAMESPACE_ACTIVITY_SCHEMA . 'update');
-define('ACTIVITY_TAG',         NAMESPACE_ACTIVITY_SCHEMA . 'tag');
-define('ACTIVITY_FAVORITE',    NAMESPACE_ACTIVITY_SCHEMA . 'favorite');
-define('ACTIVITY_UNFAVORITE',  NAMESPACE_ACTIVITY_SCHEMA . 'unfavorite');
-define('ACTIVITY_SHARE',       NAMESPACE_ACTIVITY_SCHEMA . 'share');
-define('ACTIVITY_DELETE',      NAMESPACE_ACTIVITY_SCHEMA . 'delete');
-
-define('ACTIVITY_POKE',        NAMESPACE_ZOT . '/activity/poke');
-
-define('ACTIVITY_OBJ_BOOKMARK', NAMESPACE_ACTIVITY_SCHEMA . 'bookmark');
-define('ACTIVITY_OBJ_COMMENT', NAMESPACE_ACTIVITY_SCHEMA . 'comment');
-define('ACTIVITY_OBJ_NOTE',    NAMESPACE_ACTIVITY_SCHEMA . 'note');
-define('ACTIVITY_OBJ_PERSON',  NAMESPACE_ACTIVITY_SCHEMA . 'person');
-define('ACTIVITY_OBJ_IMAGE',   NAMESPACE_ACTIVITY_SCHEMA . 'image');
-define('ACTIVITY_OBJ_PHOTO',   NAMESPACE_ACTIVITY_SCHEMA . 'photo');
-define('ACTIVITY_OBJ_VIDEO',   NAMESPACE_ACTIVITY_SCHEMA . 'video');
-define('ACTIVITY_OBJ_P_PHOTO', NAMESPACE_ACTIVITY_SCHEMA . 'profile-photo');
-define('ACTIVITY_OBJ_ALBUM',   NAMESPACE_ACTIVITY_SCHEMA . 'photo-album');
-define('ACTIVITY_OBJ_EVENT',   NAMESPACE_ACTIVITY_SCHEMA . 'event');
-define('ACTIVITY_OBJ_GROUP',   NAMESPACE_ACTIVITY_SCHEMA . 'group');
-define('ACTIVITY_OBJ_TAGTERM', NAMESPACE_DFRN            . '/tagterm');
-define('ACTIVITY_OBJ_PROFILE', NAMESPACE_DFRN            . '/profile');
-define('ACTIVITY_OBJ_QUESTION', 'http://activityschema.org/object/question');
-/* @}*/
-
-/**
  * @name Gravity
  *
  * Item weight for query ordering
@@ -331,46 +250,6 @@ function get_app()
 }
 
 /**
- * Return the provided variable value if it exists and is truthy or the provided
- * default value instead.
- *
- * Works with initialized variables and potentially uninitialized array keys
- *
- * Usages:
- * - defaults($var, $default)
- * - defaults($array, 'key', $default)
- *
- * @param array $args
- * @brief Returns a defaut value if the provided variable or array key is falsy
- * @return mixed
- */
-function defaults(...$args)
-{
-	if (count($args) < 2) {
-		throw new BadFunctionCallException('defaults() requires at least 2 parameters');
-	}
-	if (count($args) > 3) {
-		throw new BadFunctionCallException('defaults() cannot use more than 3 parameters');
-	}
-	if (count($args) === 3 && is_null($args[1])) {
-		throw new BadFunctionCallException('defaults($arr, $key, $def) $key is null');
-	}
-
-	// The default value always is the last argument
-	$return = array_pop($args);
-
-	if (count($args) == 2 && is_array($args[0]) && !empty($args[0][$args[1]])) {
-		$return = $args[0][$args[1]];
-	}
-
-	if (count($args) == 1 && !empty($args[0])) {
-		$return = $args[0];
-	}
-
-	return $return;
-}
-
-/**
  * @brief Used to end the current process, after saving session state.
  * @deprecated
  */
@@ -423,20 +302,14 @@ function public_contact()
  */
 function remote_user()
 {
-	// You cannot be both local and remote.
-	// Unncommented by rabuzarus because remote authentication to local
-	// profiles wasn't possible anymore (2018-04-12).
-//	if (local_user()) {
-//		return false;
-//	}
-
-	if (empty($_SESSION)) {
+	if (empty($_SESSION['authenticated'])) {
 		return false;
 	}
 
-	if (!empty($_SESSION['authenticated']) && !empty($_SESSION['visitor_id'])) {
+	if (!empty($_SESSION['visitor_id'])) {
 		return intval($_SESSION['visitor_id']);
 	}
+
 	return false;
 }
 
@@ -540,40 +413,7 @@ function is_site_admin()
 
 	$adminlist = explode(',', str_replace(' ', '', $admin_email));
 
-	return local_user() && $admin_email && in_array(defaults($a->user, 'email', ''), $adminlist);
-}
-
-/**
- * @brief Returns querystring as string from a mapped array.
- *
- * @param array  $params mapped array with query parameters
- * @param string $name   of parameter, default null
- *
- * @return string
- */
-function build_querystring($params, $name = null)
-{
-	$ret = "";
-	foreach ($params as $key => $val) {
-		if (is_array($val)) {
-			/// @TODO maybe not compare against null, use is_null()
-			if ($name == null) {
-				$ret .= build_querystring($val, $key);
-			} else {
-				$ret .= build_querystring($val, $name . "[$key]");
-			}
-		} else {
-			$val = urlencode($val);
-			/// @TODO maybe not compare against null, use is_null()
-			if ($name != null) {
-				/// @TODO two string concated, can be merged to one
-				$ret .= $name . "[$key]" . "=$val&";
-			} else {
-				$ret .= "$key=$val&";
-			}
-		}
-	}
-	return $ret;
+	return local_user() && $admin_email && in_array($a->user['email'] ?? '', $adminlist);
 }
 
 function explode_querystring($query)

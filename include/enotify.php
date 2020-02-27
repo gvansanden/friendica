@@ -11,8 +11,10 @@ use Friendica\Core\Logger;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Model\User;
+use Friendica\Protocol\Activity;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Emailer;
 use Friendica\Util\Strings;
@@ -46,10 +48,10 @@ function notification($params)
 		return false;
 	}
 
-	$params['notify_flags'] = defaults($params, 'notify_flags', $user['notify-flags']);
-	$params['language']     = defaults($params, 'language'    , $user['language']);
-	$params['to_name']      = defaults($params, 'to_name'     , $user['username']);
-	$params['to_email']     = defaults($params, 'to_email'    , $user['email']);
+	$params['notify_flags'] = ($params['notify_flags'] ?? '') ?: $user['notify-flags'];
+	$params['language']     = ($params['language']     ?? '') ?: $user['language'];
+	$params['to_name']      = ($params['to_name']      ?? '') ?: $user['username'];
+	$params['to_email']     = ($params['to_email']     ?? '') ?: $user['email'];
 
 	// from here on everything is in the recipients language
 	L10n::pushLang($params['language']);
@@ -142,7 +144,7 @@ function notification($params)
 	}
 
 	if ($params['type'] == NOTIFY_COMMENT || $params['type'] == NOTIFY_TAGSELF) {
-		$thread = Item::selectFirstThreadForUser($params['uid'], ['ignored'], ['iid' => $parent_id]);
+		$thread = Item::selectFirstThreadForUser($params['uid'], ['ignored'], ['iid' => $parent_id, 'deleted' => false]);
 		if (DBA::isResult($thread) && $thread['ignored']) {
 			Logger::log('Thread ' . $parent_id . ' will be ignored', Logger::DEBUG);
 			L10n::popLang();
@@ -161,7 +163,7 @@ function notification($params)
 		// if it's a post figure out who's post it is.
 		$item = null;
 		if ($params['otype'] === 'item' && $parent_id) {
-			$item = Item::selectFirstForUser($params['uid'], Item::ITEM_FIELDLIST, ['id' => $parent_id]);
+			$item = Item::selectFirstForUser($params['uid'], Item::ITEM_FIELDLIST, ['id' => $parent_id, 'deleted' => false]);
 		}
 
 		$item_post_type = Item::postType($item);
@@ -338,7 +340,7 @@ function notification($params)
 		$hsitelink = sprintf($sitelink, '<a href="'.$siteurl.'">'.$sitename.'</a>');
 
 		switch ($params['verb']) {
-			case ACTIVITY_FRIEND:
+			case Activity::FRIEND:
 				// someone started to share with user (mostly OStatus)
 				$subject = L10n::t('[Friendica:Notify] A new person is sharing with you');
 
@@ -348,7 +350,7 @@ function notification($params)
 					$sitename
 				);
 				break;
-			case ACTIVITY_FOLLOW:
+			case Activity::FOLLOW:
 				// someone started to follow the user (mostly OStatus)
 				$subject = L10n::t('[Friendica:Notify] You have a new follower');
 
@@ -385,7 +387,7 @@ function notification($params)
 	}
 
 	if ($params['type'] == NOTIFY_CONFIRM) {
-		if ($params['verb'] == ACTIVITY_FRIEND) { // mutual connection
+		if ($params['verb'] == Activity::FRIEND) { // mutual connection
 			$itemlink =  $params['link'];
 			$subject = L10n::t('[Friendica:Notify] Connection accepted');
 
@@ -456,17 +458,17 @@ function notification($params)
 		if (!isset($params['subject'])) {
 			Logger::warning('subject isn\'t set.', ['type' => $params['type']]);
 		}
-		$subject = defaults($params, 'subject', '');
+		$subject = $params['subject'] ?? '';
 
 		if (!isset($params['preamble'])) {
 			Logger::warning('preamble isn\'t set.', ['type' => $params['type'], 'subject' => $subject]);
 		}
-		$preamble = defaults($params, 'preamble', '');
+		$preamble = $params['preamble'] ?? '';
 
 		if (!isset($params['body'])) {
 			Logger::warning('body isn\'t set.', ['type' => $params['type'], 'subject' => $subject, 'preamble' => $preamble]);
 		}
-		$body = defaults($params, 'body', '');
+		$body = $params['body'] ?? '';
 
 		$show_in_notification_page = false;
 	}
@@ -502,17 +504,9 @@ function notification($params)
 
 	if ($show_in_notification_page) {
 		Logger::log("adding notification entry", Logger::DEBUG);
-		do {
-			$dups = false;
-			$hash = Strings::getRandomHex();
-			if (DBA::exists('notify', ['hash' => $hash])) {
-				$dups = true;
-			}
-		} while ($dups == true);
 
 		/// @TODO One statement is enough
 		$datarray = [];
-		$datarray['hash']  = $hash;
 		$datarray['name']  = $params['source_name'];
 		$datarray['name_cache'] = strip_tags(BBCode::convert($params['source_name']));
 		$datarray['url']   = $params['source_link'];
@@ -535,7 +529,7 @@ function notification($params)
 		}
 
 		// create notification entry in DB
-		$fields = ['hash' => $datarray['hash'], 'name' => $datarray['name'], 'url' => $datarray['url'],
+		$fields = ['name' => $datarray['name'], 'url' => $datarray['url'],
 			'photo' => $datarray['photo'], 'date' => $datarray['date'], 'uid' => $datarray['uid'],
 			'link' => $datarray['link'], 'iid' => $datarray['iid'], 'parent' => $datarray['parent'],
 			'type' => $datarray['type'], 'verb' => $datarray['verb'], 'otype' => $datarray['otype'],
@@ -543,26 +537,6 @@ function notification($params)
 		DBA::insert('notify', $fields);
 
 		$notify_id = DBA::lastInsertId();
-
-		// we seem to have a lot of duplicate comment notifications due to race conditions, mostly from forums
-		// After we've stored everything, look again to see if there are any duplicates and if so remove them
-		$p = q("SELECT `id` FROM `notify` WHERE `type` IN (%d, %d) AND `link` = '%s' AND `uid` = %d ORDER BY `id`",
-			intval(NOTIFY_TAGSELF),
-			intval(NOTIFY_COMMENT),
-			DBA::escape($params['link']),
-			intval($params['uid'])
-		);
-		if ($p && (count($p) > 1)) {
-			for ($d = 1; $d < count($p); $d ++) {
-				DBA::delete('notify', ['id' => $p[$d]['id']]);
-			}
-
-			// only continue on if we stored the first one
-			if ($notify_id != $p[0]['id']) {
-				L10n::popLang();
-				return false;
-			}
-		}
 
 		$itemlink = System::baseUrl().'/notify/view/'.$notify_id;
 		$msg = Renderer::replaceMacros($epreamble, ['$itemlink' => $itemlink]);
@@ -613,11 +587,11 @@ function notification($params)
 		$datarray['siteurl'] = $siteurl;
 		$datarray['type'] = $params['type'];
 		$datarray['parent'] = $parent_id;
-		$datarray['source_name'] = defaults($params, 'source_name', '');
-		$datarray['source_link'] = defaults($params, 'source_link', '');
-		$datarray['source_photo'] = defaults($params, 'source_photo', '');
+		$datarray['source_name'] = $params['source_name'] ?? '';
+		$datarray['source_link'] = $params['source_link'] ?? '';
+		$datarray['source_photo'] = $params['source_photo'] ?? '';
 		$datarray['uid'] = $params['uid'];
-		$datarray['username'] = defaults($params, 'to_name', '');
+		$datarray['username'] = $params['to_name'] ?? '';
 		$datarray['hsitelink'] = $hsitelink;
 		$datarray['tsitelink'] = $tsitelink;
 		$datarray['hitemlink'] = '<a href="'.$itemlink.'">'.$itemlink.'</a>';
@@ -783,7 +757,7 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 	$fields = ['id', 'mention', 'tag', 'parent', 'title', 'body',
 		'author-link', 'author-name', 'author-avatar', 'author-id',
 		'guid', 'parent-uri', 'uri', 'contact-id', 'network'];
-	$condition = ['id' => $itemid, 'gravity' => [GRAVITY_PARENT, GRAVITY_COMMENT]];
+	$condition = ['id' => $itemid, 'gravity' => [GRAVITY_PARENT, GRAVITY_COMMENT], 'deleted' => false];
 	$item = Item::selectFirstForUser($uid, $fields, $condition);
 	if (!DBA::isResult($item) || in_array($item['author-id'], $contacts)) {
 		return false;
@@ -802,17 +776,18 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 
 	if ($item["parent-uri"] === $item["uri"]) {
 		// Send a notification for every new post?
+		// Either the contact had posted something directly
 		$send_notification = DBA::exists('contact', ['id' => $item['contact-id'], 'notify_new_posts' => true]);
 
+		// Or the contact is a mentioned forum
 		if (!$send_notification) {
 			$tags = q("SELECT `url` FROM `term` WHERE `otype` = %d AND `oid` = %d AND `type` = %d AND `uid` = %d",
 				intval(TERM_OBJ_POST), intval($itemid), intval(TERM_MENTION), intval($uid));
 
 			if (DBA::isResult($tags)) {
 				foreach ($tags AS $tag) {
-					$condition = ['nurl' => Strings::normaliseLink($tag["url"]), 'uid' => $uid, 'notify_new_posts' => true];
-					$r = DBA::exists('contact', $condition);
-					if ($r) {
+					$condition = ['nurl' => Strings::normaliseLink($tag["url"]), 'uid' => $uid, 'notify_new_posts' => true, 'contact-type' => Contact::TYPE_COMMUNITY];
+					if (DBA::exists('contact', $condition)) {
 						$send_notification = true;
 					}
 				}
@@ -821,7 +796,7 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 
 		if ($send_notification) {
 			$params["type"] = NOTIFY_SHARE;
-			$params["verb"] = ACTIVITY_TAG;
+			$params["verb"] = Activity::TAG;
 		}
 	}
 
@@ -835,24 +810,24 @@ function check_item_notification($itemid, $uid, $defaulttype = "") {
 
 	if ($item["mention"] || $tagged || ($defaulttype == NOTIFY_TAGSELF)) {
 		$params["type"] = NOTIFY_TAGSELF;
-		$params["verb"] = ACTIVITY_TAG;
+		$params["verb"] = Activity::TAG;
 	}
 
 	// Is it a post that the user had started?
 	$fields = ['ignored', 'mention'];
-	$thread = Item::selectFirstThreadForUser($params['uid'], $fields, ['iid' => $item["parent"]]);
+	$thread = Item::selectFirstThreadForUser($params['uid'], $fields, ['iid' => $item["parent"], 'deleted' => false]);
 
 	if ($thread['mention'] && !$thread['ignored'] && !isset($params["type"])) {
 		$params["type"] = NOTIFY_COMMENT;
-		$params["verb"] = ACTIVITY_POST;
+		$params["verb"] = Activity::POST;
 	}
 
 	// And now we check for participation of one of our contacts in the thread
-	$condition = ['parent' => $item["parent"], 'author-id' => $contacts];
+	$condition = ['parent' => $item["parent"], 'author-id' => $contacts, 'deleted' => false];
 
 	if (!$thread['ignored'] && !isset($params["type"]) && Item::exists($condition)) {
 		$params["type"] = NOTIFY_COMMENT;
-		$params["verb"] = ACTIVITY_POST;
+		$params["verb"] = Activity::POST;
 	}
 
 	if (isset($params["type"])) {

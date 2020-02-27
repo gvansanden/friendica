@@ -1,8 +1,10 @@
 <?php
+
 /**
  * @file src/Model/User.php
  * @brief This file includes the User class with user related database functions
  */
+
 namespace Friendica\Model;
 
 use DivineOmega\PasswordExposed;
@@ -16,11 +18,14 @@ use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\Model\TwoFactor\AppSpecificPassword;
 use Friendica\Object\Image;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Images;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
+use Friendica\Worker\Delivery;
 use LightOpenID;
 
 /**
@@ -91,12 +96,45 @@ class User
 
 	/**
 	 * @param  integer       $uid
+	 * @param array          $fields
 	 * @return array|boolean User record if it exists, false otherwise
 	 * @throws Exception
 	 */
-	public static function getById($uid)
+	public static function getById($uid, array $fields = [])
 	{
-		return DBA::selectFirst('user', [], ['uid' => $uid]);
+		return DBA::selectFirst('user', $fields, ['uid' => $uid]);
+	}
+
+	/**
+	 * Returns a user record based on it's GUID
+	 *
+	 * @param string $guid   The guid of the user
+	 * @param array  $fields The fields to retrieve
+	 * @param bool   $active True, if only active records are searched
+	 *
+	 * @return array|boolean User record if it exists, false otherwise
+	 * @throws Exception
+	 */
+	public static function getByGuid(string $guid, array $fields = [], bool $active = true)
+	{
+		if ($active) {
+			$cond = ['guid' => $guid, 'account_expired' => false, 'account_removed' => false];
+		} else {
+			$cond = ['guid' => $guid];
+		}
+
+		return DBA::selectFirst('user', $fields, $cond);
+	}
+
+	/**
+	 * @param  string        $nickname
+	 * @param array          $fields
+	 * @return array|boolean User record if it exists, false otherwise
+	 * @throws Exception
+	 */
+	public static function getByNickname($nickname, array $fields = [])
+	{
+		return DBA::selectFirst('user', $fields, ['nickname' => $nickname]);
 	}
 
 	/**
@@ -118,14 +156,32 @@ class User
 	}
 
 	/**
+	 * Get a user based on its email
+	 *
+	 * @param string        $email
+	 * @param array          $fields
+	 *
+	 * @return array|boolean User record if it exists, false otherwise
+	 *
+	 * @throws Exception
+	 */
+	public static function getByEmail($email, array $fields = [])
+	{
+		return DBA::selectFirst('user', $fields, ['email' => $email]);
+	}
+
+	/**
 	 * @brief Get owner data by user id
 	 *
 	 * @param int $uid
+	 * @param boolean $check_valid Test if data is invalid and correct it
 	 * @return boolean|array
 	 * @throws Exception
 	 */
-	public static function getOwnerDataById($uid) {
-		$r = DBA::fetchFirst("SELECT
+	public static function getOwnerDataById($uid, $check_valid = true)
+	{
+		$r = DBA::fetchFirst(
+			"SELECT
 			`contact`.*,
 			`user`.`prvkey` AS `uprvkey`,
 			`user`.`timezone`,
@@ -135,7 +191,8 @@ class User
 			`user`.`page-flags`,
 			`user`.`account-type`,
 			`user`.`prvnets`,
-			`user`.`account_removed`
+			`user`.`account_removed`,
+			`user`.`hidewall`
 			FROM `contact`
 			INNER JOIN `user`
 				ON `user`.`uid` = `contact`.`uid`
@@ -152,12 +209,34 @@ class User
 			return false;
 		}
 
-		// Check if the returned data is valid, otherwise fix it. See issue #6122
-		$url = System::baseUrl() . '/profile/' . $r['nickname'];
-		$addr = $r['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+		if (!$check_valid) {
+			return $r;
+		}
 
-		if (($addr != $r['addr']) || ($r['url'] != $url) || ($r['nurl'] != Strings::normaliseLink($r['url']))) {
+		// Check if the returned data is valid, otherwise fix it. See issue #6122
+
+		// Check for correct url and normalised nurl
+		$url = System::baseUrl() . '/profile/' . $r['nickname'];
+		$repair = ($r['url'] != $url) || ($r['nurl'] != Strings::normaliseLink($r['url']));
+
+		if (!$repair) {
+			// Check if "addr" is present and correct
+			$addr = $r['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+			$repair = ($addr != $r['addr']);
+		}
+
+		if (!$repair) {
+			// Check if the avatar field is filled and the photo directs to the correct path
+			$avatar = Photo::selectFirst(['resource-id'], ['uid' => $uid, 'profile' => true]);
+			if (DBA::isResult($avatar)) {
+				$repair = empty($r['avatar']) || !strpos($r['photo'], $avatar['resource-id']);
+			}
+		}
+
+		if ($repair) {
 			Contact::updateSelfFromUserID($uid);
+			// Return the corrected data and avoid a loop
+			$r = self::getOwnerDataById($uid, false);
 		}
 
 		return $r;
@@ -215,17 +294,18 @@ class User
 	/**
 	 * Authenticate a user with a clear text password
 	 *
-	 * @brief Authenticate a user with a clear text password
-	 * @param mixed $user_info
+	 * @brief      Authenticate a user with a clear text password
+	 * @param mixed  $user_info
 	 * @param string $password
+	 * @param bool   $third_party
 	 * @return int|boolean
 	 * @deprecated since version 3.6
-	 * @see User::getIdFromPasswordAuthentication()
+	 * @see        User::getIdFromPasswordAuthentication()
 	 */
-	public static function authenticate($user_info, $password)
+	public static function authenticate($user_info, $password, $third_party = false)
 	{
 		try {
-			return self::getIdFromPasswordAuthentication($user_info, $password);
+			return self::getIdFromPasswordAuthentication($user_info, $password, $third_party);
 		} catch (Exception $ex) {
 			return false;
 		}
@@ -235,16 +315,22 @@ class User
 	 * Returns the user id associated with a successful password authentication
 	 *
 	 * @brief Authenticate a user with a clear text password
-	 * @param mixed $user_info
+	 * @param mixed  $user_info
 	 * @param string $password
+	 * @param bool   $third_party
 	 * @return int User Id if authentication is successful
 	 * @throws Exception
 	 */
-	public static function getIdFromPasswordAuthentication($user_info, $password)
+	public static function getIdFromPasswordAuthentication($user_info, $password, $third_party = false)
 	{
 		$user = self::getAuthenticationInfo($user_info);
 
-		if (strpos($user['password'], '$') === false) {
+		if ($third_party && PConfig::get($user['uid'], '2fa', 'verified')) {
+			// Third-party apps can't verify two-factor authentication, we use app-specific passwords instead
+			if (AppSpecificPassword::authenticateUser($user['uid'], $password)) {
+				return $user['uid'];
+			}
+		} elseif (strpos($user['password'], '$') === false) {
 			//Legacy hash that has not been replaced by a new hash yet
 			if (self::hashPasswordLegacy($password) === $user['password']) {
 				self::updatePasswordHashed($user['uid'], self::hashPassword($password));
@@ -295,7 +381,8 @@ class User
 				$user = $user_info;
 			}
 
-			if (!isset($user['uid'])
+			if (
+				!isset($user['uid'])
 				|| !isset($user['password'])
 				|| !isset($user['legacy_password'])
 			) {
@@ -303,7 +390,9 @@ class User
 			}
 		} elseif (is_int($user_info) || is_string($user_info)) {
 			if (is_int($user_info)) {
-				$user = DBA::selectFirst('user', ['uid', 'password', 'legacy_password'],
+				$user = DBA::selectFirst(
+					'user',
+					['uid', 'password', 'legacy_password'],
 					[
 						'uid' => $user_info,
 						'blocked' => 0,
@@ -314,9 +403,11 @@ class User
 				);
 			} else {
 				$fields = ['uid', 'password', 'legacy_password'];
-				$condition = ["(`email` = ? OR `username` = ? OR `nickname` = ?)
+				$condition = [
+					"(`email` = ? OR `username` = ? OR `nickname` = ?)
 					AND NOT `blocked` AND NOT `account_expired` AND NOT `account_removed` AND `verified`",
-					$user_info, $user_info, $user_info];
+					$user_info, $user_info, $user_info
+				];
 				$user = DBA::selectFirst('user', $fields, $condition);
 			}
 
@@ -335,7 +426,7 @@ class User
 	 */
 	public static function generateNewPassword()
 	{
-		return ucfirst(Strings::getRandomName(8)) . mt_rand(1000, 9999);
+		return ucfirst(Strings::getRandomName(8)) . random_int(1000, 9999);
 	}
 
 	/**
@@ -343,6 +434,7 @@ class User
 	 *
 	 * @param string $password
 	 * @return bool
+	 * @throws Exception
 	 */
 	public static function isPasswordExposed($password)
 	{
@@ -351,9 +443,20 @@ class User
 			'cacheDirectory' => get_temppath() . '/password-exposed-cache/',
 		]);
 
-		$PasswordExposedCHecker = new PasswordExposed\PasswordExposedChecker(null, $cache);
+		try {
+			$passwordExposedChecker = new PasswordExposed\PasswordExposedChecker(null, $cache);
 
-		return $PasswordExposedCHecker->passwordExposed($password) === PasswordExposed\PasswordStatus::EXPOSED;
+			return $passwordExposedChecker->passwordExposed($password) === PasswordExposed\PasswordStatus::EXPOSED;
+		} catch (\Exception $e) {
+			Logger::error('Password Exposed Exception: ' . $e->getMessage(), [
+				'code' => $e->getCode(),
+				'file' => $e->getFile(),
+				'line' => $e->getLine(),
+				'trace' => $e->getTraceAsString()
+			]);
+
+			return false;
+		}
 	}
 
 	/**
@@ -521,6 +624,7 @@ class User
 			}
 		}
 
+		/// @todo Check if this part is really needed. We should have fetched all this data in advance
 		if (empty($username) || empty($email) || empty($nickname)) {
 			if ($openid_url) {
 				if (!Network::isUrlValid($openid_url)) {
@@ -611,7 +715,8 @@ class User
 		}
 
 		// Check existing and deleted accounts for this nickname.
-		if (DBA::exists('user', ['nickname' => $nickname])
+		if (
+			DBA::exists('user', ['nickname' => $nickname])
 			|| DBA::exists('userd', ['username' => $nickname])
 		) {
 			throw new Exception(L10n::t('Nickname is already registered. Please choose another.'));
@@ -725,15 +830,15 @@ class User
 			$filename = basename($photo);
 			$img_str = Network::fetchUrl($photo, true);
 			// guess mimetype from headers or filename
-			$type = Image::guessType($photo, true);
+			$type = Images::guessType($photo, true);
 
 			$Image = new Image($img_str, $type);
 			if ($Image->isValid()) {
 				$Image->scaleToSquare(300);
 
-				$hash = Photo::newResource();
+				$resource_id = Photo::newResource();
 
-				$r = Photo::store($Image, $uid, 0, $hash, $filename, L10n::t('Profile Photos'), 4);
+				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, L10n::t('Profile Photos'), 4);
 
 				if ($r === false) {
 					$photo_failure = true;
@@ -741,7 +846,7 @@ class User
 
 				$Image->scaleDown(80);
 
-				$r = Photo::store($Image, $uid, 0, $hash, $filename, L10n::t('Profile Photos'), 5);
+				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, L10n::t('Profile Photos'), 5);
 
 				if ($r === false) {
 					$photo_failure = true;
@@ -749,14 +854,14 @@ class User
 
 				$Image->scaleDown(48);
 
-				$r = Photo::store($Image, $uid, 0, $hash, $filename, L10n::t('Profile Photos'), 6);
+				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, L10n::t('Profile Photos'), 6);
 
 				if ($r === false) {
 					$photo_failure = true;
 				}
 
 				if (!$photo_failure) {
-					Photo::update(['profile' => 1], ['resource-id' => $hash]);
+					Photo::update(['profile' => 1], ['resource-id' => $resource_id]);
 				}
 			}
 		}
@@ -779,7 +884,8 @@ class User
 	 */
 	public static function sendRegisterPendingEmail($user, $sitename, $siteurl, $password)
 	{
-		$body = Strings::deindent(L10n::t('
+		$body = Strings::deindent(L10n::t(
+			'
 			Dear %1$s,
 				Thank you for registering at %2$s. Your account is pending for approval by the administrator.
 
@@ -789,7 +895,11 @@ class User
 			Login Name:		%4$s
 			Password:		%5$s
 		',
-			$user['username'], $sitename, $siteurl, $user['nickname'], $password
+			$user['username'],
+			$sitename,
+			$siteurl,
+			$user['nickname'],
+			$password
 		));
 
 		return notification([
@@ -815,13 +925,16 @@ class User
 	 */
 	public static function sendRegisterOpenEmail($user, $sitename, $siteurl, $password)
 	{
-		$preamble = Strings::deindent(L10n::t('
-			Dear %1$s,
+		$preamble = Strings::deindent(L10n::t(
+			'
+				Dear %1$s,
 				Thank you for registering at %2$s. Your account has been created.
-		',
-			$user['username'], $sitename
+			',
+			$user['username'],
+			$sitename
 		));
-		$body = Strings::deindent(L10n::t('
+		$body = Strings::deindent(L10n::t(
+			'
 			The login details are as follows:
 
 			Site Location:	%3$s
@@ -848,7 +961,11 @@ class User
 			If you ever want to delete your account, you can do so at %3$s/removeme
 
 			Thank you and welcome to %2$s.',
-			$user['nickname'], $sitename, $siteurl, $user['username'], $password
+			$user['nickname'],
+			$sitename,
+			$siteurl,
+			$user['username'],
+			$password
 		));
 
 		return notification([
@@ -885,7 +1002,7 @@ class User
 
 		// The user and related data will be deleted in "cron_expire_and_remove_users" (cronjobs.php)
 		DBA::update('user', ['account_removed' => true, 'account_expires_on' => DateTimeFormat::utc('now + 7 day')], ['uid' => $uid]);
-		Worker::add(PRIORITY_HIGH, 'Notifier', 'removeme', $uid);
+		Worker::add(PRIORITY_HIGH, 'Notifier', Delivery::REMOVAL, $uid);
 
 		// Send an update to the directory
 		$self = DBA::selectFirst('contact', ['url'], ['uid' => $uid, 'self' => true]);
@@ -929,33 +1046,45 @@ class User
 
 		if ($user['parent-uid'] == 0) {
 			// First add our own entry
-			$identities = [['uid' => $user['uid'],
+			$identities = [[
+				'uid' => $user['uid'],
 				'username' => $user['username'],
-				'nickname' => $user['nickname']]];
+				'nickname' => $user['nickname']
+			]];
 
 			// Then add all the children
-			$r = DBA::select('user', ['uid', 'username', 'nickname'],
-				['parent-uid' => $user['uid'], 'account_removed' => false]);
+			$r = DBA::select(
+				'user',
+				['uid', 'username', 'nickname'],
+				['parent-uid' => $user['uid'], 'account_removed' => false]
+			);
 			if (DBA::isResult($r)) {
 				$identities = array_merge($identities, DBA::toArray($r));
 			}
 		} else {
 			// First entry is our parent
-			$r = DBA::select('user', ['uid', 'username', 'nickname'],
-				['uid' => $user['parent-uid'], 'account_removed' => false]);
+			$r = DBA::select(
+				'user',
+				['uid', 'username', 'nickname'],
+				['uid' => $user['parent-uid'], 'account_removed' => false]
+			);
 			if (DBA::isResult($r)) {
 				$identities = DBA::toArray($r);
 			}
 
 			// Then add all siblings
-			$r = DBA::select('user', ['uid', 'username', 'nickname'],
-				['parent-uid' => $user['parent-uid'], 'account_removed' => false]);
+			$r = DBA::select(
+				'user',
+				['uid', 'username', 'nickname'],
+				['parent-uid' => $user['parent-uid'], 'account_removed' => false]
+			);
 			if (DBA::isResult($r)) {
 				$identities = array_merge($identities, DBA::toArray($r));
 			}
 		}
 
-		$r = DBA::p("SELECT `user`.`uid`, `user`.`username`, `user`.`nickname`
+		$r = DBA::p(
+			"SELECT `user`.`uid`, `user`.`username`, `user`.`nickname`
 			FROM `manage`
 			INNER JOIN `user` ON `manage`.`mid` = `user`.`uid`
 			WHERE `user`.`account_removed` = 0 AND `manage`.`uid` = ?",
@@ -966,5 +1095,52 @@ class User
 		}
 
 		return $identities;
+	}
+
+	/**
+	 * Returns statistical information about the current users of this node
+	 *
+	 * @return array
+	 *
+	 * @throws Exception
+	 */
+	public static function getStatistics()
+	{
+		$statistics = [
+			'total_users'           => 0,
+			'active_users_halfyear' => 0,
+			'active_users_monthly'  => 0,
+		];
+
+		$userStmt = DBA::p("SELECT `user`.`uid`, `user`.`login_date`, `contact`.`last-item`
+			FROM `user`
+			INNER JOIN `profile` ON `profile`.`uid` = `user`.`uid` AND `profile`.`is-default`
+			INNER JOIN `contact` ON `contact`.`uid` = `user`.`uid` AND `contact`.`self`
+			WHERE (`profile`.`publish` OR `profile`.`net-publish`) AND `user`.`verified`
+				AND NOT `user`.`blocked` AND NOT `user`.`account_removed`
+				AND NOT `user`.`account_expired`");
+
+		if (!DBA::isResult($userStmt)) {
+			return $statistics;
+		}
+
+		$halfyear = time() - (180 * 24 * 60 * 60);
+		$month = time() - (30 * 24 * 60 * 60);
+
+		while ($user = DBA::fetch($userStmt)) {
+			$statistics['total_users']++;
+
+			if ((strtotime($user['login_date']) > $halfyear) || (strtotime($user['last-item']) > $halfyear)
+			) {
+				$statistics['active_users_halfyear']++;
+			}
+
+			if ((strtotime($user['login_date']) > $month) || (strtotime($user['last-item']) > $month)
+			) {
+				$statistics['active_users_monthly']++;
+			}
+		}
+
+		return $statistics;
 	}
 }

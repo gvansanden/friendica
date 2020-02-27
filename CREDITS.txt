@@ -25,7 +25,9 @@ Andy
 Andy Hee
 Angristan
 Anthronaut
+Antron Samurai
 Arian - Cazare Muncitori
+Asher Pen
 Athalbert
 aweiher
 axelt
@@ -37,10 +39,13 @@ Beluga
 Ben
 Ben Roberts
 ben-utzer
+BinkaDroid
+Bjoessi
 bufalo1973
 Calango Jr
 Carlos Solís
 Carsten Pfeiffer
+Casper
 Cat Gray
 Chris Case
 Christian González
@@ -60,6 +65,7 @@ David Martín Miranda
 David Rabel
 Dean Townsley
 Denis Chenu
+dependabot[bot]
 Devlon Duthie
 Diego Souza
 Domovoy
@@ -90,11 +96,13 @@ Gert Cauwenberg
 GLComo
 greeneyedred
 Gregory Smith
+guzzisti
 Haakon Meland Eriksen
 Hans Meine
 Hauke
 Hauke Altmann
 Herbert Thielen
+hlad
 hoergen
 Hubert Kościański
 Hypolite Petovan
@@ -107,6 +115,8 @@ Jens Tautenhahn
 jensp
 Jeroen De Meerleer
 jeroenpraat
+Joan Bar
+JOduMonT
 Johannes Schwab
 John Brazil
 Jonatan Nyberg
@@ -114,11 +124,13 @@ Jonny Tischbein
 Josef Moravek
 juanman
 julia.domagalska
+Julio Cova
 Karel
 Karolina
 Keith Fernie
 Klaus Weidenbach
 Koyu Berteon
+kPherox
 Kris
 Lea1995polish
 Leberwurscht
@@ -153,19 +165,23 @@ Michalina
 Mike Macgirvin
 miqrogroove
 mytbk
+nathilia-peirce
 Nicola Spanti
 Olaf Conradi
 Oliver
 Olivier
 Olivier Mehani
 Olivier Migeot
+ozero dien
 Paolo Wave
 Pascal
 Pascal Deklerck
 Pavel Morozov
 PerigGouanvic
+peter
 Peter Liebetrau
 peturisfeld
+Phigger Phigger
 Philipp
 Philipp Holzer
 Pierre Rudloff
@@ -175,17 +191,21 @@ R C
 Rabuzarus
 Radek
 Rafael Garau
+Rain Hawk
 Rainulf Pineda
 Ralf Thees
 Ralph
 Ratten
 rcmaniac
 rebeka-catalina
+René Wagner
 repat
 Ricardo Pereira
+Rik 4
 RJ Madsen
 Roland Häder
 Rui Andrada
+rwa
 RyDroid
 S.Krumbholz
 Sakałoŭ Alaksiej
@@ -207,6 +227,7 @@ Steffen K9
 StefOfficiel
 Sveinn í Felli
 Sven Anders
+Sylke Vicious
 Sylvain Lagacé
 szymon.filip
 Sérgio Lima
@@ -218,6 +239,7 @@ Thomas
 Thomas Willingham
 thorsten23
 Tim Stahel
+TiMESPLiNTER
 Tino
 Tobias Diekershoff
 Tobias Hößl
@@ -225,6 +247,7 @@ tomacat
 tomamplius
 tomtom84
 Tony Baldwin
+Torbjörn Andersson
 TORminator
 trebor
 tschlotfeldt
@@ -234,6 +257,8 @@ U-SOUND\mike
 ufic
 Ulf Rompe
 Unknown
+Valvin
+Valvin A
 Vasudev Kamath
 Vasya Novikov
 Vinzenz Vietzke

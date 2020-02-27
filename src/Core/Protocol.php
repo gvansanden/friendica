@@ -23,12 +23,17 @@ class Protocol
 
 	const NATIVE_SUPPORT = [self::DFRN, self::DIASPORA, self::OSTATUS, self::FEED, self::MAIL, self::ACTIVITYPUB];
 
+	const FEDERATED = [self::DFRN, self::DIASPORA, self::OSTATUS, self::ACTIVITYPUB];
+
+	const SUPPORT_PRIVATE = [self::DFRN, self::DIASPORA, self::MAIL, self::ACTIVITYPUB, self::PUMPIO];
+
 	// Supported through a connector
 	const DIASPORA2 = 'dspc';    // Diaspora connector
 	const LINKEDIN  = 'lnkd';    // LinkedIn
 	const PUMPIO    = 'pump';    // pump.io
 	const STATUSNET = 'stac';    // Statusnet connector
 	const TWITTER   = 'twit';    // Twitter
+	const DISCOURSE = 'dscs';    // Discourse
 
 	// Dead protocols
 	const APPNET    = 'apdn';    // app.net - Dead protocol

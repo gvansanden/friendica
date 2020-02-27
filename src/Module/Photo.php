@@ -6,6 +6,7 @@
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
+use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Model\Photo as MPhoto;
@@ -22,11 +23,12 @@ class Photo extends BaseModule
 	 * Fetch a photo or an avatar, in optional size, check for permissions and
 	 * return the image
 	 */
-	public static function init()
+	public static function init(array $parameters = [])
 	{
 		$a = self::getApp();
+		// @TODO: Replace with parameter from router
 		if ($a->argc <= 1 || $a->argc > 4) {
-			System::httpExit(400, "Bad Request");
+			throw new \Friendica\Network\HTTPException\BadRequestException();
 		}
 
 		if (isset($_SERVER["HTTP_IF_MODIFIED_SINCE"])) {
@@ -47,18 +49,19 @@ class Photo extends BaseModule
 
 		$customsize = 0;
 		$photo = false;
+		// @TODO: Replace with parameter from router
 		switch($a->argc) {
 			case 4:
 				$customsize = intval($a->argv[2]);
-				$uid = self::stripExtension($a->argv[3]);
+				$uid = MPhoto::stripExtension($a->argv[3]);
 				$photo = self::getAvatar($uid, $a->argv[1]);
 				break;
 			case 3:
-				$uid = self::stripExtension($a->argv[2]);
+				$uid = MPhoto::stripExtension($a->argv[2]);
 				$photo = self::getAvatar($uid, $a->argv[1]);
 				break;
 			case 2:
-				$photoid = self::stripExtension($a->argv[1]);
+				$photoid = MPhoto::stripExtension($a->argv[1]);
 				$scale = 0;
 				if (substr($photoid, -2, 1) == "-") {
 					$scale = intval(substr($photoid, -1, 1));
@@ -72,9 +75,7 @@ class Photo extends BaseModule
 		}
 
 		if ($photo === false) {
-			// not using System::httpExit() because we don't want html here.
-			header($_SERVER["SERVER_PROTOCOL"] . " 404 Not Found" , true, 404);
-			exit();
+			System::httpExit('404', 'Not Found');
 		}
 
 		$cacheable = ($photo["allow_cid"] . $photo["allow_gid"] . $photo["deny_cid"] . $photo["deny_gid"] === "") && (isset($photo["cacheable"]) ? $photo["cacheable"] : true);
@@ -83,7 +84,7 @@ class Photo extends BaseModule
 
 		if (is_null($img) || !$img->isValid()) {
 			Logger::log("Invalid photo with id {$photo["id"]}.");
-			System::httpExit(500, ["description" => "Invalid photo with id {$photo["id"]}."]);
+			throw new \Friendica\Network\HTTPException\InternalServerErrorException(L10n::t('Invalid photo with id %s.', $photo["id"]));
 		}
 
 		// if customsize is set and image is not a gif, resize it
@@ -114,15 +115,6 @@ class Photo extends BaseModule
 		echo $img->asString();
 
 		exit();
-	}
-
-	private static function stripExtension($name)
-	{
-		$name = str_replace([".jpg", ".png", ".gif"], ["", "", ""], $name);
-		foreach (Image::supportedTypes() as $m => $e) {
-			$name = str_replace("." . $e, "", $name);
-		}
-		return $name;
 	}
 
 	private static function getAvatar($uid, $type="avatar")

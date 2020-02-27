@@ -8,10 +8,10 @@ use Friendica\Content\Feature;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
+use Friendica\Database\DBA;
+use Friendica\Model\Contact;
 use Friendica\Model\FileTag;
 use Friendica\Model\Item;
-use Friendica\Database\DBA;
 use Friendica\Util\Crypto;
 
 function editpost_content(App $a)
@@ -48,7 +48,6 @@ function editpost_content(App $a)
 
 	$tpl = Renderer::getMarkupTemplate('jot-header.tpl');
 	$a->page['htmlhead'] .= Renderer::replaceMacros($tpl, [
-		'$baseurl' => System::baseUrl(),
 		'$ispublic' => '&nbsp;', // L10n::t('Visible to <strong>everybody</strong>'),
 		'$geotag' => $geotag,
 		'$nickname' => $a->user['nickname']
@@ -91,7 +90,6 @@ function editpost_content(App $a)
 		'$posttype' => $item['post-type'],
 		'$content' => undo_post_tagging($item['body']),
 		'$post_id' => $post_id,
-		'$baseurl' => System::baseUrl(),
 		'$defloc' => $a->user['default-location'],
 		'$visitor' => 'none',
 		'$pvisit' => 'none',
@@ -120,4 +118,19 @@ function editpost_content(App $a)
 	]);
 
 	return $o;
+}
+
+function undo_post_tagging($s) {
+	$matches = null;
+	$cnt = preg_match_all('/([!#@])\[url=(.*?)\](.*?)\[\/url\]/ism', $s, $matches, PREG_SET_ORDER);
+	if ($cnt) {
+		foreach ($matches as $mtch) {
+			if (in_array($mtch[1], ['!', '@'])) {
+				$contact = Contact::getDetailsByURL($mtch[2]);
+				$mtch[3] = empty($contact['addr']) ? $mtch[2] : $contact['addr'];
+			}
+			$s = str_replace($mtch[0], $mtch[1] . $mtch[3],$s);
+		}
+	}
+	return $s;
 }

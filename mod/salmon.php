@@ -2,22 +2,24 @@
 /**
  * @file mod/salmon.php
  */
+
 use Friendica\App;
 use Friendica\Core\Logger;
 use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Model\Contact;
+use Friendica\Protocol\ActivityNamespace;
 use Friendica\Protocol\OStatus;
 use Friendica\Protocol\Salmon;
 use Friendica\Util\Crypto;
+use Friendica\Util\Network;
 use Friendica\Util\Strings;
 
 function salmon_post(App $a, $xml = '') {
 
 	if (empty($xml)) {
-		$xml = file_get_contents('php://input');
+		$xml = Network::postdata();
 	}
 
 	Logger::log('new salmon ' . $xml, Logger::DATA);
@@ -28,14 +30,14 @@ function salmon_post(App $a, $xml = '') {
 		DBA::escape($nick)
 	);
 	if (! DBA::isResult($r)) {
-		System::httpExit(500);
+		throw new \Friendica\Network\HTTPException\InternalServerErrorException();
 	}
 
 	$importer = $r[0];
 
 	// parse the xml
 
-	$dom = simplexml_load_string($xml,'SimpleXMLElement',0,NAMESPACE_SALMON_ME);
+	$dom = simplexml_load_string($xml,'SimpleXMLElement',0, ActivityNamespace::SALMON_ME);
 
 	$base = null;
 
@@ -49,7 +51,7 @@ function salmon_post(App $a, $xml = '') {
 
 	if (empty($base)) {
 		Logger::log('unable to locate salmon data in xml ');
-		System::httpExit(400);
+		throw new \Friendica\Network\HTTPException\BadRequestException();
 	}
 
 	// Stash the signature away for now. We have to find their key or it won't be good for anything.
@@ -87,7 +89,7 @@ function salmon_post(App $a, $xml = '') {
 
 	if(! $author_link) {
 		Logger::log('Could not retrieve author URI.');
-		System::httpExit(400);
+		throw new \Friendica\Network\HTTPException\BadRequestException();
 	}
 
 	// Once we have the author URI, go to the web and try to find their public key
@@ -98,7 +100,7 @@ function salmon_post(App $a, $xml = '') {
 
 	if(! $key) {
 		Logger::log('Could not retrieve author key.');
-		System::httpExit(400);
+		throw new \Friendica\Network\HTTPException\BadRequestException();
 	}
 
 	$key_info = explode('.',$key);
@@ -130,7 +132,7 @@ function salmon_post(App $a, $xml = '') {
 
 	if (! $verify) {
 		Logger::log('Message did not verify. Discarding.');
-		System::httpExit(400);
+		throw new \Friendica\Network\HTTPException\BadRequestException();
 	}
 
 	Logger::log('Message verified with mode '.$mode);
@@ -177,8 +179,7 @@ function salmon_post(App $a, $xml = '') {
 	//if((DBA::isResult($r)) && (($r[0]['readonly']) || ($r[0]['rel'] == Contact::FOLLOWER) || ($r[0]['blocked']))) {
 	if (DBA::isResult($r) && $r[0]['blocked']) {
 		Logger::log('Ignoring this author.');
-		System::httpExit(202);
-		// NOTREACHED
+		throw new \Friendica\Network\HTTPException\AcceptedException();
 	}
 
 	// Placeholder for hub discovery.
@@ -188,5 +189,5 @@ function salmon_post(App $a, $xml = '') {
 
 	OStatus::import($data, $importer, $contact_rec, $hub);
 
-	System::httpExit(200);
+	throw new \Friendica\Network\HTTPException\OKException();
 }

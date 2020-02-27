@@ -15,7 +15,7 @@
 
 <link rel="stylesheet" href="view/theme/frio/frameworks/bootstrap/css/bootstrap.min.css" type="text/css" media="screen"/>
 <link rel="stylesheet" href="view/theme/frio/frameworks/bootstrap/css/bootstrap-theme.min.css" type="text/css" media="screen"/>
-<link rel="stylesheet" href="view/theme/frio/frameworks/font-awesome/css/font-awesome.min.css" type="text/css" media="screen"/>
+<link rel="stylesheet" href="view/asset/fork-awesome/css/fork-awesome.min.css" type="text/css" media="screen"/>
 <link rel="stylesheet" href="view/theme/frio/frameworks/jasny/css/jasny-bootstrap.min.css" type="text/css" media="screen"/>
 <link rel="stylesheet" href="view/theme/frio/frameworks/bootstrap-select/css/bootstrap-select.min.css" type="text/css" media="screen"/>
 <link rel="stylesheet" href="view/theme/frio/frameworks/ekko-lightbox/ekko-lightbox.min.css" type="text/css" media="screen"/>
@@ -63,8 +63,8 @@
 <script type="text/javascript" src="view/asset/jquery-datetimepicker/build/jquery.datetimepicker.full.min.js"></script>
 <script type="text/javascript" src="view/asset/perfect-scrollbar/js/perfect-scrollbar.jquery.min.js"></script>
 <script type="text/javascript" src="view/asset/imagesloaded/imagesloaded.pkgd.min.js"></script>
-<script type="text/javascript" src="view/js/acl.js"></script>
 <script type="text/javascript" src="view/asset/base64/base64.min.js"></script>
+<script type="text/javascript" src="view/asset/dompurify/dist/purify.min.js"></script>
 <script type="text/javascript" src="view/js/main.js"></script>
 
 <script type="text/javascript" src="view/theme/frio/frameworks/bootstrap/js/bootstrap.min.js"></script>
@@ -74,7 +74,6 @@
 <script type="text/javascript" src="view/theme/frio/frameworks/justifiedGallery/jquery.justifiedGallery.min.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/bootstrap-colorpicker/js/bootstrap-colorpicker.min.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/flexMenu/flexmenu.custom.js"></script>
-<script type="text/javascript" src="view/theme/frio/frameworks/jsmart/jsmart.custom.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/jquery-scrollspy/jquery-scrollspy.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/autosize/autosize.min.js"></script>
 <script type="text/javascript" src="view/theme/frio/frameworks/sticky-kit/jquery.sticky-kit.min.js"></script>

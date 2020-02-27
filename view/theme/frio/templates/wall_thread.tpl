@@ -70,9 +70,9 @@ as the value of $top_child_total (this is done at the end of this file)
 
 {{* Use a different div container in dependence max thread-level = 7 *}}
 {{if $item.thread_level<7}}
-<div class="item-{{$item.id}} wall-item-container {{$item.indent}} {{$item.shiny}} {{$item.network}} thread_level_{{$item.thread_level}} {{if $item.thread_level==1}}panel-body h-entry{{else}}u-comment h-cite{{/if}}" id="item-{{$item.guid}}"><!-- wall-item-container -->
+<div class="item-{{$item.id}} wall-item-container {{$item.indent}} {{$item.network}} thread_level_{{$item.thread_level}} {{if $item.thread_level==1}}panel-body h-entry{{else}}u-comment h-cite{{/if}}" id="item-{{$item.guid}}"><!-- wall-item-container -->
 {{else}}
-<div class="item-{{$item.id}} wall-item-container {{$item.indent}} {{$item.shiny}} {{$item.network}} thread_level_7 u-comment h-cite" id="item-{{$item.guid}}">
+<div class="item-{{$item.id}} wall-item-container {{$item.indent}} {{$item.network}} thread_level_7 u-comment h-cite" id="item-{{$item.guid}}">
 {{/if}}
 {{if $item.thread_level==1}}
 <span class="commented" style="display: none;">{{$item.commented}}</span>
@@ -80,12 +80,15 @@ as the value of $top_child_total (this is done at the end of this file)
 <span class="created" style="display: none;">{{$item.created_date}}</span>
 <span class="id" style="display: none;">{{$item.id}}</span>
 {{/if}}
-	<div class="media">
+	<div class="media {{$item.shiny}}">
 		{{* Put addional actions in a top-right dropdown menu *}}
 
 		<ul class="nav nav-pills preferences">
+			{{if $item.network_icon != ""}}
+                        <li><span class="wall-item-network"><i class="fa fa-{{$item.network_icon}}" title="{{$item.network_name}}" aria-hidden="true"></i></span></li>
+			{{else}}
 			<li><span class="wall-item-network" title="{{$item.app}}">{{$item.network_name}}</span></li>
-
+			{{/if}}
 			{{if $item.plink || $item.drop.dropping || $item.edpost || $item.ignore || $item.tagger || $item.star || $item.filer || $item.subthread}}
 			<li class="dropdown">
 				<button type="button" class="btn-link dropdown-toggle" data-toggle="dropdown" id="dropdownMenuTools-{{$item.id}}" aria-haspopup="true" aria-expanded="false"><i class="fa fa-angle-down" aria-hidden="true"></i></button>
@@ -112,6 +115,13 @@ as the value of $top_child_total (this is done at the end of this file)
 					{{if $item.filer}}
 					<li role="menuitem">
 						<button type="button" id="filer-{{$item.id}}" onclick="itemFiler({{$item.id}});" class="btn-link filer-item filer-icon" title="{{$item.filer}}"><i class="fa fa-folder" aria-hidden="true"></i>&nbsp;{{$item.filer}}</button>
+					</li>
+					{{/if}}
+
+					{{if $item.pin}}
+					<li role="menuitem">
+						<button type="button" id="pin-{{$item.id}}" onclick="dopin({{$item.id}});" class="btn-link {{$item.pin.classdo}}" title="{{$item.pin.do}}"><i class="fa fa-circle-o" aria-hidden="true"></i>&nbsp;{{$item.pin.do}}</button>
+						<button type="button" id="unpin-{{$item.id}}" onclick="dopin({{$item.id}});" class="btn-link {{$item.pin.classundo}}" title="{{$item.pin.undo}}"><i class="fa fa-dot-circle-o" aria-hidden="true"></i>&nbsp;{{$item.pin.undo}}</button>
 					</li>
 					{{/if}}
 
@@ -156,14 +166,14 @@ as the value of $top_child_total (this is done at the end of this file)
 		<div class="dropdown pull-left"><!-- Dropdown -->
 			{{if $item.thread_level==1}}
 			<div class="hidden-sm hidden-xs contact-photo-wrapper mframe{{if $item.owner_url}} wwfrom{{/if}} p-author h-card">
-				<a class="userinfo  u-url" id="wall-item-photo-menu-{{$item.id}}" href="{{$item.profile_url}}">
+				<a class="userinfo click-card u-url" id="wall-item-photo-menu-{{$item.id}}" href="{{$item.profile_url}}">
 					<div class="contact-photo-image-wrapper">
 						<img src="{{$item.thumb}}" class="contact-photo media-object {{$item.sparkle}} p-name u-photo" id="wall-item-photo-{{$item.id}}" alt="{{$item.name}}" />
 					</div>
 				</a>
 			</div>
 			<div class="hidden-lg hidden-md contact-photo-wrapper mframe{{if $item.owner_url}} wwfrom{{/if}}">
-				<a class="userinfo u-url" id="wall-item-photo-menu-xs-{{$item.id}}" href="{{$item.profile_url}}">
+				<a class="userinfo click-card u-url" id="wall-item-photo-menu-xs-{{$item.id}}" href="{{$item.profile_url}}">
 					<div class="contact-photo-image-wrapper">
 						<img src="{{$item.thumb}}" class="contact-photo-xs media-object {{$item.sparkle}}" id="wall-item-photo-xs-{{$item.id}}" alt="{{$item.name}}" />
 					</div>
@@ -184,7 +194,7 @@ as the value of $top_child_total (this is done at the end of this file)
 			{{* The avatar picture for comments *}}
 			{{if $item.thread_level!=1}}
 			<div class="contact-photo-wrapper mframe{{if $item.owner_url}} wwfrom{{/if}} p-author h-card">
-				<a class="userinfo u-url" id="wall-item-photo-menu-{{$item.id}}" href="{{$item.profile_url}}">
+				<a class="userinfo click-card u-url" id="wall-item-photo-menu-{{$item.id}}" href="{{$item.profile_url}}">
 					<div class="contact-photo-image-wrapper">
 						<img src="{{$item.thumb}}" class="contact-photo-xs media-object {{$item.sparkle}} p-name u-photo" id="wall-item-photo-comment-{{$item.id}}" alt="{{$item.name}}" />
 					</div>
@@ -198,9 +208,21 @@ as the value of $top_child_total (this is done at the end of this file)
 		{{* contact info header*}}
 		{{if $item.thread_level==1}}
 		<div role="heading " aria-level="{{$item.thread_level}}" class="contact-info hidden-sm hidden-xs media-body"><!-- <= For computer -->
-			<h4 class="media-heading"><a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo"><span class="wall-item-name {{$item.sparkle}}">{{$item.name}}</span></a>
-			{{if $item.owner_url}}{{$item.via}} <a href="{{$item.owner_url}}" target="redir" title="{{$item.olinktitle}}" class="wall-item-name-link userinfo"><span class="wall-item-name {{$item.osparkle}}" id="wall-item-ownername-{{$item.id}}">{{$item.owner_name}}</span></a>{{/if}}
-			{{if $item.lock}}<span class="navicon lock fakelink" onClick="lockview(event,{{$item.id}});" title="{{$item.lock}}" data-toggle="tooltip">&nbsp;<small><i class="fa fa-lock" aria-hidden="true"></i></small></span>{{/if}}
+			<h4 class="media-heading">
+				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo hover-card">
+					<span class="wall-item-name {{$item.sparkle}}">{{$item.name}}</span>
+				</a>
+			{{if $item.owner_url}}
+				{{$item.via}}
+				<a href="{{$item.owner_url}}" target="redir" title="{{$item.olinktitle}}" class="wall-item-name-link userinfo hover-card">
+					<span class="wall-item-name {{$item.osparkle}}" id="wall-item-ownername-{{$item.id}}">{{$item.owner_name}}</span>
+				</a>
+			{{/if}}
+			{{if $item.lock}}
+				<span class="navicon lock fakelink" onClick="lockview(event,{{$item.id}});" title="{{$item.lock}}" data-toggle="tooltip">
+					&nbsp;<small><i class="fa fa-lock" aria-hidden="true"></i></small>
+				</span>
+			{{/if}}
 			</h4>
 
 			<div class="additional-info text-muted">
@@ -214,6 +236,7 @@ as the value of $top_child_total (this is done at the end of this file)
 						{{if $item.owner_self}}
 							{{include file="sub/delivery_count.tpl" delivery=$item.delivery}}
 						{{/if}}
+						<span class="pinned">{{$item.pinned}}</span>
 					</small>
 				</div>
 
@@ -229,7 +252,7 @@ as the value of $top_child_total (this is done at the end of this file)
 		{{* contact info header for smartphones *}}
 		<div role="heading " aria-level="{{$item.thread_level}}" class="contact-info-xs hidden-lg hidden-md"><!-- <= For smartphone (responsive) -->
 			<h5 class="media-heading">
-				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo"><span>{{$item.name}}</span></a>
+				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo hover-card"><span>{{$item.name}}</span></a>
 				<p class="text-muted">
 					<small>
 						<a class="time" href="{{$item.plink.orig}}"><span class="wall-item-ago">{{$item.ago}}</span></a>
@@ -248,7 +271,7 @@ as the value of $top_child_total (this is done at the end of this file)
 		<div class="media-body">{{*this is the media body for comments - this div must be closed at the end of the file *}}
 		<div role="heading " aria-level="{{$item.thread_level}}" class="contact-info-comment">
 			<h5 class="media-heading">
-				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo"><span class="fakelink">{{$item.name}}</span></a>
+				<a href="{{$item.profile_url}}" title="{{$item.linktitle}}" class="wall-item-name-link userinfo hover-card"><span class="fakelink">{{$item.name}}</span></a>
 				<span class="text-muted">
 					<small>
 						<a class="time" href="{{$item.plink.orig}}" title="{{$item.localtime}}" data-toggle="tooltip">{{$item.ago}}</a>
@@ -269,11 +292,6 @@ as the value of $top_child_total (this is done at the end of this file)
 
 		{{* item content *}}
 		<div class="wall-item-content {{$item.type}}" id="wall-item-content-{{$item.id}}">
-			{{* insert some space if it's an top-level post *}}
-			{{if $item.thread_level==1}}
-			<div class="wall-spacer">&nbsp;</div> <!-- use padding/margin instead-->
-			{{/if}}
-
 			{{if $item.title}}
 			<span class="wall-item-title" id="wall-item-title-{{$item.id}}"><h4 class="media-heading"><a href="{{$item.plink.href}}" class="{{$item.sparkle}} p-name">{{$item.title}}</a></h4><br /></span>
 			{{/if}}
@@ -303,7 +321,7 @@ as the value of $top_child_total (this is done at the end of this file)
 			{{/foreach}}
 
 			{{foreach $item.categories as $cat}}
-				<span class="category label btn-success sm p-category">{{$cat.name}}{{if $cat.removeurl}} (<a href="{{$cat.removeurl}}" title="{{$remove}}">x</a>) {{/if}} </span>
+				<span class="category label btn-success sm p-category"><a href="{{$cat.url}}">{{$cat.name}}</a>{{if $cat.removeurl}} (<a href="{{$cat.removeurl}}" title="{{$remove}}">x</a>) {{/if}} </span>
 			{{/foreach}}
 			</div>
 			{{if $item.edited}}<div class="itemedited text-muted">{{$item.edited['label']}} (<span title="{{$item.edited['date']}}">{{$item.edited['relative']}}</span>)</div>{{/if}}
@@ -396,30 +414,22 @@ as the value of $top_child_total (this is done at the end of this file)
 		{{if $item.thread_level!=1}}
 		</div><!--./media-body from for comments-->
 		{{/if}}
+	</div>
+	{{foreach $item.children as $child}}
+		{{include file="{{$item.template}}" item=$child}}
+	{{/foreach}}
 
-		{{foreach $item.children as $child}}
-			{{*
-			{{if $child.type == tag}}
-				{{include file="wall_item_tag.tpl" item=$child}}
-			{{else}}
-				{{include file="{{$item.template}}" item=$child}}
-			{{/if}}
-			*}}
-			{{include file="{{$item.template}}" item=$child}}
-		{{/foreach}}
-
-		{{* Insert the comment box of the top level post at the bottom of the thread.
-			Display this comment box if there are any comments. If not hide it. In this
-			case it could be opend with the "comment" button *}}
-		{{if $item.comment && $item.thread_level==1}}
-			{{if $item.total_comments_num}}
-			<div class="comment-fake-form" id="comment-fake-form-{{$item.id}}">
-				<textarea id="comment-fake-text-{{$item.id}}" class="comment-fake-text-empty form-control" placeholder="{{$item.reply_label}}" onFocus="commentOpenUI(this, {{$item.id}});"  rows="1"></textarea>
-			</div>
-			{{/if}}
-			<div class="wall-item-comment-wrapper well well-small" id="item-comments-{{$item.id}}" data-display="block" style="display: none">{{$item.comment nofilter}}</div>
+	{{* Insert the comment box of the top level post at the bottom of the thread.
+		Display this comment box if there are any comments. If not hide it. In this
+		case it could be opend with the "comment" button *}}
+	{{if $item.comment && $item.thread_level==1}}
+		{{if $item.total_comments_num}}
+		<div class="comment-fake-form" id="comment-fake-form-{{$item.id}}">
+			<textarea id="comment-fake-text-{{$item.id}}" class="comment-fake-text-empty form-control" placeholder="{{$item.reply_label}}" onFocus="commentOpenUI(this, {{$item.id}});"  rows="1"></textarea>
+		</div>
 		{{/if}}
-	</div><!-- /media -->
+		<div class="wall-item-comment-wrapper well well-small" id="item-comments-{{$item.id}}" data-display="block" style="display: none">{{$item.comment nofilter}}</div>
+	{{/if}}
 </div><!-- ./panel-body or ./wall-item-container -->
 
 {{if $mode == display}}

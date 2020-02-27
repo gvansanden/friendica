@@ -9,12 +9,13 @@ use Friendica\Content\ContactSelector;
 use Friendica\Content\Nav;
 use Friendica\Content\Pager;
 use Friendica\Core\L10n;
-use Friendica\Core\NotificationsManager;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Module\Login;
+use Friendica\Model\Introduction;
+use Friendica\Model\Notify;
 
 function notifications_post(App $a)
 {
@@ -29,38 +30,20 @@ function notifications_post(App $a)
 	}
 
 	if ($request_id) {
-		$intro = DBA::selectFirst('intro', ['id', 'contact-id', 'fid'], ['id' => $request_id, 'uid' => local_user()]);
+		/** @var Introduction $Intro */
+		$Intro = \Friendica\BaseObject::getClass(Introduction::class);
+		$Intro->fetch(['id' => $request_id, 'uid' => local_user()]);
 
-		if (DBA::isResult($intro)) {
-			$intro_id = $intro['id'];
-			$contact_id = $intro['contact-id'];
-		} else {
-			notice(L10n::t('Invalid request identifier.') . EOL);
-			return;
+		switch ($_POST['submit']) {
+			case L10n::t('Discard'):
+				$Intro->discard();
+				break;
+			case L10n::t('Ignore'):
+				$Intro->ignore();
+				break;
 		}
 
-		// If it is a friend suggestion, the contact is not a new friend but an existing friend
-		// that should not be deleted.
-
-		$fid = $intro['fid'];
-
-		if ($_POST['submit'] == L10n::t('Discard')) {
-			DBA::delete('intro', ['id' => $intro_id]);
-
-			if (!$fid) {
-				// The check for blocked and pending is in case the friendship was already approved
-				// and we just want to get rid of the now pointless notification
-				$condition = ['id' => $contact_id, 'uid' => local_user(),
-					'self' => false, 'blocked' => true, 'pending' => true];
-				DBA::delete('contact', $condition);
-			}
-			$a->internalRedirect('notifications/intros');
-		}
-
-		if ($_POST['submit'] == L10n::t('Ignore')) {
-			DBA::update('intro', ['ignore' => true], ['id' => $intro_id]);
-			$a->internalRedirect('notifications/intros');
-		}
+		$a->internalRedirect('notifications/intros');
 	}
 }
 
@@ -71,14 +54,15 @@ function notifications_content(App $a)
 		return Login::form();
 	}
 
-	$page = defaults($_REQUEST, 'page', 1);
-	$show = defaults($_REQUEST, 'show', 0);
+	$page = ($_REQUEST['page'] ?? 0) ?: 1;
+	$show = ($_REQUEST['show'] ?? '') === 'all';
 
 	Nav::setSelected('notifications');
 
 	$json = (($a->argc > 1 && $a->argv[$a->argc - 1] === 'json') ? true : false);
 
-	$nm = new NotificationsManager();
+	/** @var Notify $nm */
+	$nm = \Friendica\BaseObject::getClass(Notify::class);
 
 	$o = '';
 	// Get the nav tabs for the notification pages
@@ -98,29 +82,37 @@ function notifications_content(App $a)
 	if ((($a->argc > 1) && ($a->argv[1] == 'intros')) || (($a->argc == 1))) {
 		Nav::setSelected('introductions');
 
+		$id = 0;
+		if (!empty($a->argv[2]) && intval($a->argv[2]) != 0) {
+			$id = (int)$a->argv[2];
+		}
+
 		$all = (($a->argc > 2) && ($a->argv[2] == 'all'));
 
-		$notifs = $nm->introNotifs($all, $startrec, $perpage);
+		$notifs = $nm->getIntroList($all, $startrec, $perpage, $id);
 
 	// Get the network notifications
 	} elseif (($a->argc > 1) && ($a->argv[1] == 'network')) {
 		$notif_header = L10n::t('Network Notifications');
-		$notifs = $nm->networkNotifs($show, $startrec, $perpage);
+		$notifs = $nm->getNetworkList($show, $startrec, $perpage);
 
 	// Get the system notifications
 	} elseif (($a->argc > 1) && ($a->argv[1] == 'system')) {
 		$notif_header = L10n::t('System Notifications');
-		$notifs = $nm->systemNotifs($show, $startrec, $perpage);
+		$notifs = $nm->getSystemList($show, $startrec, $perpage);
 
 	// Get the personal notifications
 	} elseif (($a->argc > 1) && ($a->argv[1] == 'personal')) {
 		$notif_header = L10n::t('Personal Notifications');
-		$notifs = $nm->personalNotifs($show, $startrec, $perpage);
+		$notifs = $nm->getPersonalList($show, $startrec, $perpage);
 
 	// Get the home notifications
 	} elseif (($a->argc > 1) && ($a->argv[1] == 'home')) {
 		$notif_header = L10n::t('Home Notifications');
-		$notifs = $nm->homeNotifs($show, $startrec, $perpage);
+		$notifs = $nm->getHomeList($show, $startrec, $perpage);
+	// fallback - redirect to main page
+	} else {
+		$a->internalRedirect('notifications');
 	}
 
 	// Set the pager
@@ -143,7 +135,7 @@ function notifications_content(App $a)
 	];
 
 	// Process the data for template creation
-	if (defaults($notifs, 'ident', '') === 'introductions') {
+	if (($notifs['ident'] ?? '') == 'introductions') {
 		$sugg = Renderer::getMarkupTemplate('suggestions.tpl');
 		$tpl = Renderer::getMarkupTemplate('intros.tpl');
 
@@ -223,6 +215,14 @@ function notifications_content(App $a)
 						'$as_fan'      => (($notif['network'] == Protocol::DIASPORA) ? L10n::t('Sharer') : L10n::t('Subscriber'))
 					]);
 
+					$contact = DBA::selectFirst('contact', ['network', 'protocol'], ['id' => $notif['contact_id']]);
+
+					if (($contact['network'] != Protocol::DFRN) || ($contact['protocol'] == Protocol::ACTIVITYPUB)) {
+						$action = 'follow_confirm';
+					} else {
+						$action = 'dfrn_confirm';
+					}
+
 					$header = $notif['name'];
 
 					if ($notif['addr'] != '') {
@@ -270,6 +270,7 @@ function notifications_content(App $a)
 						'$note'        => $notif['note'],
 						'$ignore'      => L10n::t('Ignore'),
 						'$discard'     => $discard,
+						'$action'      => $action,
 					]);
 					break;
 			}

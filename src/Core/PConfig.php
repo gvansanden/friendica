@@ -8,6 +8,9 @@
  */
 namespace Friendica\Core;
 
+use Friendica\BaseObject;
+use Friendica\Core\Config\PConfiguration;
+
 /**
  * @brief Management of user configuration storage
  * Note:
@@ -15,41 +18,26 @@ namespace Friendica\Core;
  * The PConfig::get() functions return boolean false for keys that are unset,
  * and this could lead to subtle bugs.
  */
-class PConfig
+class PConfig extends BaseObject
 {
-	/**
-	 * @var Config\PConfiguration
-	 */
-	private static $config;
-
-	/**
-	 * Initialize the config with only the cache
-	 *
-	 * @param Config\PConfiguration $config The configuration cache
-	 */
-	public static function init(Config\PConfiguration $config)
-	{
-		self::$config = $config;
-	}
-
 	/**
 	 * @brief Loads all configuration values of a user's config family into a cached storage.
 	 *
-	 * @param string $uid The user_id
+	 * @param int    $uid The user_id
 	 * @param string $cat The category of the configuration value
 	 *
 	 * @return void
 	 */
-	public static function load($uid, $cat)
+	public static function load(int $uid, string $cat)
 	{
-		self::$config->load($uid, $cat);
+		self::getClass(PConfiguration::class)->load($uid, $cat);
 	}
 
 	/**
 	 * @brief Get a particular user's config variable given the category name
 	 * ($cat) and a key.
 	 *
-	 * @param string  $uid           The user_id
+	 * @param int     $uid           The user_id
 	 * @param string  $cat           The category of the configuration value
 	 * @param string  $key           The configuration key to query
 	 * @param mixed   $default_value optional, The value to return if key is not set (default: null)
@@ -57,37 +45,37 @@ class PConfig
 	 *
 	 * @return mixed Stored value or null if it does not exist
 	 */
-	public static function get($uid, $cat, $key, $default_value = null, $refresh = false)
+	public static function get(int $uid, string $cat, string $key, $default_value = null, bool $refresh = false)
 	{
-		return self::$config->get($uid, $cat, $key, $default_value, $refresh);
+		return self::getClass(PConfiguration::class)->get($uid, $cat, $key, $default_value, $refresh);
 	}
 
 	/**
 	 * @brief Sets a configuration value for a user
 	 *
-	 * @param string $uid    The user_id
+	 * @param int    $uid    The user_id
 	 * @param string $cat    The category of the configuration value
 	 * @param string $key    The configuration key to set
 	 * @param mixed  $value  The value to store
 	 *
 	 * @return bool Operation success
 	 */
-	public static function set($uid, $cat, $key, $value)
+	public static function set(int $uid, string $cat, string $key, $value)
 	{
-		return self::$config->set($uid, $cat, $key, $value);
+		return self::getClass(PConfiguration::class)->set($uid, $cat, $key, $value);
 	}
 
 	/**
 	 * @brief Deletes the given key from the users's configuration.
 	 *
-	 * @param string $uid The user_id
+	 * @param int    $uid The user_id
 	 * @param string $cat The category of the configuration value
 	 * @param string $key The configuration key to delete
 	 *
 	 * @return bool
 	 */
-	public static function delete($uid, $cat, $key)
+	public static function delete(int $uid, string $cat, string $key)
 	{
-		return self::$config->delete($uid, $cat, $key);
+		return self::getClass(PConfiguration::class)->delete($uid, $cat, $key);
 	}
 }

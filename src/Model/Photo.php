@@ -10,6 +10,7 @@ use Friendica\BaseObject;
 use Friendica\Core\Cache;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
+use Friendica\Core\Logger;
 use Friendica\Core\StorageManager;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
@@ -17,8 +18,10 @@ use Friendica\Database\DBStructure;
 use Friendica\Model\Storage\IStorage;
 use Friendica\Object\Image;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Images;
 use Friendica\Util\Network;
 use Friendica\Util\Security;
+use Friendica\Util\Strings;
 
 require_once "include/dba.php";
 
@@ -28,7 +31,7 @@ require_once "include/dba.php";
 class Photo extends BaseObject
 {
 	/**
-	 * @brief Select rows from the photo table
+	 * @brief Select rows from the photo table and returns them as array
 	 *
 	 * @param array $fields     Array of selected fields, empty for all
 	 * @param array $conditions Array of fields for conditions
@@ -37,16 +40,15 @@ class Photo extends BaseObject
 	 * @return boolean|array
 	 *
 	 * @throws \Exception
-	 * @see   \Friendica\Database\DBA::select
+	 * @see   \Friendica\Database\DBA::selectToArray
 	 */
-	public static function select(array $fields = [], array $conditions = [], array $params = [])
+	public static function selectToArray(array $fields = [], array $conditions = [], array $params = [])
 	{
 		if (empty($fields)) {
 			$fields = self::getFields();
 		}
 
-		$r = DBA::select("photo", $fields, $conditions, $params);
-		return DBA::toArray($r);
+		return DBA::selectToArray('photo', $fields, $conditions, $params);
 	}
 
 	/**
@@ -88,7 +90,7 @@ class Photo extends BaseObject
 		$conditions["resource-id"] = $resourceid;
 		$conditions["uid"] = $uid;
 
-		return self::select([], $conditions, $params);
+		return self::selectToArray([], $conditions, $params);
 	}
 
 	/**
@@ -130,19 +132,16 @@ class Photo extends BaseObject
 	public static function getPhoto($resourceid, $scale = 0)
 	{
 		$r = self::selectFirst(["uid"], ["resource-id" => $resourceid]);
-		if ($r === false) {
+		if (!DBA::isResult($r)) {
 			return false;
 		}
 
-		$sql_acl = Security::getPermissionsSQLByUserId($r["uid"]);
+		$uid = $r["uid"];
 
-		$conditions = [
-			"`resource-id` = ? AND `scale` <= ? " . $sql_acl,
-			$resourceid, $scale
-		];
+		$sql_acl = Security::getPermissionsSQLByUserId($uid);
 
+		$conditions = ["`resource-id` = ? AND `scale` <= ? " . $sql_acl, $resourceid, $scale];
 		$params = ["order" => ["scale" => true]];
-
 		$photo = self::selectFirst([], $conditions, $params);
 
 		return $photo;
@@ -338,7 +337,7 @@ class Photo extends BaseObject
 	public static function delete(array $conditions, array $options = [])
 	{
 		// get photo to delete data info
-		$photos = self::select(["backend-class","backend-ref"], $conditions);
+		$photos = self::selectToArray(['backend-class', 'backend-ref'], $conditions);
 
 		foreach($photos as $photo) {
 			/** @var IStorage $backend_class */
@@ -368,7 +367,7 @@ class Photo extends BaseObject
 	{
 		if (!is_null($img)) {
 			// get photo to update
-			$photos = self::select(["backend-class","backend-ref"], $conditions);
+			$photos = self::selectToArray(['backend-class', 'backend-ref'], $conditions);
 
 			foreach($photos as $photo) {
 				/** @var IStorage $backend_class */
@@ -405,26 +404,35 @@ class Photo extends BaseObject
 			"photo", ["resource-id"], ["uid" => $uid, "contact-id" => $cid, "scale" => 4, "album" => "Contact Photos"]
 		);
 		if (!empty($photo['resource-id'])) {
-			$hash = $photo["resource-id"];
+			$resource_id = $photo["resource-id"];
 		} else {
-			$hash = self::newResource();
+			$resource_id = self::newResource();
 		}
 
 		$photo_failure = false;
 
 		$filename = basename($image_url);
-		$img_str = Network::fetchUrl($image_url, true);
+		if (!empty($image_url)) {
+			$ret = Network::curl($image_url, true);
+			$img_str = $ret->getBody();
+			$type = $ret->getContentType();
+		} else {
+			$img_str = '';
+		}
 
 		if ($quit_on_error && ($img_str == "")) {
 			return false;
 		}
 
-		$type = Image::guessType($image_url, true);
+		if (empty($type)) {
+			$type = Images::guessType($image_url, true);
+		}
+
 		$Image = new Image($img_str, $type);
 		if ($Image->isValid()) {
 			$Image->scaleToSquare(300);
 
-			$r = self::store($Image, $uid, $cid, $hash, $filename, "Contact Photos", 4);
+			$r = self::store($Image, $uid, $cid, $resource_id, $filename, "Contact Photos", 4);
 
 			if ($r === false) {
 				$photo_failure = true;
@@ -432,7 +440,7 @@ class Photo extends BaseObject
 
 			$Image->scaleDown(80);
 
-			$r = self::store($Image, $uid, $cid, $hash, $filename, "Contact Photos", 5);
+			$r = self::store($Image, $uid, $cid, $resource_id, $filename, "Contact Photos", 5);
 
 			if ($r === false) {
 				$photo_failure = true;
@@ -440,7 +448,7 @@ class Photo extends BaseObject
 
 			$Image->scaleDown(48);
 
-			$r = self::store($Image, $uid, $cid, $hash, $filename, "Contact Photos", 6);
+			$r = self::store($Image, $uid, $cid, $resource_id, $filename, "Contact Photos", 6);
 
 			if ($r === false) {
 				$photo_failure = true;
@@ -448,24 +456,24 @@ class Photo extends BaseObject
 
 			$suffix = "?ts=" . time();
 
-			$image_url = System::baseUrl() . "/photo/" . $hash . "-4." . $Image->getExt() . $suffix;
-			$thumb = System::baseUrl() . "/photo/" . $hash . "-5." . $Image->getExt() . $suffix;
-			$micro = System::baseUrl() . "/photo/" . $hash . "-6." . $Image->getExt() . $suffix;
+			$image_url = System::baseUrl() . "/photo/" . $resource_id . "-4." . $Image->getExt() . $suffix;
+			$thumb = System::baseUrl() . "/photo/" . $resource_id . "-5." . $Image->getExt() . $suffix;
+			$micro = System::baseUrl() . "/photo/" . $resource_id . "-6." . $Image->getExt() . $suffix;
 
 			// Remove the cached photo
 			$a = \get_app();
 			$basepath = $a->getBasePath();
 
 			if (is_dir($basepath . "/photo")) {
-				$filename = $basepath . "/photo/" . $hash . "-4." . $Image->getExt();
+				$filename = $basepath . "/photo/" . $resource_id . "-4." . $Image->getExt();
 				if (file_exists($filename)) {
 					unlink($filename);
 				}
-				$filename = $basepath . "/photo/" . $hash . "-5." . $Image->getExt();
+				$filename = $basepath . "/photo/" . $resource_id . "-5." . $Image->getExt();
 				if (file_exists($filename)) {
 					unlink($filename);
 				}
-				$filename = $basepath . "/photo/" . $hash . "-6." . $Image->getExt();
+				$filename = $basepath . "/photo/" . $resource_id . "-6." . $Image->getExt();
 				if (file_exists($filename)) {
 					unlink($filename);
 				}
@@ -586,5 +594,146 @@ class Photo extends BaseObject
 	public static function newResource()
 	{
 		return System::createGUID(32, false);
+	}
+
+	/**
+	 * Changes photo permissions that had been embedded in a post
+	 *
+	 * @todo This function currently does have some flaws:
+	 * - Sharing a post with a forum will create a photo that only the forum can see.
+	 * - Sharing a photo again that been shared non public before doesn't alter the permissions.
+	 *
+	 * @return string
+	 * @throws \Exception
+	 */
+	public static function setPermissionFromBody($body, $uid, $original_contact_id, $str_contact_allow, $str_group_allow, $str_contact_deny, $str_group_deny)
+	{
+		// Simplify image codes
+		$img_body = preg_replace("/\[img\=([0-9]*)x([0-9]*)\](.*?)\[\/img\]/ism", '[img]$3[/img]', $body);
+		$img_body = preg_replace("/\[img\=(.*?)\](.*?)\[\/img\]/ism", '[img]$1[/img]', $img_body);
+
+		// Search for images
+		if (!preg_match_all("/\[img\](.*?)\[\/img\]/", $img_body, $match)) {
+			return false;
+		}
+		$images = $match[1];
+		if (empty($images)) {
+			return false;
+		}
+
+		foreach ($images as $image) {
+			if (!stristr($image, System::baseUrl() . '/photo/')) {
+				continue;
+			}
+			$image_uri = substr($image,strrpos($image,'/') + 1);
+			$image_uri = substr($image_uri,0, strpos($image_uri,'-'));
+			if (!strlen($image_uri)) {
+				continue;
+			}
+
+			// Ensure to only modify photos that you own
+			$srch = '<' . intval($original_contact_id) . '>';
+
+			$condition = [
+				'allow_cid' => $srch, 'allow_gid' => '', 'deny_cid' => '', 'deny_gid' => '',
+				'resource-id' => $image_uri, 'uid' => $uid
+			];
+			if (!Photo::exists($condition)) {
+				continue;
+			}
+
+			/// @todo Check if $str_contact_allow does contain a public forum. Then set the permissions to public.
+
+			$fields = ['allow_cid' => $str_contact_allow, 'allow_gid' => $str_group_allow,
+					'deny_cid' => $str_contact_deny, 'deny_gid' => $str_group_deny];
+			$condition = ['resource-id' => $image_uri, 'uid' => $uid];
+			Logger::info('Set permissions', ['condition' => $condition, 'permissions' => $fields]);
+			Photo::update($fields, $condition);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Strips known picture extensions from picture links
+	 *
+	 * @param string $name Picture link
+	 * @return string stripped picture link
+	 * @throws \Exception
+	 */
+	public static function stripExtension($name)
+	{
+		$name = str_replace([".jpg", ".png", ".gif"], ["", "", ""], $name);
+		foreach (Images::supportedTypes() as $m => $e) {
+			$name = str_replace("." . $e, "", $name);
+		}
+		return $name;
+	}
+
+	/**
+	 * Returns the GUID from picture links
+	 *
+	 * @param string $name Picture link
+	 * @return string GUID
+	 * @throws \Exception
+	 */
+	public static function getGUID($name)
+	{
+		$a = \get_app();
+		$base = $a->getBaseURL();
+
+		$guid = str_replace([Strings::normaliseLink($base), '/photo/'], '', Strings::normaliseLink($name));
+
+		$guid = self::stripExtension($guid);
+		if (substr($guid, -2, 1) != "-") {
+			return '';
+		}
+
+		$scale = intval(substr($guid, -1, 1));
+		if (!is_numeric($scale)) {
+			return '';
+		}
+
+		$guid = substr($guid, 0, -2);
+		return $guid;
+	}
+
+	/**
+	 * Tests if the picture link points to a locally stored picture
+	 *
+	 * @param string $name Picture link
+	 * @return boolean
+	 * @throws \Exception
+	 */
+	public static function isLocal($name)
+	{
+		$guid = self::getGUID($name);
+
+		if (empty($guid)) {
+			return false;
+		}
+
+		return DBA::exists('photo', ['resource-id' => $guid]);
+	}
+
+	/**
+	 * Tests if the link points to a locally stored picture page
+	 *
+	 * @param string $name Page link
+	 * @return boolean
+	 * @throws \Exception
+	 */
+	public static function isLocalPage($name)
+	{
+		$a = \get_app();
+		$base = $a->getBaseURL();
+
+		$guid = str_replace(Strings::normaliseLink($base), '', Strings::normaliseLink($name));
+		$guid = preg_replace("=/photos/.*/image/(.*)=ism", '$1', $guid);
+		if (empty($guid)) {
+			return false;
+		}
+
+		return DBA::exists('photo', ['resource-id' => $guid]);
 	}
 }

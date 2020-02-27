@@ -7,7 +7,7 @@ use Friendica\Core\Config;
 use Friendica\Core\PConfig;
 use Friendica\Model\Profile;
 
-$uid = defaults($_REQUEST, 'puid', 0);
+$uid = $_REQUEST['puid'] ?? 0;
 
 $style = PConfig::get($uid, 'vier', 'style');
 
@@ -21,6 +21,8 @@ if (empty($style)) {
 
 $stylecss = '';
 $modified = '';
+
+$style = \Friendica\Util\Strings::sanitizeFilePathItem($style);
 
 foreach (['style', $style] as $file) {
 	$stylecssfile = $THEMEPATH . DIRECTORY_SEPARATOR . $file .'.css';

@@ -2,65 +2,59 @@
 
 namespace Friendica\Factory;
 
-use Friendica\Core;
 use Friendica\Core\Config;
-use Friendica\Core\Config\Adapter;
 use Friendica\Core\Config\Cache;
+use Friendica\Model\Config\Config as ConfigModel;
+use Friendica\Model\Config\PConfig as PConfigModel;
+use Friendica\Util\ConfigFileLoader;
 
 class ConfigFactory
 {
 	/**
-	 * @param Cache\ConfigCacheLoader $loader The Config Cache loader (INI/config/.htconfig)
+	 * @param ConfigFileLoader $loader The Config Cache loader (INI/config/.htconfig)
 	 *
 	 * @return Cache\ConfigCache
 	 */
-	public static function createCache(Cache\ConfigCacheLoader $loader)
+	public function createCache(ConfigFileLoader $loader)
 	{
 		$configCache = new Cache\ConfigCache();
-		$loader->loadConfigFiles($configCache);
+		$loader->setupCache($configCache);
 
 		return $configCache;
 	}
 
 	/**
 	 * @param Cache\ConfigCache $configCache The config cache of this adapter
+	 * @param ConfigModel       $configModel The configuration model
 	 *
 	 * @return Config\Configuration
 	 */
-	public static function createConfig(Cache\ConfigCache $configCache)
+	public function createConfig(Cache\ConfigCache $configCache, ConfigModel $configModel)
 	{
 		if ($configCache->get('system', 'config_adapter') === 'preload') {
-			$configAdapter = new Adapter\PreloadConfigAdapter();
+			$configuration = new Config\PreloadConfiguration($configCache, $configModel);
 		} else {
-			$configAdapter = new Adapter\JITConfigAdapter();
+			$configuration = new Config\JitConfiguration($configCache, $configModel);
 		}
 
-		$configuration = new Config\Configuration($configCache, $configAdapter);
-
-		// Set the config in the static container for legacy usage
-		Core\Config::init($configuration);
 
 		return $configuration;
 	}
 
 	/**
-	 * @param Cache\ConfigCache  $configCache The config cache of this adapter
-	 * @param int                $uid         The UID of the current user
+	 * @param Cache\ConfigCache  $configCache  The config cache
+	 * @param Cache\PConfigCache $pConfigCache The personal config cache
+	 * @param PConfigModel       $configModel  The configuration model
 	 *
 	 * @return Config\PConfiguration
 	 */
-	public static function createPConfig(Cache\ConfigCache $configCache, $uid = null)
+	public function createPConfig(Cache\ConfigCache $configCache, Cache\PConfigCache $pConfigCache, PConfigModel $configModel)
 	{
 		if ($configCache->get('system', 'config_adapter') === 'preload') {
-			$configAdapter = new Adapter\PreloadPConfigAdapter($uid);
+			$configuration = new Config\PreloadPConfiguration($pConfigCache, $configModel);
 		} else {
-			$configAdapter = new Adapter\JITPConfigAdapter();
+			$configuration = new Config\JitPConfiguration($pConfigCache, $configModel);
 		}
-
-		$configuration = new Config\PConfiguration($configCache, $configAdapter);
-
-		// Set the config in the static container for legacy usage
-		Core\PConfig::init($configuration);
 
 		return $configuration;
 	}

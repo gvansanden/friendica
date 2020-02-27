@@ -47,7 +47,7 @@ function common_content(App $a)
 		$contact = DBA::selectFirst('contact', ['name', 'url', 'photo', 'uid', 'id'], ['self' => true, 'uid' => $uid]);
 
 		if (DBA::isResult($contact)) {
-			$vcard_widget = Renderer::replaceMacros(Renderer::getMarkupTemplate("vcard-widget.tpl"), [
+			$vcard_widget = Renderer::replaceMacros(Renderer::getMarkupTemplate("widget/vcard.tpl"), [
 				'$name'  => $contact['name'],
 				'$photo' => $contact['photo'],
 				'url'    => 'contact/' . $cid
@@ -118,7 +118,7 @@ function common_content(App $a)
 
 		$entry = [
 			'url'          => Model\Contact::magicLink($common_friend['url']),
-			'itemurl'      => defaults($contact_details, 'addr', $common_friend['url']),
+			'itemurl'      => ($contact_details['addr'] ?? '') ?: $common_friend['url'],
 			'name'         => $contact_details['name'],
 			'thumb'        => ProxyUtils::proxifyUrl($contact_details['thumb'], false, ProxyUtils::SIZE_THUMB),
 			'img_hover'    => $contact_details['name'],
@@ -136,7 +136,7 @@ function common_content(App $a)
 	$title = '';
 	$tab_str = '';
 	if ($cmd === 'loc' && $cid && local_user() == $uid) {
-		$tab_str = Module\Contact::getTabsHTML($a, $contact, 4);
+		$tab_str = Module\Contact::getTabsHTML($a, $contact, 5);
 	} else {
 		$title = L10n::t('Common Friends');
 	}

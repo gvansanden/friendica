@@ -26,7 +26,7 @@ class ContactBlock
 	/**
 	 * Get HTML for contact block
 	 *
-	 * @template contact_block.tpl
+	 * @template widget/contacts.tpl
 	 * @hook contact_block_end (contacts=>array, output=>string)
 	 * @return string
 	 */
@@ -52,7 +52,7 @@ class ContactBlock
 			'pending' => false,
 			'hidden' => false,
 			'archive' => false,
-			'network' => [Protocol::DFRN, Protocol::ACTIVITYPUB, Protocol::OSTATUS, Protocol::DIASPORA],
+			'network' => [Protocol::DFRN, Protocol::ACTIVITYPUB, Protocol::OSTATUS, Protocol::DIASPORA, Protocol::FEED],
 		]);
 
 		$contacts_title = L10n::t('No contacts');
@@ -61,7 +61,7 @@ class ContactBlock
 
 		if ($total) {
 			// Only show followed for personal accounts, followers for pages
-			if (defaults($profile, 'account-type', User::ACCOUNT_TYPE_PERSON) == User::ACCOUNT_TYPE_PERSON) {
+			if ((($profile['account-type'] ?? '') ?: User::ACCOUNT_TYPE_PERSON) == User::ACCOUNT_TYPE_PERSON) {
 				$rel = [Contact::SHARING, Contact::FRIEND];
 			} else {
 				$rel = [Contact::FOLLOWER, Contact::FRIEND];
@@ -75,7 +75,7 @@ class ContactBlock
 				'hidden' => false,
 				'archive' => false,
 				'rel' => $rel,
-				'network' => [Protocol::DFRN, Protocol::ACTIVITYPUB, Protocol::OSTATUS, Protocol::DIASPORA],
+				'network' => Protocol::FEDERATED,
 			], ['limit' => $shown]);
 
 			if (DBA::isResult($contact_ids_stmt)) {
@@ -102,7 +102,7 @@ class ContactBlock
 			DBA::close($contact_ids_stmt);
 		}
 
-		$tpl = Renderer::getMarkupTemplate('contact_block.tpl');
+		$tpl = Renderer::getMarkupTemplate('widget/contacts.tpl');
 		$o = Renderer::replaceMacros($tpl, [
 			'$contacts' => $contacts_title,
 			'$nickname' => $profile['nickname'],

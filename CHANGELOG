@@ -1,7 +1,230 @@
+Version 2019.12 (2019-12-23)
+  Friendica Core:
+    Updates to the translations (CS, DE, ET, JA, NL, PL) [translation teams]
+    Updates to the documentation [copiis, MrPetovan, stom79, tobiasd]
+    Updates to the themes (all) [annando, hoergen, MrPetovan, tobiasd]
+    General code refactoring and enhancements [annando, MrPetovan, nupplaphil, tobiasd]
+    Enhanced the manage functionality [annando]
+    Enhanced the federation with ActivityPub and Diaspora* protocol detection and contact requests [annando]
+    Enhanced federation with pixelfed and peertube [annando]
+    Enhanced how the API handles quoted postings [annando]
+    Enhanced the attachment removal by the API [annando]
+    Enhanced the 2FA field for mobile devices [nupplaphil]
+    Enhanced handling of re-shares [annando]
+    Enhanced the ACL dialog [annando, MrPetovan]
+    Enhanced transmission of postings by email and email handling in general [annando]
+    Enhanced the updating process of contacts [annando]
+    Enhanced the import of RSS/Atom feeds [annando]
+    Enhanced the registration form for require approval setups [tobiasd]
+    Enhanced the follow process for the Diaspora* protocol [annando]
+    Enhanced the display of the saved searched [AlfredSK]
+    Enhanced the display of image titles [annando]
+    Enhanced the handling of OpenID [annando]
+    Enhanced the Vagrant devel VM [tobiasd]
+    Enhanced handling of HTML special entities [nathilia-peirce]
+    Enhanced hashes by using HMAC [nathilia-peirce]
+    Enhancements to the ActivityPub implementation [annando]
+    Fixed a problem with delivery of direct messages over ActivityPub [annando]
+    Fixed some problems with the remote auth functionality [annando]
+    Fixed an issue that prevented notifications for deleted postings be deleted themselves [annando]
+    Fixed a problem connecting to forums [annando]
+    Fixed messages in the admin panel [nupplaphil]
+    Fixed a problem when the log-file was not write-able [nupplaphil]
+    Fixed a problem with the caching directory for the password exposure check [MrPetovan]
+    Fixed a bug with detecting the browser language [nupplaphil]
+    Smart threading is now the default, but can be switched off by the user [annando]
+    Clarification: Posted order is now arrival order [annando]
+    Added router configuration file [nupplaphil]
+    Added drone.io as CI service [nupplaphil]
+    Added the ability to pin postings on account walls [annando]
+    Added various new API endpoints [annando, MrPetovan]
+    Added hooks for the email fetching process [annando]
+    Added support for nodeinfo 2 [annando]
+    Added export and import of followed contact data [tobiasd]
+    Added links to tag and category overview in the footer of postings [tobiasd]
+    Added config switch to use BCC instead of CC for ActivityPub delivery of non-public postings [annando]
+
+  Friendica Addons:
+    Update to the translations (CA, DE, ET) [translation teams]
+    buffer
+      marked as unsupported [annando]
+    Discourse
+      New addon to integrate Discourse discussions [annando]
+    gnot
+      UI improvements [tobiasd]
+    js_upload
+      The addon got rewritten to adopt the new ACL [MrPetovan]
+    mailstream:
+      Support for new img format was added [mexon]
+      BB Code is now included as plaintext [mexon]
+      Logging format is enhanced [mexon]
+      ActivityPub "announce" notifications are not included [mexon]
+
+  Closed Issues:
+     989, 1071, 1188, 1334, 2537, 3229, 3231, 3385, 4112, 4442, 4451,
+    5048, 5568, 5802, 6865, 7190, 7308, 7316, 7418, 7613, 7657, 7659,
+    7664, 7671, 7679, 7681, 7682, 7685, 7688, 7691, 7702, 7707, 7709,
+    7718, 7733, 7740, 7747, 7756, 7766, 7773, 7776, 7778, 7781, 7821,
+    7825, 7834, 7863, 7868, 7880, 7888, 7889, 7902, 7914, 7920, 7946,
+    7953, 7978
+
+Version 2019.09 (2019-09-29)
+  Friendica Core:
+    Update to the translations (CS, DE, EN GB, EN US, FR, JA, NL, PL) [translation teams]
+    Update to the themes (frio, vier) [JeroenED, MrPetovan, tobiasd, vinzv]
+    Update to the documentation [annando, tobiasd, guzzisti, vinzv]
+    Enhanced the log output of the background process [annando]
+    Enhanced the vcard translation in the profile [JeroenED]
+    Enhanced the delivery count [annando]
+    Enhanced ActivityPub envelopes [MrPetovan]
+    Enhanced communication about deleted accounts via AP [annando]
+    Enhanced the following process [annando]
+    Enhanced the tests [nupplaphil]
+    Enhanced the front-end worker [annando]
+    Enhanced the img format to allow alternative texts [annando]
+    Enhanced the detection of supported protocols for contacts [annando]
+    Enhanced the re-share of items [annando]
+    Enhanced 2FA process [MrPetovan]
+    Enhanced server wide theme settings [MrPetovan]
+    Enhanced config loading process [MrPetovan, nupplaphil]
+    Enhanced handling of emoticons [MrPetovan]
+    Enhanced performance [annando]
+    Fixed a bug in the admin panel leading to orphaned options [tobiasd]
+    Fixed a problem that could lead to duplicated Pleroma contacts [annando]
+    Fixed a problem with the hide profile setting [annando]
+    Fixed the problem sending out the post when hitting the enter key in the ACL dialog [MrPetovan]
+    Fixed a bug in HTML special character escaping of event titles [MrPetovan]
+    Fixed a bug in HTML special character conversion in item titles [MrPetovan]
+    Fixed a bug in the auto linker for URLs [MrPetovan]
+    Fixed a bug that prevented the display of images in some postings from diaspora* [MrPetovan]
+    Fixed a bug in setting the permissions on uploaded images [annando]
+    Fixed a bug that lead to potentially unwanted importing threads started by contacts of contacts [annando]
+    Fixed implicit self mentions [MrPetovan]
+    Fixed display of register links on closed nodes landing pages [MrPetovan]
+    Fixed the display of [spoiler] tags [MrPetovan]
+    Fixed an issue with photo permissions in private mails [annando]
+    Fixed a bug in the process of following Pleroma accounts [annando]
+    Fixed a bug that caused notifications about locally deleted items [annando]
+    Fixed the link to the source of an event [MrPetovan]
+    Fixed a problem that caused authors from twitter postings having no profile pic [annando]
+    Fixed a bug in BBCode -> Markdown conversation for font size [annando]
+    Fixed a BBCode parser problem with the audio tag [MrPetovan]
+    Fixed a session problem [annando]
+    Fixed a problem with the auto-installer [nupplaphil]
+    Fixed a bug with magic links redirection for non profiles [annando]
+    General code cleaning [annando, MrPetovan, nupplaphil]
+    Removed contacts auto completion (in /contacts [MrPetovan]
+    Replaced FontAwesome by ForkAwesome in frio theme [vinzv]
+    Added new compose page for the frio theme [MrPetovan]
+    Added new console command: lock [nupplaphil]
+    Added new additional feature to show trending tags on community page [MrPetovan]
+    Added support of image descriptions [annando]
+    Added support of wildcards to server block lists [MrPetovan]
+    Added app specific passwords when using 2FA [MrPetovan]
+    Added fetching of postings via URL to interact with public postings [annando]
+    Added opt-out flag for federated search engines and associated header information for profiles [annando]
+
+  Friendica Addons:
+    Update to the translation (CS, DE, EN GB, EN US, ES, FR, JA, NL SV) [translation teams]
+    General code cleanup [nupplaphil, Quix0r]
+    blockbot:
+      Added translations
+      Added more bots [annando]
+      Added admin panel settings [annando]
+    tumblr:
+      Changed used URLs to https adopting tumblrs change [annando]
+    twitter:
+      Enhanced handling of multi image postings [annando]
+      Enhanced display of quoted tweets [MrPetovan]
+      Added alternative text support for images [annando]
+
+  Closed Issues:
+     870, 1605, 2199, 3239, 3816, 4117, 4815, 5721, 6384, 6521, 6553,
+    6675, 7212, 7235, 7285, 7293, 7314, 7317, 7337, 7338, 7346, 7350,
+    7367, 7383, 7396, 7397, 7401, 7406, 7408, 7426, 7428, 7456, 7442,
+    7457, 7468, 7471, 7473, 7488, 7497, 7498, 7501, 7507, 7521, 7526,
+    7527, 7536, 7542, 7545, 7576, 7586, 7594, 7597, 7603, 7610, 7618,
+    7629, 7635, 7638, 7663, 7665, 7672
+
+Version 2019.06 (2019-06-23)
+  Friendica Core:
+    Update to the tranlation (CS, DE, EN-GB, EN-US, ET, FR, IT, PL, PT-BR, SV) [translation teams]
+    Update to the documentation [nupplaphil, realkinetix, MrPetovan]
+    Update to the themes (frio, vier) [BinkaDroid, MrPetovan, tobiasd]
+    Enhancements to the API [annando, MrPetovan]
+    Enhancements to the way reshares are handled [annando]
+    Enhancements to the redis configuration [nupplaphil]
+    Enhancements to the federation stats display in the admin panel [tobiasd]
+    Enhancements to the processing of changed storage engine [MrPetovan]
+    Enhancements to ActivityPub support [annando, MrPetovan]
+    Enhancements to code security [MrPetovan]
+    Enhancements to delivery counter [annando]
+    Fixed the notification order [JeroenED]
+    Fixed the timezone of Friendica logs [nupplaphil]
+    Fixed tag completion painfully slow [AlfredSK]
+    Fixed a regression in notifications [MrPetovan, annando]
+    Fixed an issue with smilies and code blocks [MrPetovan]
+    Fixed an AP issue with unavailable local profiles [MrPetovan]
+    Fixed an issue with the File to Folder feature [MrPetovan]
+    Fixed an issue with the legacy storage engine [fabrixxm]
+    Fixed an issue with the theme and addon path items [MrPetovan]
+    Fixed an issue occuring when the BasePath was not set [tobiasd]
+    Fixed an issue with additionally opened Sessions [MrPetovan]
+    Fixed an issue with legacy loglevel mapping [nupplaphil]
+    Fixed contact suggestions [annando]
+    Fixed an issue with frio hovercard [nupplaphil]
+    Fixed event interaction federation [annando]
+    Fixed remote image permission [deantownsley]
+    General Code cleaning and restructuring [annando, nupplaphil, tobiasd]
+    Added frio color scheme sharing [JeroenED]
+    Added syslog and stream Logger [nupplaphil]
+    Added storage move cronjob [MrPetovan]
+    Added collapsible panel for connector permission fields [MrPetovan]
+    Added rule-based router [MrPetovan]
+    Added Estonian translation [Rain Hawk]
+    Added APCu caching [nupplaphil]
+    Added BlockServer command to the Friendica console [nupplaphil]
+    Added reshare count [annando]
+    Added rule-based router [MrPetovan, nupplaphil]
+    Added themed error pages with mascot [MrPetovan, lostinlight]
+    Added contact relationship filter [MrPetovan]
+    Added native reshares and reshare count [annando]
+    Removed the old queue mechanism (deferred workers are now used) [annando]
+    Removed BasePath and Hostname settings from the admin panel [nupplaphil]
+    Remove support for defunct F-Droid Friendica app [MrPetovan]
+
+  Friendica Addons:
+    Update to the tranlation (ET, SV, ZH_CN) [translation teams]
+    botdetection:
+      Added a new addon for preventing access by bots [nupplaphil, annando]
+    buffer:
+      Traces of Google+ were removed [annando]
+    curweather:
+      Fixed a problem with the display of the correct temperature unit [tobiasd]
+    fromgplus:
+      Deprecated the addon as Google+ was closed [tobiasd]
+    fortunate:
+      Deprecated addon for incompatibility with latest Friendica version [MrPetovan]
+    phpmailer:
+      Added a new addon to use external SMTP for email [M-arcus, kecalcze, MrPetovan]
+	pledgie:
+      Deprecated addon as service was discontinued [M-arcus]
+    xmpp:
+      Marked addon as unsupported because of various incompatibilities with themes [MrPetovan]
+
+  Closed Issues:
+     838, 1012, 2209, 2528, 3309, 3717, 3816, 3869, 4453, 4999, 5011,
+    5047, 5276, 5850, 5983, 6245, 6303, 6319, 6379, 6410, 6477, 6478,
+    6720, 6799, 6813, 6819, 6861, 6864, 6879, 6903, 6916, 6917, 6918,
+    6921, 6927, 6929, 6936, 6938, 6941, 6943, 6947, 6948, 6950, 6952,
+    6983, 6999, 7012, 7020, 7023, 7031, 7036, 7047, 7106, 7110, 7112,
+    7119, 7128, 7130, 7131, 7141, 7142, 7150, 7171, 7183, 7196, 7209,
+    7223, 7226, 7240, 7241, 7249, 7264, 7269, 7271, 7275, 7300, 7303
+
 Version 2019.04 (2019-04-28)
   Friendica Core:
     Fixed a privacy problem with postings accessed by feed [MrPetovan]
-
+	
 Version 2019.03 (2019-03-22)
   Friendica Core:
     Update to the translation (CS, DE, EN-GB, EN-US, ES, FR, IT, PL, SV, ZH-CN) [translation teams]

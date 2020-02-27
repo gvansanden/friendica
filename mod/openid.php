@@ -4,30 +4,29 @@
  */
 
 use Friendica\App;
-use Friendica\Core\Authentication;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Util\Strings;
 
 function openid_content(App $a) {
 
-	$noid = Config::get('system','no_openid');
-	if($noid)
+	if (Config::get('system','no_openid')) {
 		$a->internalRedirect();
+	}
 
 	Logger::log('mod_openid ' . print_r($_REQUEST,true), Logger::DATA);
 
-	if(!empty($_GET['openid_mode']) && !empty($_SESSION['openid'])) {
+	if (!empty($_GET['openid_mode']) && !empty($_SESSION['openid'])) {
 
 		$openid = new LightOpenID($a->getHostName());
 
-		if($openid->validate()) {
+		if ($openid->validate()) {
+			$authid = $openid->data['openid_identity'];
 
-			$authid = $_REQUEST['openid_identity'];
-
-			if(! strlen($authid)) {
+			if (empty($authid)) {
 				Logger::log(L10n::t('OpenID protocol error. No ID returned.') . EOL);
 				$a->internalRedirect();
 			}
@@ -37,22 +36,16 @@ function openid_content(App $a) {
 			//       mod/settings.php in 8367cad so it might have left mixed
 			//       records in the user table
 			//
-			$r = q("SELECT *
-				FROM `user`
-				WHERE ( `openid` = '%s' OR `openid` = '%s' )
-				AND `blocked` = 0 AND `account_expired` = 0
-				AND `account_removed` = 0 AND `verified` = 1
-				LIMIT 1",
-				DBA::escape($authid), DBA::escape(Strings::normaliseOpenID($authid))
-			);
-
-			if (DBA::isResult($r)) {
+			$condition = ['blocked' => false, 'account_expired' => false, 'account_removed' => false, 'verified' => true,
+				'openid' => [$authid, Strings::normaliseOpenID($authid)]];
+			$user  = DBA::selectFirst('user', [], $condition);
+			if (DBA::isResult($user)) {
 
 				// successful OpenID login
 
 				unset($_SESSION['openid']);
 
-				Authentication::setAuthenticatedSessionForUser($r[0],true,true);
+				Session::setAuthenticatedForUser($a, $user, true, true);
 
 				// just in case there was no return url set
 				// and we fell through
@@ -61,57 +54,22 @@ function openid_content(App $a) {
 			}
 
 			// Successful OpenID login - but we can't match it to an existing account.
-			// New registration?
+			unset($_SESSION['register']);
+			Session::set('openid_attributes', $openid->getAttributes());
+			Session::set('openid_identity', $authid);
+
+			// Detect the server URL
+			$open_id_obj = new LightOpenID($a->getHostName());
+			$open_id_obj->identity = $authid;
+			Session::set('openid_server', $open_id_obj->discover($open_id_obj->identity));
 
 			if (intval(Config::get('config', 'register_policy')) === \Friendica\Module\Register::CLOSED) {
-				notice(L10n::t('Account not found and OpenID registration is not permitted on this site.') . EOL);
-				$a->internalRedirect();
+				notice(L10n::t('Account not found. Please login to your existing account to add the OpenID to it.'));
+			} else {
+				notice(L10n::t('Account not found. Please register a new account or login to your existing account to add the OpenID to it.'));
 			}
 
-			unset($_SESSION['register']);
-			$args = '';
-			$attr = $openid->getAttributes();
-			if (is_array($attr) && count($attr)) {
-				foreach ($attr as $k => $v) {
-					if ($k === 'namePerson/friendly') {
-						$nick = Strings::escapeTags(trim($v));
-					}
-					if($k === 'namePerson/first') {
-						$first = Strings::escapeTags(trim($v));
-					}
-					if($k === 'namePerson') {
-						$args .= '&username=' . urlencode(Strings::escapeTags(trim($v)));
-					}
-					if ($k === 'contact/email') {
-						$args .= '&email=' . urlencode(Strings::escapeTags(trim($v)));
-					}
-					if ($k === 'media/image/aspect11') {
-						$photosq = bin2hex(trim($v));
-					}
-					if ($k === 'media/image/default') {
-						$photo = bin2hex(trim($v));
-					}
-				}
-			}
-			if (!empty($nick)) {
-				$args .= '&nickname=' . urlencode($nick);
-			}
-			elseif (!empty($first)) {
-				$args .= '&nickname=' . urlencode($first);
-			}
-
-			if (!empty($photosq)) {
-				$args .= '&photo=' . urlencode($photosq);
-			}
-			elseif (!empty($photo)) {
-				$args .= '&photo=' . urlencode($photo);
-			}
-
-			$args .= '&openid_url=' . urlencode(Strings::escapeTags(trim($authid)));
-
-			$a->internalRedirect('register?' . $args);
-
-			// NOTREACHED
+			$a->internalRedirect('login');
 		}
 	}
 	notice(L10n::t('Login failed.') . EOL);

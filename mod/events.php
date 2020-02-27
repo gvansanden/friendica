@@ -5,6 +5,7 @@
  */
 
 use Friendica\App;
+use Friendica\BaseObject;
 use Friendica\Content\Nav;
 use Friendica\Content\Widget\CalendarExport;
 use Friendica\Core\ACL;
@@ -12,15 +13,18 @@ use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Core\Theme;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Event;
 use Friendica\Model\Item;
 use Friendica\Model\Profile;
 use Friendica\Module\Login;
+use Friendica\Util\ACLFormatter;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
+use Friendica\Worker\Delivery;
 
 function events_init(App $a)
 {
@@ -58,11 +62,11 @@ function events_post(App $a)
 	$cid = !empty($_POST['cid']) ? intval($_POST['cid']) : 0;
 	$uid = local_user();
 
-	$start_text  = Strings::escapeHtml(defaults($_REQUEST, 'start_text', ''));
-	$finish_text = Strings::escapeHtml(defaults($_REQUEST, 'finish_text', ''));
+	$start_text  = Strings::escapeHtml($_REQUEST['start_text'] ?? '');
+	$finish_text = Strings::escapeHtml($_REQUEST['finish_text'] ?? '');
 
-	$adjust   = intval(defaults($_POST, 'adjust', 0));
-	$nofinish = intval(defaults($_POST, 'nofinish', 0));
+	$adjust   = intval($_POST['adjust'] ?? 0);
+	$nofinish = intval($_POST['nofinish'] ?? 0);
 
 	// The default setting for the `private` field in event_store() is false, so mirror that
 	$private_event = false;
@@ -95,9 +99,9 @@ function events_post(App $a)
 	// and we'll waste a bunch of time responding to it. Time that
 	// could've been spent doing something else.
 
-	$summary  = trim(defaults($_POST, 'summary' , ''));
-	$desc     = trim(defaults($_POST, 'desc'    , ''));
-	$location = trim(defaults($_POST, 'location', ''));
+	$summary  = trim($_POST['summary']  ?? '');
+	$desc     = trim($_POST['desc']     ?? '');
+	$location = trim($_POST['location'] ?? '');
 	$type     = 'event';
 
 	$params = [
@@ -131,7 +135,7 @@ function events_post(App $a)
 		$a->internalRedirect($onerror_path);
 	}
 
-	$share = intval(defaults($_POST, 'share', 0));
+	$share = intval($_POST['share'] ?? 0);
 
 	$c = q("SELECT `id` FROM `contact` WHERE `uid` = %d AND `self` LIMIT 1",
 		intval(local_user())
@@ -145,10 +149,14 @@ function events_post(App $a)
 
 
 	if ($share) {
-		$str_group_allow   = perms2str(defaults($_POST, 'group_allow'  , ''));
-		$str_contact_allow = perms2str(defaults($_POST, 'contact_allow', ''));
-		$str_group_deny    = perms2str(defaults($_POST, 'group_deny'   , ''));
-		$str_contact_deny  = perms2str(defaults($_POST, 'contact_deny' , ''));
+
+		/** @var ACLFormatter $aclFormatter */
+		$aclFormatter = BaseObject::getClass(ACLFormatter::class);
+
+		$str_group_allow   = $aclFormatter->toString($_POST['group_allow'] ?? '');
+		$str_contact_allow = $aclFormatter->toString($_POST['contact_allow'] ?? '');
+		$str_group_deny    = $aclFormatter->toString($_POST['group_deny'] ?? '');
+		$str_contact_deny  = $aclFormatter->toString($_POST['contact_deny'] ?? '');
 
 		// Undo the pseudo-contact of self, since there are real contacts now
 		if (strpos($str_contact_allow, '<' . $self . '>') !== false) {
@@ -195,7 +203,7 @@ function events_post(App $a)
 	$item_id = Event::store($datarray);
 
 	if (!$cid) {
-		Worker::add(PRIORITY_HIGH, "Notifier", "event", $item_id);
+		Worker::add(PRIORITY_HIGH, "Notifier", Delivery::POST, $item_id);
 	}
 
 	$a->internalRedirect('events');
@@ -237,7 +245,6 @@ function events_content(App $a)
 
 	$htpl = Renderer::getMarkupTemplate('event_head.tpl');
 	$a->page['htmlhead'] .= Renderer::replaceMacros($htpl, [
-		'$baseurl' => System::baseUrl(),
 		'$module_url' => '/events',
 		'$modparams' => 1,
 		'$i18n' => $i18n,
@@ -247,7 +254,7 @@ function events_content(App $a)
 	$tabs = '';
 	// tabs
 	if ($a->theme_events_in_profile) {
-		$tabs = Profile::getTabs($a, true);
+		$tabs = Profile::getTabs($a, 'events', true);
 	}
 
 	$mode = 'view';
@@ -321,7 +328,7 @@ function events_content(App $a)
 
 		// put the event parametes in an array so we can better transmit them
 		$event_params = [
-			'event_id'      => intval(defaults($_GET, 'id', 0)),
+			'event_id'      => intval($_GET['id'] ?? 0),
 			'start'         => $start,
 			'finish'        => $finish,
 			'adjust_start'  => $adjust_start,
@@ -378,8 +385,13 @@ function events_content(App $a)
 			$events[$key]['item'] = $event_item;
 		}
 
+		// ACL blocks are loaded in modals in frio
+		$a->page->registerFooterScript(Theme::getPathForFile('asset/typeahead.js/dist/typeahead.bundle.js'));
+		$a->page->registerFooterScript(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput.js'));
+		$a->page->registerStylesheet(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput.css'));
+		$a->page->registerStylesheet(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput-typeahead.css'));
+
 		$o = Renderer::replaceMacros($tpl, [
-			'$baseurl'   => System::baseUrl(),
 			'$tabs'      => $tabs,
 			'$title'     => L10n::t('Events'),
 			'$view'      => L10n::t('View'),
@@ -478,10 +490,8 @@ function events_content(App $a)
 		$fhour   = !empty($orig_event) ? DateTimeFormat::convert($fdt, $tz, 'UTC', 'H') : '00';
 		$fminute = !empty($orig_event) ? DateTimeFormat::convert($fdt, $tz, 'UTC', 'i') : '00';
 
-		$perms = ACL::getDefaultUserPermissions($orig_event);
-
 		if (!$cid && in_array($mode, ['new', 'copy'])) {
-			$acl = ACL::getFullSelectorHTML($a->user, false, $orig_event);
+			$acl = ACL::getFullSelectorHTML($a->page, $a->user, false, ACL::getDefaultUserPermissions($orig_event));
 		} else {
 			$acl = '';
 		}
@@ -500,11 +510,6 @@ function events_content(App $a)
 			'$eid'  => $eid,
 			'$cid'  => $cid,
 			'$uri'  => $uri,
-
-			'$allow_cid' => json_encode($perms['allow_cid']),
-			'$allow_gid' => json_encode($perms['allow_gid']),
-			'$deny_cid'  => json_encode($perms['deny_cid']),
-			'$deny_gid'  => json_encode($perms['deny_gid']),
 
 			'$title' => L10n::t('Event details'),
 			'$desc' => L10n::t('Starting date and Title are required.'),

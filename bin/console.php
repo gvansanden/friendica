@@ -1,11 +1,12 @@
 #!/usr/bin/env php
 <?php
 
+use Dice\Dice;
+use Psr\Log\LoggerInterface;
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Friendica\Factory;
+$dice = (new Dice())->addRules(include __DIR__ . '/../static/dependencies.config.php');
+$dice = $dice->addRule(LoggerInterface::class,['constructParams' => ['console']]);
 
-$a = Factory\DependencyFactory::setUp('console', dirname(__DIR__));
-\Friendica\BaseObject::setApp($a);
-
-(new Friendica\Core\Console($argv))->execute();
+(new Friendica\Core\Console($dice, $argv))->execute();

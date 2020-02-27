@@ -3,10 +3,13 @@
  * @file mod/lockview.php
  */
 use Friendica\App;
+use Friendica\BaseObject;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Database\DBA;
+use Friendica\Model\Group;
 use Friendica\Model\Item;
+use Friendica\Util\ACLFormatter;
 
 function lockview_content(App $a)
 {
@@ -58,15 +61,31 @@ function lockview_content(App $a)
 		exit();
 	}
 
-	$allowed_users  = expand_acl($item['allow_cid']);
-	$allowed_groups = expand_acl($item['allow_gid']);
-	$deny_users     = expand_acl($item['deny_cid']);
-	$deny_groups    = expand_acl($item['deny_gid']);
+	/** @var ACLFormatter $aclFormatter */
+	$aclFormatter = BaseObject::getClass(ACLFormatter::class);
+
+	$allowed_users = $aclFormatter->expand($item['allow_cid']);
+	$allowed_groups = $aclFormatter->expand($item['allow_gid']);
+	$deny_users = $aclFormatter->expand($item['deny_cid']);
+	$deny_groups = $aclFormatter->expand($item['deny_gid']);
 
 	$o = L10n::t('Visible to:') . '<br />';
 	$l = [];
 
 	if (count($allowed_groups)) {
+		$key = array_search(Group::FOLLOWERS, $allowed_groups);
+		if ($key !== false) {
+			$l[] = '<b>' . L10n::t('Followers') . '</b>';
+			unset($allowed_groups[$key]);
+		}
+
+		$key = array_search(Group::MUTUALS, $allowed_groups);
+		if ($key !== false) {
+			$l[] = '<b>' . L10n::t('Mutuals') . '</b>';
+			unset($allowed_groups[$key]);
+		}
+
+
 		$r = q("SELECT `name` FROM `group` WHERE `id` IN ( %s )",
 			DBA::escape(implode(', ', $allowed_groups))
 		);
@@ -89,6 +108,18 @@ function lockview_content(App $a)
 	}
 
 	if (count($deny_groups)) {
+		$key = array_search(Group::FOLLOWERS, $deny_groups);
+		if ($key !== false) {
+			$l[] = '<b><strike>' . L10n::t('Followers') . '</strike></b>';
+			unset($deny_groups[$key]);
+		}
+
+		$key = array_search(Group::MUTUALS, $deny_groups);
+		if ($key !== false) {
+			$l[] = '<b><strike>' . L10n::t('Mutuals') . '</strike></b>';
+			unset($deny_groups[$key]);
+		}
+
 		$r = q("SELECT `name` FROM `group` WHERE `id` IN ( %s )",
 			DBA::escape(implode(', ', $deny_groups))
 		);

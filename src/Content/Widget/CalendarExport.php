@@ -30,7 +30,7 @@ class CalendarExport
 			return;
 		}
 
-		$owner_uid = $a->data['user']['uid'];
+		$owner_uid = intval($a->data['user']['uid']);
 
 		// The permission testing is a little bit tricky because we have to respect many cases.
 
@@ -57,9 +57,9 @@ class CalendarExport
 
 		// $a->data is only available if the profile page is visited. If the visited page is not part
 		// of the profile page it should be the personal /events page. So we can use $a->user.
-		$user = defaults($a->data['user'], 'nickname', $a->user['nickname']);
+		$user = ($a->data['user']['nickname'] ?? '') ?: $a->user['nickname'];
 
-		$tpl = Renderer::getMarkupTemplate("events_aside.tpl");
+		$tpl = Renderer::getMarkupTemplate("widget/events.tpl");
 		$return = Renderer::replaceMacros($tpl, [
 			'$etitle'      => L10n::t("Export"),
 			'$export_ical' => L10n::t("Export calendar as ical"),

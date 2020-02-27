@@ -42,20 +42,39 @@ class HTML
 		return $cleaned;
 	}
 
-	private static function tagToBBCode(DOMDocument $doc, $tag, $attributes, $startbb, $endbb)
+	/**
+	 * Search all instances of a specific HTML tag node in the provided DOM document and replaces them with BBCode text nodes.
+	 *
+	 * @see HTML::tagToBBCodeSub()
+	 */
+	private static function tagToBBCode(DOMDocument $doc, string $tag, array $attributes, string $startbb, string $endbb, bool $ignoreChildren = false)
 	{
 		do {
-			$done = self::tagToBBCodeSub($doc, $tag, $attributes, $startbb, $endbb);
+			$done = self::tagToBBCodeSub($doc, $tag, $attributes, $startbb, $endbb, $ignoreChildren);
 		} while ($done);
 	}
 
-	private static function tagToBBCodeSub(DOMDocument $doc, $tag, $attributes, $startbb, $endbb)
+	/**
+	 * Search the first specific HTML tag node in the provided DOM document and replaces it with BBCode text nodes.
+	 *
+	 * @param DOMDocument $doc
+	 * @param string      $tag            HTML tag name
+	 * @param array       $attributes     Array of attributes to match and optionally use the value from
+	 * @param string      $startbb        BBCode tag opening
+	 * @param string      $endbb          BBCode tag closing
+	 * @param bool        $ignoreChildren If set to false, the HTML tag children will be appended as text inside the BBCode tag
+	 *                                    Otherwise, they will be entirely ignored. Useful for simple BBCode that draw their
+	 *                                    inner value from an attribute value and disregard the tag children.
+	 * @return bool Whether a replacement was done
+	 */
+	private static function tagToBBCodeSub(DOMDocument $doc, string $tag, array $attributes, string $startbb, string $endbb, bool $ignoreChildren = false)
 	{
 		$savestart = str_replace('$', '\x01', $startbb);
 		$replace = false;
 
 		$xpath = new DOMXPath($doc);
 
+		/** @var \DOMNode[] $list */
 		$list = $xpath->query("//" . $tag);
 		foreach ($list as $node) {
 			$attr = [];
@@ -97,10 +116,14 @@ class HTML
 
 				$node->parentNode->insertBefore($StartCode, $node);
 
-				if ($node->hasChildNodes()) {
-					foreach ($node->childNodes as $child) {
-						$newNode = $child->cloneNode(true);
-						$node->parentNode->insertBefore($newNode, $node);
+				if (!$ignoreChildren && $node->hasChildNodes()) {
+					/** @var \DOMNode $child */
+					foreach ($node->childNodes as $key => $child) {
+						/* Remove empty text nodes at the start or at the end of the children list */
+						if ($key > 0 && $key < $node->childNodes->length - 1 || $child->nodeName != '#text' || trim($child->nodeValue)) {
+							$newNode = $child->cloneNode(true);
+							$node->parentNode->insertBefore($newNode, $node);
+						}
 					}
 				}
 
@@ -166,7 +189,7 @@ class HTML
 
 		$message = mb_convert_encoding($message, 'HTML-ENTITIES', "UTF-8");
 
-		@$doc->loadHTML($message);
+		@$doc->loadHTML($message, LIBXML_HTML_NODEFDTD);
 
 		XML::deleteNode($doc, 'style');
 		XML::deleteNode($doc, 'head');
@@ -186,7 +209,8 @@ class HTML
 		$message = $doc->saveHTML();
 		$message = str_replace(["\n<", ">\n", "\r", "\n", "\xC3\x82\xC2\xA0"], ["<", ">", "<br />", " ", ""], $message);
 		$message = preg_replace('= [\s]*=i', " ", $message);
-		@$doc->loadHTML($message);
+
+		@$doc->loadHTML($message, LIBXML_HTML_NODEFDTD);
 
 		self::tagToBBCode($doc, 'html', [], "", "");
 		self::tagToBBCode($doc, 'body', [], "", "");
@@ -290,13 +314,14 @@ class HTML
 		self::tagToBBCode($doc, 'a', ['href' => '/mailto:(.+)/'], '[mail=$1]', '[/mail]');
 		self::tagToBBCode($doc, 'a', ['href' => '/(.+)/'], '[url=$1]', '[/url]');
 
-		self::tagToBBCode($doc, 'img', ['src' => '/(.+)/', 'width' => '/(\d+)/', 'height' => '/(\d+)/'], '[img=$2x$3]$1', '[/img]');
-		self::tagToBBCode($doc, 'img', ['src' => '/(.+)/'], '[img]$1', '[/img]');
+		self::tagToBBCode($doc, 'img', ['src' => '/(.+)/', 'alt' => '/(.+)/'], '[img=$1]$2', '[/img]', true);
+		self::tagToBBCode($doc, 'img', ['src' => '/(.+)/', 'width' => '/(\d+)/', 'height' => '/(\d+)/'], '[img=$2x$3]$1', '[/img]', true);
+		self::tagToBBCode($doc, 'img', ['src' => '/(.+)/'], '[img]$1', '[/img]', true);
 
 
-		self::tagToBBCode($doc, 'video', ['src' => '/(.+)/'], '[video]$1', '[/video]');
-		self::tagToBBCode($doc, 'audio', ['src' => '/(.+)/'], '[audio]$1', '[/audio]');
-		self::tagToBBCode($doc, 'iframe', ['src' => '/(.+)/'], '[iframe]$1', '[/iframe]');
+		self::tagToBBCode($doc, 'video', ['src' => '/(.+)/'], '[video]$1', '[/video]', true);
+		self::tagToBBCode($doc, 'audio', ['src' => '/(.+)/'], '[audio]$1', '[/audio]', true);
+		self::tagToBBCode($doc, 'iframe', ['src' => '/(.+)/'], '[iframe]$1', '[/iframe]', true);
 
 		self::tagToBBCode($doc, 'key', [], '[code]', '[/code]');
 		self::tagToBBCode($doc, 'code', [], '[code]', '[/code]');
@@ -411,6 +436,10 @@ class HTML
 
 		$link = $matches[0];
 		$url = $matches[1];
+
+		if (empty($url) || empty(parse_url($url))) {
+			return $matches[0];
+		}
 
 		$parts = array_merge($base, parse_url($url));
 		$url2 = Network::unparseURL($parts);
@@ -559,6 +588,8 @@ class HTML
 				$ignore = false;
 			}
 
+			$ignore = $ignore || strpos($treffer[1], '#') === 0;
+
 			if (!$ignore) {
 				$urls[$treffer[1]] = $treffer[1];
 			}
@@ -567,7 +598,13 @@ class HTML
 		return $urls;
 	}
 
-	public static function toPlaintext($html, $wraplength = 75, $compact = false)
+	/**
+	 * @param string $html
+	 * @param int    $wraplength Ensures individual lines aren't longer than this many characters. Doesn't break words.
+	 * @param bool   $compact    True: Completely strips image tags; False: Keeps image URLs
+	 * @return string
+	 */
+	public static function toPlaintext(string $html, $wraplength = 75, $compact = false)
 	{
 		$message = str_replace("\r", "", $html);
 
@@ -576,37 +613,19 @@ class HTML
 
 		$message = mb_convert_encoding($message, 'HTML-ENTITIES', "UTF-8");
 
-		@$doc->loadHTML($message);
-
-		$xpath = new DOMXPath($doc);
-		$list = $xpath->query("//pre");
-		foreach ($list as $node) {
-			$node->nodeValue = str_replace("\n", "\r", $node->nodeValue);
-		}
+		@$doc->loadHTML($message, LIBXML_HTML_NODEFDTD);
 
 		$message = $doc->saveHTML();
-		$message = str_replace(["\n<", ">\n", "\r", "\n", "\xC3\x82\xC2\xA0"], ["<", ">", "<br>", " ", ""], $message);
-		$message = preg_replace('= [\s]*=i', " ", $message);
+		// Remove eventual UTF-8 BOM
+		$message = str_replace("\xC3\x82\xC2\xA0", "", $message);
 
 		// Collecting all links
 		$urls = self::collectURLs($message);
 
-		@$doc->loadHTML($message);
+		@$doc->loadHTML($message, LIBXML_HTML_NODEFDTD);
 
 		self::tagToBBCode($doc, 'html', [], '', '');
 		self::tagToBBCode($doc, 'body', [], '', '');
-
-		// MyBB-Auszeichnungen
-		/*
-		  self::node2BBCode($doc, 'span', array('style'=>'text-decoration: underline;'), '_', '_');
-		  self::node2BBCode($doc, 'span', array('style'=>'font-style: italic;'), '/', '/');
-		  self::node2BBCode($doc, 'span', array('style'=>'font-weight: bold;'), '*', '*');
-
-		  self::node2BBCode($doc, 'strong', array(), '*', '*');
-		  self::node2BBCode($doc, 'b', array(), '*', '*');
-		  self::node2BBCode($doc, 'i', array(), '/', '/');
-		  self::node2BBCode($doc, 'u', array(), '_', '_');
-		 */
 
 		if ($compact) {
 			self::tagToBBCode($doc, 'blockquote', [], "»", "«");
@@ -621,8 +640,6 @@ class HTML
 		self::tagToBBCode($doc, 'div', [], "\r", "\r");
 		self::tagToBBCode($doc, 'p', [], "\n", "\n");
 
-		//self::node2BBCode($doc, 'ul', array(), "\n[list]", "[/list]\n");
-		//self::node2BBCode($doc, 'ol', array(), "\n[list=1]", "[/list]\n");
 		self::tagToBBCode($doc, 'li', [], "\n* ", "\n");
 
 		self::tagToBBCode($doc, 'hr', [], "\n" . str_repeat("-", 70) . "\n", "");
@@ -637,12 +654,6 @@ class HTML
 		self::tagToBBCode($doc, 'h5', [], "\n\n*", "*\n");
 		self::tagToBBCode($doc, 'h6', [], "\n\n*", "*\n");
 
-		// Problem: there is no reliable way to detect if it is a link to a tag or profile
-		//self::node2BBCode($doc, 'a', array('href'=>'/(.+)/'), ' $1 ', ' ', true);
-		//self::node2BBCode($doc, 'a', array('href'=>'/(.+)/', 'rel'=>'oembed'), ' $1 ', '', true);
-		//self::node2BBCode($doc, 'img', array('alt'=>'/(.+)/'), '$1', '');
-		//self::node2BBCode($doc, 'img', array('title'=>'/(.+)/'), '$1', '');
-		//self::node2BBCode($doc, 'img', array(), '', '');
 		if (!$compact) {
 			self::tagToBBCode($doc, 'img', ['src' => '/(.+)/'], ' [img]$1', '[/img] ');
 		} else {
@@ -861,8 +872,8 @@ class HTML
 			$url = '';
 		}
 
-		return Renderer::replaceMacros(Renderer::getMarkupTemplate(($textmode)?'micropro_txt.tpl':'micropro_img.tpl'), [
-			'$click' => defaults($contact, 'click', ''),
+		return Renderer::replaceMacros(Renderer::getMarkupTemplate($textmode ? 'micropro_txt.tpl' : 'micropro_img.tpl'), [
+			'$click' => $contact['click'] ?? '',
 			'$class' => $class,
 			'$url' => $url,
 			'$photo' => ProxyUtils::proxifyUrl($contact['thumb'], false, ProxyUtils::SIZE_THUMB),
@@ -882,9 +893,9 @@ class HTML
 	 * @param bool   $aside Display the search widgit aside.
 	 *
 	 * @return string Formatted HTML.
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \Exception
 	 */
-	public static function search($s, $id = 'search-box', $url = 'search', $aside = true)
+	public static function search($s, $id = 'search-box', $aside = true)
 	{
 		$mode = 'text';
 
@@ -894,24 +905,25 @@ class HTML
 		$save_label = $mode === 'text' ? L10n::t('Save') : L10n::t('Follow');
 
 		$values = [
-				'$s' => $s,
-				'$id' => $id,
-				'$action_url' => $url,
-				'$search_label' => L10n::t('Search'),
-				'$save_label' => $save_label,
-				'$savedsearch' => 'savedsearch',
-				'$search_hint' => L10n::t('@name, !forum, #tags, content'),
-				'$mode' => $mode
-			];
+			'$s'            => $s,
+			'$q'            => urlencode($s),
+			'$id'           => $id,
+			'$search_label' => L10n::t('Search'),
+			'$save_label'   => $save_label,
+			'$search_hint'  => L10n::t('@name, !forum, #tags, content'),
+			'$mode'         => $mode,
+			'$return_url'   => urlencode('search?q=' . urlencode($s)),
+		];
 
 		if (!$aside) {
-			$values['$searchoption'] = [
-						L10n::t("Full Text"),
-						L10n::t("Tags"),
-						L10n::t("Contacts")];
+			$values['$search_options'] = [
+				'fulltext' => L10n::t('Full Text'),
+				'tags'     => L10n::t('Tags'),
+				'contacts' => L10n::t('Contacts')
+			];
 
 			if (Config::get('system', 'poco_local_search')) {
-				$values['$searchoption'][] = L10n::t("Forums");
+				$values['$searchoption']['forums'] = L10n::t('Forums');
 			}
 		}
 

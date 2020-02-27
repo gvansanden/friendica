@@ -159,7 +159,7 @@ nav #banner #logo-text a {
 nav #banner #logo-text a:hover { text-decoration: none; }
 
 
-.nav-commlink, .nav-login-link {
+.nav-commlink, .nav-login-link, .nav-logout-link {
 	display: block;
 	height: 15px;
 	margin-top: 67px;
@@ -386,7 +386,7 @@ div.wall-item-content-wrapper.shiny {
 	margin-bottom: 10px;
 }
 
-.group-selected, .nets-selected, .fileas-selected, .categories-selected, .forum-selected {
+.widget .selected, .group-selected, .forum-selected {
 	padding: 3px;
 	-moz-border-radius: 3px;
 	border-radius: 3px;
@@ -680,10 +680,6 @@ input#dfrn-url {
 	clear: both;
 }
 
-
-#viewcontacts {
-	margin-top: 15px;
-}
 #profile-edit-default-desc {
 	color: #FF0000;
 	border: 1px solid #FF8888;
@@ -1163,6 +1159,10 @@ input#dfrn-url {
 }
 
 .editpost {
+	margin-left: 10px;
+	float: left;
+}
+.pin-item {
 	margin-left: 10px;
 	float: left;
 }
@@ -1821,97 +1821,14 @@ blockquote.shared_content {
 	margin-bottom: 15px;
 }
 
-
 #acl-wrapper {
 	width: 690px;
 	float:left;
-}
-#acl-search {
-	float:right;
-	background: #ffffff url("../../../images/search_18.png") no-repeat right center;
-	padding-right:20px;
-}
-#acl-showall {
-	float: left;
-	display: block;
-	width: auto;
-	height: 18px;
-	background-color: #cccccc;
-	background-image: url("../../../images/show_all_off.png");
-	background-position: 7px 7px;
-	background-repeat: no-repeat;
-	padding: 7px 5px 0px 30px;
-	-webkit-border-radius: 5px ;
-	-moz-border-radius: 5px;
-	border-radius: 5px;
-	color: #999999;
-}
-#acl-showall.selected {
-	color: #000000;
-	background-color: #ff9900;
-	background-image: url("../../../images/show_all_on.png");
-}
-
-#acl-list {
-	height: 210px;
-	border: 1px solid #cccccc;
-	clear: both;
-	margin-top: 30px;
-	overflow: auto;
-}
-#acl-list-content {
-
-}
-.acl-list-item {
-	display: block;
-	width: 150px;
-	height: 30px;
-	border: 1px solid #cccccc;
-	margin: 5px;
-	float: left;
-}
-.acl-list-item img{
-	width:22px;
-	height: 22px;
-	float: left;
-	margin: 4px;
-}
-.acl-list-item p { height: 12px; font-size: 10px; margin: 0px; padding: 2px 0px 1px; overflow: hidden;}
-.acl-list-item a {
-	font-size: 8px;
-	display: block;
-	width: 40px;
-	height: 10px;
-	float: left;
-	color: #999999;
-	background-color: #cccccc;
-	background-position: 3px 3px;
-	background-repeat: no-repeat;
-	margin-right: 5px;
-	-webkit-border-radius: 2px ;
-	-moz-border-radius: 2px;
-	border-radius: 2px;
-	padding-left: 15px;
 }
 #acl-wrapper a:hover {
 	text-decoration: none;
 	color:#000000;
 }
-.acl-button-show { background-image: url("../../../images/show_off.png"); }
-.acl-button-hide { background-image: url("../../../images/hide_off.png"); }
-
-.acl-button-show.selected {
-	color: #000000;
-	background-color: #9ade00;
-	background-image: url("../../../images/show_on.png");
-}
-.acl-button-hide.selected {
-	color: #000000;
-	background-color: #ff4141;
-	background-image: url("../../../images/hide_on.png");
-}
-.acl-list-item.groupshow { border-color: #9ade00; }
-.acl-list-item.grouphide { border-color: #ff4141; }
 /** /acl **/
 
 
@@ -2124,11 +2041,11 @@ a.mail-list-link {
 	list-style: none;
 }
 
-.nets-ul, .fileas-ul, .categories-ul, .datebrowse-ul {
+.nets-ul, .fileas-ul, .category-ul, .datebrowse-ul {
 	list-style-type: none;
 }
 
-.nets-ul li, .fileas-ul li, .categories-ul li, .datebrowse-ul li {
+.nets-ul li, .fileas-ul li, .category-ul li, .datebrowse-ul li {
 	margin-top: 10px;
 }
 
@@ -2139,11 +2056,11 @@ a.mail-list-link {
 	margin-left: 42px;
 }
 
-.fileas-link, .categories-link {
+.fileas-link, .category-link {
 	margin-left: 24px;
 }
 
-.fileas-all, .categories-all {
+.fileas-all, .category-all {
 	margin-left: 0px;
 }
 
@@ -2728,12 +2645,12 @@ aside input[type='text'] {
 	margin: 10px;
 }
 
-#identity-manage-desc {
+#identity-delegation-desc {
 	margin-top:15px;
 	margin-bottom: 15px;
 }
 
-#identity-manage-choose {
+#identity-delegation-choose {
 	margin-bottom: 15px;
 }
 
@@ -3205,6 +3122,8 @@ aside input[type='text'] {
 .on { background-position: -144px -32px; }
 
 .off { background-position: 0px -48px; }
+.pinned { background-position: -16px -48px; }
+.unpinned { background-position: -32px -48px; }
 .starred { background-position: -16px -48px; }
 .unstarred { background-position: -32px -48px; }
 .tagged { background-position: -48px -48px; }
@@ -3386,7 +3305,7 @@ div.jGrowl div.info {
 }
 
 /* notifications popup menu */
-.manage-notify {
+.delegation-notify {
   font-size: 10px;
   padding: 1px 3px;
   top: 0px;
@@ -3507,6 +3426,7 @@ div.jGrowl div.info {
 		width: 100%;
 		padding: 0.5em;
 		height: auto;
+		box-sizing: border-box;
 	}
 	aside:before {
 		content: ">>";

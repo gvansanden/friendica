@@ -11,12 +11,12 @@ use Friendica\Core\System;
  */
 class Acctlink extends BaseModule
 {
-	public static function content()
+	public static function content(array $parameters = [])
 	{
-		$addr = defaults($_GET, 'addr', false);
+		$addr = trim($_GET['addr'] ?? '');
 
 		if ($addr) {
-			$url = defaults(Probe::uri(trim($addr)), 'url', false);
+			$url = Probe::uri($addr)['url'] ?? '';
 
 			if ($url) {
 				System::externalRedirect($url);

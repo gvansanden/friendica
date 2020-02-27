@@ -13,6 +13,7 @@ use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\Core\Session;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
 use Friendica\Protocol\DFRN;
@@ -41,7 +42,7 @@ function add_page_info_data(array $data, $no_photos = false)
 		$data["type"] = "link";
 	}
 
-	$data["title"] = defaults($data, "title", "");
+	$data["title"] = $data["title"] ?? '';
 
 	if ((($data["type"] != "link") && ($data["type"] != "video") && ($data["type"] != "photo")) || ($data["title"] == $data["url"])) {
 		return "";
@@ -326,7 +327,7 @@ function drop_items(array $items)
 {
 	$uid = 0;
 
-	if (!local_user() && !remote_user()) {
+	if (!Session::isAuthenticated()) {
 		return;
 	}
 
@@ -362,14 +363,8 @@ function drop_item($id, $return = '')
 	$contact_id = 0;
 
 	// check if logged in user is either the author or owner of this item
-
-	if (!empty($_SESSION['remote'])) {
-		foreach ($_SESSION['remote'] as $visitor) {
-			if ($visitor['uid'] == $item['uid'] && $visitor['cid'] == $item['contact-id']) {
-				$contact_id = $visitor['cid'];
-				break;
-			}
-		}
+	if (Session::getRemoteContactID($item['uid']) == $item['contact-id']) {
+		$contact_id = $item['contact-id'];
 	}
 
 	if ((local_user() == $item['uid']) || $contact_id) {
@@ -445,81 +440,4 @@ function drop_item($id, $return = '')
 		$a->internalRedirect('display/' . $item['guid']);
 		//NOTREACHED
 	}
-}
-
-/* arrange the list in years */
-function list_post_dates($uid, $wall)
-{
-	$dnow = DateTimeFormat::localNow('Y-m-d');
-
-	$dthen = Item::firstPostDate($uid, $wall);
-	if (!$dthen) {
-		return [];
-	}
-
-	// Set the start and end date to the beginning of the month
-	$dnow = substr($dnow, 0, 8) . '01';
-	$dthen = substr($dthen, 0, 8) . '01';
-
-	$ret = [];
-
-	/*
-	 * Starting with the current month, get the first and last days of every
-	 * month down to and including the month of the first post
-	 */
-	while (substr($dnow, 0, 7) >= substr($dthen, 0, 7)) {
-		$dyear = intval(substr($dnow, 0, 4));
-		$dstart = substr($dnow, 0, 8) . '01';
-		$dend = substr($dnow, 0, 8) . Temporal::getDaysInMonth(intval($dnow), intval(substr($dnow, 5)));
-		$start_month = DateTimeFormat::utc($dstart, 'Y-m-d');
-		$end_month = DateTimeFormat::utc($dend, 'Y-m-d');
-		$str = L10n::getDay(DateTimeFormat::utc($dnow, 'F'));
-
-		if (empty($ret[$dyear])) {
-			$ret[$dyear] = [];
-		}
-
-		$ret[$dyear][] = [$str, $end_month, $start_month];
-		$dnow = DateTimeFormat::utc($dnow . ' -1 month', 'Y-m-d');
-	}
-	return $ret;
-}
-
-function posted_date_widget($url, $uid, $wall)
-{
-	$o = '';
-
-	if (!Feature::isEnabled($uid, 'archives')) {
-		return $o;
-	}
-
-	// For former Facebook folks that left because of "timeline"
-	/*
-	 * @TODO old-lost code?
-	if ($wall && intval(PConfig::get($uid, 'system', 'no_wall_archive_widget')))
-		return $o;
-	*/
-
-	$visible_years = PConfig::get($uid, 'system', 'archive_visible_years', 5);
-
-	$ret = list_post_dates($uid, $wall);
-
-	if (!DBA::isResult($ret)) {
-		return $o;
-	}
-
-	$cutoff_year = intval(DateTimeFormat::localNow('Y')) - $visible_years;
-	$cutoff = ((array_key_exists($cutoff_year, $ret))? true : false);
-
-	$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('posted_date_widget.tpl'),[
-		'$title' => L10n::t('Archives'),
-		'$size' => $visible_years,
-		'$cutoff_year' => $cutoff_year,
-		'$cutoff' => $cutoff,
-		'$url' => $url,
-		'$dates' => $ret,
-		'$showmore' => L10n::t('show more')
-
-	]);
-	return $o;
 }

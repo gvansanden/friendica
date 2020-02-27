@@ -17,7 +17,7 @@ use Friendica\Util\Strings;
  */
 class Oembed extends BaseModule
 {
-	public static function content()
+	public static function content(array $parameters = [])
 	{
 		$a = self::getApp();
 
@@ -35,6 +35,7 @@ class Oembed extends BaseModule
 			exit();
 		}
 
+		// @TODO: Replace with parameter from router
 		if ($a->argc == 2) {
 			echo '<html><body>';
 			$url = Strings::base64UrlDecode($a->argv[1]);

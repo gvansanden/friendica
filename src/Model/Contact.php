@@ -4,6 +4,7 @@
  */
 namespace Friendica\Model;
 
+use Friendica\App\BaseURL;
 use Friendica\BaseObject;
 use Friendica\Content\Pager;
 use Friendica\Core\Config;
@@ -11,18 +12,20 @@ use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
+use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Network\Probe;
 use Friendica\Object\Image;
+use Friendica\Protocol\Activity;
 use Friendica\Protocol\ActivityPub;
 use Friendica\Protocol\DFRN;
 use Friendica\Protocol\Diaspora;
 use Friendica\Protocol\OStatus;
-use Friendica\Protocol\PortableContact;
 use Friendica\Protocol\Salmon;
 use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Images;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
 
@@ -110,6 +113,68 @@ class Contact extends BaseObject
 	 */
 
 	/**
+	 * @param array $fields    Array of selected fields, empty for all
+	 * @param array $condition Array of fields for condition
+	 * @param array $params    Array of several parameters
+	 * @return array
+	 * @throws \Exception
+	 */
+	public static function selectToArray(array $fields = [], array $condition = [], array $params = [])
+	{
+		return DBA::selectToArray('contact', $fields, $condition, $params);
+	}
+
+	/**
+	 * @param array $fields    Array of selected fields, empty for all
+	 * @param array $condition Array of fields for condition
+	 * @param array $params    Array of several parameters
+	 * @return array
+	 * @throws \Exception
+	 */
+	public static function selectFirst(array $fields = [], array $condition = [], array $params = [])
+	{
+		$contact = DBA::selectFirst('contact', $fields, $condition, $params);
+
+		return $contact;
+	}
+
+	/**
+	 * Insert a row into the contact table
+	 * Important: You can't use DBA::lastInsertId() after this call since it will be set to 0.
+	 *
+	 * @param array        $fields              field array
+	 * @param bool         $on_duplicate_update Do an update on a duplicate entry
+	 *
+	 * @return boolean was the insert successful?
+	 * @throws \Exception
+	 */
+	public static function insert(array $fields, bool $on_duplicate_update = false)
+	{
+		$ret = DBA::insert('contact', $fields, $on_duplicate_update);
+		$contact = DBA::selectFirst('contact', ['nurl', 'uid'], ['id' => DBA::lastInsertId()]);
+		if (!DBA::isResult($contact)) {
+			// Shouldn't happen
+			return $ret;
+		}
+
+		// Search for duplicated contacts and get rid of them
+		self::removeDuplicates($contact['nurl'], $contact['uid']);
+
+		return $ret;
+	}
+
+	/**
+	 * @param integer $id     Contact ID
+	 * @param array   $fields Array of selected fields, empty for all
+	 * @return array|boolean Contact record if it exists, false otherwise
+	 * @throws \Exception
+	 */
+	public static function getById($id, $fields = [])
+	{
+		return DBA::selectFirst('contact', $fields, ['id' => $id]);
+	}
+
+	/**
 	 * @brief Tests if the given contact is a follower
 	 *
 	 * @param int $cid Either public contact id or user's contact id
@@ -135,24 +200,111 @@ class Contact extends BaseObject
 	}
 
 	/**
+	 * @brief Tests if the given contact url is a follower
+	 *
+	 * @param string $url Contact URL
+	 * @param int    $uid User ID
+	 *
+	 * @return boolean is the contact id a follower?
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 */
+	public static function isFollowerByURL($url, $uid)
+	{
+		$cid = self::getIdForURL($url, $uid, true);
+
+		if (empty($cid)) {
+			return false;
+		}
+
+		return self::isFollower($cid, $uid);
+	}
+
+	/**
+	 * @brief Tests if the given user follow the given contact
+	 *
+	 * @param int $cid Either public contact id or user's contact id
+	 * @param int $uid User ID
+	 *
+	 * @return boolean is the contact url being followed?
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 */
+	public static function isSharing($cid, $uid)
+	{
+		if (self::isBlockedByUser($cid, $uid)) {
+			return false;
+		}
+
+		$cdata = self::getPublicAndUserContacID($cid, $uid);
+		if (empty($cdata['user'])) {
+			return false;
+		}
+
+		$condition = ['id' => $cdata['user'], 'rel' => [self::SHARING, self::FRIEND]];
+		return DBA::exists('contact', $condition);
+	}
+
+	/**
+	 * @brief Tests if the given user follow the given contact url
+	 *
+	 * @param string $url Contact URL
+	 * @param int    $uid User ID
+	 *
+	 * @return boolean is the contact url being followed?
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 */
+	public static function isSharingByURL($url, $uid)
+	{
+		$cid = self::getIdForURL($url, $uid, true);
+
+		if (empty($cid)) {
+			return false;
+		}
+
+		return self::isSharing($cid, $uid);
+	}
+
+	/**
 	 * @brief Get the basepath for a given contact link
-	 * @todo  Add functionality to store this value in the contact table
 	 *
 	 * @param string $url The contact link
 	 *
 	 * @return string basepath
+	 * @return boolean $dont_update Don't update the contact
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 * @throws \ImagickException
 	 */
-	public static function getBasepath($url)
+	public static function getBasepath($url, $dont_update = false)
 	{
-		$data = Probe::uri($url);
-		if (!empty($data['baseurl'])) {
-			return $data['baseurl'];
+		$contact = DBA::selectFirst('contact', ['baseurl'], ['uid' => 0, 'nurl' => Strings::normaliseLink($url)]);
+		if (!empty($contact['baseurl'])) {
+			return $contact['baseurl'];
+		} elseif ($dont_update) {
+			return '';
 		}
 
-		// When we can't probe the server, we use some ugly function that does some pattern matching
-		return PortableContact::detectServer($url);
+		self::updateFromProbeByURL($url, true);
+
+		$contact = DBA::selectFirst('contact', ['baseurl'], ['uid' => 0, 'nurl' => Strings::normaliseLink($url)]);
+		if (!empty($contact['baseurl'])) {
+			return $contact['baseurl'];
+		}
+
+		return '';
+	}
+
+	/**
+	 * Check if the given contact url is on the same server
+	 *
+	 * @param string $url The contact link
+	 *
+	 * @return boolean Is it the same server?
+	 */
+	public static function isLocal($url)
+	{
+		return Strings::compareLink(self::getBasepath($url, true), System::baseUrl());
 	}
 
 	/**
@@ -210,6 +362,28 @@ class Contact extends BaseObject
 		}
 
 		return ['public' => $pcid, 'user' => $ucid];
+	}
+
+	/**
+	 * Returns contact details for a given contact id in combination with a user id
+	 *
+	 * @param int $cid A contact ID
+	 * @param int $uid The User ID
+	 * @param array $fields The selected fields for the contact
+	 *
+	 * @return array The contact details
+	 *
+	 * @throws \Exception
+	 */
+	public static function getContactForUser($cid, $uid, array $fields = [])
+	{
+		$contact = DBA::selectFirst('contact', $fields, ['id' => $cid, 'uid' => $uid]);
+
+		if (!DBA::isResult($contact)) {
+			return [];
+		} else {
+			return $contact;
+		}
 	}
 
 	/**
@@ -511,31 +685,33 @@ class Contact extends BaseObject
 	public static function updateSelfFromUserID($uid, $update_avatar = false)
 	{
 		$fields = ['id', 'name', 'nick', 'location', 'about', 'keywords', 'gender', 'avatar',
-			'xmpp', 'contact-type', 'forum', 'prv', 'avatar-date', 'url', 'nurl',
+			'xmpp', 'contact-type', 'forum', 'prv', 'avatar-date', 'url', 'nurl', 'unsearchable',
 			'photo', 'thumb', 'micro', 'addr', 'request', 'notify', 'poll', 'confirm', 'poco'];
 		$self = DBA::selectFirst('contact', $fields, ['uid' => $uid, 'self' => true]);
 		if (!DBA::isResult($self)) {
 			return;
 		}
 
-		$fields = ['nickname', 'page-flags', 'account-type'];
+		$fields = ['nickname', 'page-flags', 'account-type', 'hidewall'];
 		$user = DBA::selectFirst('user', $fields, ['uid' => $uid]);
 		if (!DBA::isResult($user)) {
 			return;
 		}
 
 		$fields = ['name', 'photo', 'thumb', 'about', 'address', 'locality', 'region',
-			'country-name', 'gender', 'pub_keywords', 'xmpp'];
+			'country-name', 'gender', 'pub_keywords', 'xmpp', 'net-publish'];
 		$profile = DBA::selectFirst('profile', $fields, ['uid' => $uid, 'is-default' => true]);
 		if (!DBA::isResult($profile)) {
 			return;
 		}
 
+		$file_suffix = 'jpg';
+
 		$fields = ['name' => $profile['name'], 'nick' => $user['nickname'],
 			'avatar-date' => $self['avatar-date'], 'location' => Profile::formatLocation($profile),
 			'about' => $profile['about'], 'keywords' => $profile['pub_keywords'],
-			'gender' => $profile['gender'], 'avatar' => $profile['photo'],
-			'contact-type' => $user['account-type'], 'xmpp' => $profile['xmpp']];
+			'gender' => $profile['gender'], 'contact-type' => $user['account-type'],
+			'xmpp' => $profile['xmpp']];
 
 		$avatar = Photo::selectFirst(['resource-id', 'type'], ['uid' => $uid, 'profile' => true]);
 		if (DBA::isResult($avatar)) {
@@ -544,11 +720,9 @@ class Contact extends BaseObject
 			}
 
 			// Creating the path to the avatar, beginning with the file suffix
-			$types = Image::supportedTypes();
+			$types = Images::supportedTypes();
 			if (isset($types[$avatar['type']])) {
 				$file_suffix = $types[$avatar['type']];
-			} else {
-				$file_suffix = 'jpg';
 			}
 
 			// We are adding a timestamp value so that other systems won't use cached content
@@ -567,8 +741,10 @@ class Contact extends BaseObject
 			$fields['micro'] = System::baseUrl() . '/images/person-48.jpg';
 		}
 
+		$fields['avatar'] = System::baseUrl() . '/photo/profile/' .$uid . '.' . $file_suffix;
 		$fields['forum'] = $user['page-flags'] == User::PAGE_FLAGS_COMMUNITY;
 		$fields['prv'] = $user['page-flags'] == User::PAGE_FLAGS_PRVGROUP;
+		$fields['unsearchable'] = $user['hidewall'] || !$profile['net-publish'];
 
 		// it seems as if ported accounts can have wrong values, so we make sure that now everything is fine.
 		$fields['url'] = System::baseUrl() . '/profile/' . $user['nickname'];
@@ -589,15 +765,18 @@ class Contact extends BaseObject
 		}
 
 		if ($update) {
-			$fields['name-date'] = DateTimeFormat::utcNow();
+			if ($fields['name'] != $self['name']) {
+				$fields['name-date'] = DateTimeFormat::utcNow();
+			}
+			$fields['updated'] = DateTimeFormat::utcNow();
 			DBA::update('contact', $fields, ['id' => $self['id']]);
 
 			// Update the public contact as well
 			DBA::update('contact', $fields, ['uid' => 0, 'nurl' => $self['nurl']]);
 
 			// Update the profile
-			$fields = ['photo' => System::baseUrl() . '/photo/profile/' .$uid . '.jpg',
-				'thumb' => System::baseUrl() . '/photo/avatar/' . $uid .'.jpg'];
+			$fields = ['photo' => System::baseUrl() . '/photo/profile/' .$uid . '.' . $file_suffix,
+				'thumb' => System::baseUrl() . '/photo/avatar/' . $uid .'.' . $file_suffix];
 			DBA::update('profile', $fields, ['uid' => $uid, 'is-default' => true]);
 		}
 	}
@@ -639,12 +818,18 @@ class Contact extends BaseObject
 		if (empty($contact['network'])) {
 			return;
 		}
-		if (($contact['network'] == Protocol::DFRN) && $dissolve) {
+
+		$protocol = $contact['network'];
+		if (($protocol == Protocol::DFRN) && !self::isLegacyDFRNContact($contact)) {
+			$protocol = Protocol::ACTIVITYPUB;
+		}
+
+		if (($protocol == Protocol::DFRN) && $dissolve) {
 			DFRN::deliver($user, $contact, 'placeholder', true);
-		} elseif (in_array($contact['network'], [Protocol::OSTATUS, Protocol::DFRN])) {
+		} elseif (in_array($protocol, [Protocol::OSTATUS, Protocol::DFRN])) {
 			// create an unfollow slap
 			$item = [];
-			$item['verb'] = NAMESPACE_OSTATUS . "/unfollow";
+			$item['verb'] = Activity::O_UNFOLLOW;
 			$item['follow'] = $contact["url"];
 			$item['body'] = '';
 			$item['title'] = '';
@@ -656,9 +841,9 @@ class Contact extends BaseObject
 			if (!empty($contact['notify'])) {
 				Salmon::slapper($user, $contact['notify'], $slap);
 			}
-		} elseif ($contact['network'] == Protocol::DIASPORA) {
+		} elseif ($protocol == Protocol::DIASPORA) {
 			Diaspora::sendUnshare($user, $contact);
-		} elseif ($contact['network'] == Protocol::ACTIVITYPUB) {
+		} elseif ($protocol == Protocol::ACTIVITYPUB) {
 			ActivityPub\Transmitter::sendContactUndo($contact['url'], $contact['id'], $user['uid']);
 
 			if ($dissolve) {
@@ -718,8 +903,9 @@ class Contact extends BaseObject
 				 * delete, though if the owner tries to unarchive them we'll start
 				 * the whole process over again.
 				 */
-				DBA::update('contact', ['archive' => 1], ['id' => $contact['id']]);
-				DBA::update('contact', ['archive' => 1], ['nurl' => Strings::normaliseLink($contact['url']), 'self' => false]);
+				DBA::update('contact', ['archive' => true], ['id' => $contact['id']]);
+				DBA::update('contact', ['archive' => true], ['nurl' => Strings::normaliseLink($contact['url']), 'self' => false]);
+				GContact::updateFromPublicContactURL($contact['url']);
 			}
 		}
 	}
@@ -735,6 +921,13 @@ class Contact extends BaseObject
 	 */
 	public static function unmarkForArchival(array $contact)
 	{
+		// Always unarchive the relay contact entry
+		if (!empty($contact['batch']) && !empty($contact['term-date']) && ($contact['term-date'] > DBA::NULL_DATETIME)) {
+			$fields = ['term-date' => DBA::NULL_DATETIME, 'archive' => false];
+			$condition = ['uid' => 0, 'network' => Protocol::FEDERATED, 'batch' => $contact['batch'], 'contact-type' => self::TYPE_RELAY];
+			DBA::update('contact', $fields, $condition);
+		}
+
 		$condition = ['`id` = ? AND (`term-date` > ? OR `archive`)', $contact['id'], DBA::NULL_DATETIME];
 		$exists = DBA::exists('contact', $condition);
 
@@ -756,12 +949,8 @@ class Contact extends BaseObject
 		// It's a miracle. Our dead contact has inexplicably come back to life.
 		$fields = ['term-date' => DBA::NULL_DATETIME, 'archive' => false];
 		DBA::update('contact', $fields, ['id' => $contact['id']]);
-		DBA::update('contact', $fields, ['nurl' => Strings::normaliseLink($contact['url'])]);
-
-		if (!empty($contact['batch'])) {
-			$condition = ['batch' => $contact['batch'], 'contact-type' => self::TYPE_RELAY];
-			DBA::update('contact', $fields, $condition);
-		}
+		DBA::update('contact', $fields, ['nurl' => Strings::normaliseLink($contact['url']), 'self' => false]);
+		GContact::updateFromPublicContactURL($contact['url']);
 	}
 
 	/**
@@ -795,41 +984,43 @@ class Contact extends BaseObject
 
 		$ssl_url = str_replace('http://', 'https://', $url);
 
+		$nurl = Strings::normaliseLink($url);
+
 		// Fetch contact data from the contact table for the given user
 		$s = DBA::p("SELECT `id`, `id` AS `cid`, 0 AS `gid`, 0 AS `zid`, `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, `xmpp`,
-			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, `self`
-		FROM `contact` WHERE `nurl` = ? AND `uid` = ?", Strings::normaliseLink($url), $uid);
+			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, `self`, `rel`, `pending`
+		FROM `contact` WHERE `nurl` = ? AND `uid` = ?", $nurl, $uid);
 		$r = DBA::toArray($s);
 
 		// Fetch contact data from the contact table for the given user, checking with the alias
 		if (!DBA::isResult($r)) {
 			$s = DBA::p("SELECT `id`, `id` AS `cid`, 0 AS `gid`, 0 AS `zid`, `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, `xmpp`,
-				`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, `self`
-			FROM `contact` WHERE `alias` IN (?, ?, ?) AND `uid` = ?", Strings::normaliseLink($url), $url, $ssl_url, $uid);
+				`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, `self`, `rel`, `pending`
+			FROM `contact` WHERE `alias` IN (?, ?, ?) AND `uid` = ?", $nurl, $url, $ssl_url, $uid);
 			$r = DBA::toArray($s);
 		}
 
 		// Fetch the data from the contact table with "uid=0" (which is filled automatically)
 		if (!DBA::isResult($r)) {
 			$s = DBA::p("SELECT `id`, 0 AS `cid`, `id` AS `zid`, 0 AS `gid`, `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, `xmpp`,
-			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, 0 AS `self`
-			FROM `contact` WHERE `nurl` = ? AND `uid` = 0", Strings::normaliseLink($url));
+			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, 0 AS `self`, `rel`, `pending`
+			FROM `contact` WHERE `nurl` = ? AND `uid` = 0", $nurl);
 			$r = DBA::toArray($s);
 		}
 
 		// Fetch the data from the contact table with "uid=0" (which is filled automatically) - checked with the alias
 		if (!DBA::isResult($r)) {
 			$s = DBA::p("SELECT `id`, 0 AS `cid`, `id` AS `zid`, 0 AS `gid`, `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, `xmpp`,
-			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, 0 AS `self`
-			FROM `contact` WHERE `alias` IN (?, ?, ?) AND `uid` = 0", Strings::normaliseLink($url), $url, $ssl_url);
+			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, 0 AS `self`, `rel`, `pending`
+			FROM `contact` WHERE `alias` IN (?, ?, ?) AND `uid` = 0", $nurl, $url, $ssl_url);
 			$r = DBA::toArray($s);
 		}
 
 		// Fetch the data from the gcontact table
 		if (!DBA::isResult($r)) {
 			$s = DBA::p("SELECT 0 AS `id`, 0 AS `cid`, `id` AS `gid`, 0 AS `zid`, 0 AS `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, '' AS `xmpp`,
-			`keywords`, `gender`, `photo`, `photo` AS `thumb`, `photo` AS `micro`, 0 AS `forum`, 0 AS `prv`, `community`, `contact-type`, `birthday`, 0 AS `self`
-			FROM `gcontact` WHERE `nurl` = ?", Strings::normaliseLink($url));
+			`keywords`, `gender`, `photo`, `photo` AS `thumb`, `photo` AS `micro`, 0 AS `forum`, 0 AS `prv`, `community`, `contact-type`, `birthday`, 0 AS `self`, 2 AS `rel`, 0 AS `pending`
+			FROM `gcontact` WHERE `nurl` = ?", $nurl);
 			$r = DBA::toArray($s);
 		}
 
@@ -837,7 +1028,7 @@ class Contact extends BaseObject
 			// If there is more than one entry we filter out the connector networks
 			if (count($r) > 1) {
 				foreach ($r as $id => $result) {
-					if ($result["network"] == Protocol::STATUSNET) {
+					if (!in_array($result["network"], Protocol::NATIVE_SUPPORT)) {
 						unset($r[$id]);
 					}
 				}
@@ -890,14 +1081,14 @@ class Contact extends BaseObject
 			$profile["micro"] = $profile["thumb"];
 		}
 
-		if ((empty($profile["addr"]) || empty($profile["name"])) && (defaults($profile, "gid", 0) != 0)
-			&& in_array($profile["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS])
+		if ((empty($profile["addr"]) || empty($profile["name"])) && !empty($profile["gid"])
+			&& in_array($profile["network"], Protocol::FEDERATED)
 		) {
-			Worker::add(PRIORITY_LOW, "UpdateGContact", $profile["gid"]);
+			Worker::add(PRIORITY_LOW, "UpdateGContact", $url);
 		}
 
 		// Show contact details of Diaspora contacts only if connected
-		if ((defaults($profile, "cid", 0) == 0) && (defaults($profile, "network", "") == Protocol::DIASPORA)) {
+		if (empty($profile["cid"]) && ($profile["network"] ?? "") == Protocol::DIASPORA) {
 			$profile["location"] = "";
 			$profile["about"] = "";
 			$profile["gender"] = "";
@@ -933,7 +1124,7 @@ class Contact extends BaseObject
 
 		// Fetch contact data from the contact table for the given user
 		$r = q("SELECT `id`, `id` AS `cid`, 0 AS `gid`, 0 AS `zid`, `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, `xmpp`,
-			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, `self`
+			`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, `self`, `rel`, `pending`
 			FROM `contact` WHERE `addr` = '%s' AND `uid` = %d AND NOT `deleted`",
 			DBA::escape($addr),
 			intval($uid)
@@ -941,7 +1132,7 @@ class Contact extends BaseObject
 		// Fetch the data from the contact table with "uid=0" (which is filled automatically)
 		if (!DBA::isResult($r)) {
 			$r = q("SELECT `id`, 0 AS `cid`, `id` AS `zid`, 0 AS `gid`, `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, `xmpp`,
-				`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, 0 AS `self`
+				`keywords`, `gender`, `photo`, `thumb`, `micro`, `forum`, `prv`, (`forum` | `prv`) AS `community`, `contact-type`, `bd` AS `birthday`, 0 AS `self`, `rel`, `pending`
 				FROM `contact` WHERE `addr` = '%s' AND `uid` = 0 AND NOT `deleted`",
 				DBA::escape($addr)
 			);
@@ -950,7 +1141,7 @@ class Contact extends BaseObject
 		// Fetch the data from the gcontact table
 		if (!DBA::isResult($r)) {
 			$r = q("SELECT 0 AS `id`, 0 AS `cid`, `id` AS `gid`, 0 AS `zid`, 0 AS `uid`, `url`, `nurl`, `alias`, `network`, `name`, `nick`, `addr`, `location`, `about`, '' AS `xmpp`,
-				`keywords`, `gender`, `photo`, `photo` AS `thumb`, `photo` AS `micro`, `community` AS `forum`, 0 AS `prv`, `community`, `contact-type`, `birthday`, 0 AS `self`
+				`keywords`, `gender`, `photo`, `photo` AS `thumb`, `photo` AS `micro`, `community` AS `forum`, 0 AS `prv`, `community`, `contact-type`, `birthday`, 0 AS `self`, 2 AS `rel`, 0 AS `pending`
 				FROM `gcontact` WHERE `addr` = '%s'",
 				DBA::escape($addr)
 			);
@@ -1004,9 +1195,9 @@ class Contact extends BaseObject
 		}
 
 		$sparkle = false;
-		if (($contact['network'] === Protocol::DFRN) && !$contact['self']) {
+		if (($contact['network'] === Protocol::DFRN) && !$contact['self'] && empty($contact['pending'])) {
 			$sparkle = true;
-			$profile_link = System::baseUrl() . '/redir/' . $contact['id'] . '?url=' . $contact['url'];
+			$profile_link = System::baseUrl() . '/redir/' . $contact['id'];
 		} else {
 			$profile_link = $contact['url'];
 		}
@@ -1021,12 +1212,12 @@ class Contact extends BaseObject
 			$profile_link = $profile_link . '?tab=profile';
 		}
 
-		if (in_array($contact['network'], [Protocol::DFRN, Protocol::DIASPORA]) && !$contact['self']) {
+		if (self::canReceivePrivateMessages($contact) && empty($contact['pending'])) {
 			$pm_url = System::baseUrl() . '/message/new/' . $contact['id'];
 		}
 
-		if (($contact['network'] == Protocol::DFRN) && !$contact['self']) {
-			$poke_link = System::baseUrl() . '/poke/?f=&c=' . $contact['id'];
+		if (($contact['network'] == Protocol::DFRN) && !$contact['self'] && empty($contact['pending'])) {
+			$poke_link = System::baseUrl() . '/poke/?c=' . $contact['id'];
 		}
 
 		$contact_url = System::baseUrl() . '/contact/' . $contact['id'];
@@ -1037,29 +1228,48 @@ class Contact extends BaseObject
 			$contact_drop_link = System::baseUrl() . '/contact/' . $contact['id'] . '/drop?confirm=1';
 		}
 
+		$follow_link = '';
+		$unfollow_link = '';
+		if (!$contact['self'] && in_array($contact['network'], Protocol::NATIVE_SUPPORT)) {
+			if ($contact['uid'] && in_array($contact['rel'], [self::SHARING, self::FRIEND])) {
+				$unfollow_link = 'unfollow?url=' . urlencode($contact['url']);
+			} elseif(!$contact['pending']) {
+				$follow_link = 'follow?url=' . urlencode($contact['url']);
+			}
+		}
+
 		/**
 		 * Menu array:
 		 * "name" => [ "Label", "link", (bool)Should the link opened in a new tab? ]
 		 */
 		if (empty($contact['uid'])) {
-			$connlnk = 'follow/?url=' . $contact['url'];
 			$menu = [
-				'profile' => [L10n::t('View Profile'),   $profile_link, true],
-				'network' => [L10n::t('Network Posts'),  $posts_link,   false],
-				'edit'    => [L10n::t('View Contact'),   $contact_url,  false],
-				'follow'  => [L10n::t('Connect/Follow'), $connlnk,      true],
+				'profile' => [L10n::t('View Profile')  , $profile_link , true],
+				'network' => [L10n::t('Network Posts') , $posts_link   , false],
+				'edit'    => [L10n::t('View Contact')  , $contact_url  , false],
+				'follow'  => [L10n::t('Connect/Follow'), $follow_link  , true],
+				'unfollow'=> [L10n::t('UnFollow')      , $unfollow_link, true],
 			];
 		} else {
 			$menu = [
-				'status'  => [L10n::t('View Status'),   $status_link,       true],
-				'profile' => [L10n::t('View Profile'),  $profile_link,      true],
-				'photos'  => [L10n::t('View Photos'),   $photos_link,       true],
-				'network' => [L10n::t('Network Posts'), $posts_link,        false],
-				'edit'    => [L10n::t('View Contact'),  $contact_url,       false],
-				'drop'    => [L10n::t('Drop Contact'),  $contact_drop_link, false],
-				'pm'      => [L10n::t('Send PM'),       $pm_url,            false],
-				'poke'    => [L10n::t('Poke'),          $poke_link,         false],
+				'status'  => [L10n::t('View Status')   , $status_link      , true],
+				'profile' => [L10n::t('View Profile')  , $profile_link     , true],
+				'photos'  => [L10n::t('View Photos')   , $photos_link      , true],
+				'network' => [L10n::t('Network Posts') , $posts_link       , false],
+				'edit'    => [L10n::t('View Contact')  , $contact_url      , false],
+				'drop'    => [L10n::t('Drop Contact')  , $contact_drop_link, false],
+				'pm'      => [L10n::t('Send PM')       , $pm_url           , false],
+				'poke'    => [L10n::t('Poke')          , $poke_link        , false],
+				'follow'  => [L10n::t('Connect/Follow'), $follow_link      , true],
+				'unfollow'=> [L10n::t('UnFollow')      , $unfollow_link    , true],
 			];
+
+			if (!empty($contact['pending'])) {
+				$intro = DBA::selectFirst('intro', ['id'], ['contact-id' => $contact['id']]);
+				if (DBA::isResult($intro)) {
+					$menu['follow'] = [L10n::t('Approve'), 'notifications/intros/' . $intro['id'], true];
+				}
+			}
 		}
 
 		$args = ['contact' => $contact, 'menu' => &$menu];
@@ -1105,6 +1315,90 @@ class Contact extends BaseObject
 	}
 
 	/**
+	 * Have a look at all contact tables for a given profile url.
+	 * This function works as a replacement for probing the contact.
+	 *
+	 * @param string  $url Contact URL
+	 * @param integer $cid Contact ID
+	 *
+	 * @return array Contact array in the "probe" structure
+	*/
+	private static function getProbeDataFromDatabase($url, $cid = null)
+	{
+		// The link could be provided as http although we stored it as https
+		$ssl_url = str_replace('http://', 'https://', $url);
+
+		$fields = ['id', 'uid', 'url', 'addr', 'alias', 'notify', 'poll', 'name', 'nick',
+			'photo', 'keywords', 'location', 'about', 'network',
+			'priority', 'batch', 'request', 'confirm', 'poco'];
+
+		if (!empty($cid)) {
+			$data = DBA::selectFirst('contact', $fields, ['id' => $cid]);
+			if (DBA::isResult($data)) {
+				return $data;
+			}
+		}
+
+		$data = DBA::selectFirst('contact', $fields, ['nurl' => Strings::normaliseLink($url)]);
+
+		if (!DBA::isResult($data)) {
+			$condition = ['alias' => [$url, Strings::normaliseLink($url), $ssl_url]];
+			$data = DBA::selectFirst('contact', $fields, $condition);
+		}
+
+		if (DBA::isResult($data)) {
+			// For security reasons we don't fetch key data from our users
+			$data["pubkey"] = '';
+			return $data;
+		}
+
+		$fields = ['url', 'addr', 'alias', 'notify', 'name', 'nick',
+			'photo', 'keywords', 'location', 'about', 'network'];
+		$data = DBA::selectFirst('gcontact', $fields, ['nurl' => Strings::normaliseLink($url)]);
+
+		if (!DBA::isResult($data)) {
+			$condition = ['alias' => [$url, Strings::normaliseLink($url), $ssl_url]];
+			$data = DBA::selectFirst('contact', $fields, $condition);
+		}
+
+		if (DBA::isResult($data)) {
+			$data["pubkey"] = '';
+			$data["poll"] = '';
+			$data["priority"] = 0;
+			$data["batch"] = '';
+			$data["request"] = '';
+			$data["confirm"] = '';
+			$data["poco"] = '';
+			return $data;
+		}
+
+		$data = ActivityPub::probeProfile($url, false);
+		if (!empty($data)) {
+			return $data;
+		}
+
+		$fields = ['url', 'addr', 'alias', 'notify', 'poll', 'name', 'nick',
+			'photo', 'network', 'priority', 'batch', 'request', 'confirm'];
+		$data = DBA::selectFirst('fcontact', $fields, ['url' => $url]);
+
+		if (!DBA::isResult($data)) {
+			$condition = ['alias' => [$url, Strings::normaliseLink($url), $ssl_url]];
+			$data = DBA::selectFirst('contact', $fields, $condition);
+		}
+
+		if (DBA::isResult($data)) {
+			$data["pubkey"] = '';
+			$data["keywords"] = '';
+			$data["location"] = '';
+			$data["about"] = '';
+			$data["poco"] = '';
+			return $data;
+		}
+
+		return [];
+	}
+
+	/**
 	 * @brief Fetch the contact id for a given URL and user
 	 *
 	 * First lookup in the contact table to find a record matching either `url`, `nurl`,
@@ -1144,11 +1438,13 @@ class Contact extends BaseObject
 
 		/// @todo Verify if we can't use Contact::getDetailsByUrl instead of the following
 		// We first try the nurl (http://server.tld/nick), most common case
-		$contact = DBA::selectFirst('contact', ['id', 'avatar', 'avatar-date'], ['nurl' => Strings::normaliseLink($url), 'uid' => $uid, 'deleted' => false]);
+		$fields = ['id', 'avatar', 'updated', 'network'];
+		$options = ['order' => ['id']];
+		$contact = DBA::selectFirst('contact', $fields, ['nurl' => Strings::normaliseLink($url), 'uid' => $uid, 'deleted' => false], $options);
 
 		// Then the addr (nick@server.tld)
 		if (!DBA::isResult($contact)) {
-			$contact = DBA::selectFirst('contact', ['id', 'avatar', 'avatar-date'], ['addr' => $url, 'uid' => $uid, 'deleted' => false]);
+			$contact = DBA::selectFirst('contact', $fields, ['addr' => str_replace('acct:', '', $url), 'uid' => $uid, 'deleted' => false], $options);
 		}
 
 		// Then the alias (which could be anything)
@@ -1156,19 +1452,39 @@ class Contact extends BaseObject
 			// The link could be provided as http although we stored it as https
 			$ssl_url = str_replace('http://', 'https://', $url);
 			$condition = ['`alias` IN (?, ?, ?) AND `uid` = ? AND NOT `deleted`', $url, Strings::normaliseLink($url), $ssl_url, $uid];
-			$contact = DBA::selectFirst('contact', ['id', 'avatar', 'avatar-date'], $condition);
+			$contact = DBA::selectFirst('contact', $fields, $condition, $options);
 		}
 
 		if (DBA::isResult($contact)) {
 			$contact_id = $contact["id"];
+			$update_contact = false;
 
-			// Update the contact every 7 days
-			$update_contact = ($contact['avatar-date'] < DateTimeFormat::utc('now -7 days'));
+			// Update the contact every 7 days (Don't update mail or feed contacts)
+			if (in_array($contact['network'], Protocol::FEDERATED)) {
+				$update_contact = ($contact['updated'] < DateTimeFormat::utc('now -7 days'));
 
-			// We force the update if the avatar is empty
-			if (empty($contact['avatar'])) {
-				$update_contact = true;
+				// We force the update if the avatar is empty
+				if (empty($contact['avatar'])) {
+					$update_contact = true;
+				}
+			} elseif (empty($default) && in_array($contact['network'], [Protocol::MAIL, Protocol::PHANTOM]) && ($uid == 0)) {
+				// Update public mail accounts via their user's accounts
+				$fields = ['network', 'addr', 'name', 'nick', 'avatar', 'photo', 'thumb', 'micro'];
+				$mailcontact = DBA::selectFirst('contact', $fields, ["`addr` = ? AND `network` = ? AND `uid` != 0", $url, Protocol::MAIL]);
+				if (!DBA::isResult($mailcontact)) {
+					$mailcontact = DBA::selectFirst('contact', $fields, ["`nurl` = ? AND `network` = ? AND `uid` != 0", $url, Protocol::MAIL]);
+				}
+
+				if (DBA::isResult($mailcontact)) {
+					DBA::update('contact', $mailcontact, ['id' => $contact_id]);
+				}
 			}
+
+			// Update the contact in the background if needed but it is called by the frontend
+			if ($update_contact && $no_update && in_array($contact['network'], Protocol::NATIVE_SUPPORT)) {
+				Worker::add(PRIORITY_LOW, "UpdateContact", $contact_id, ($uid == 0 ? 'force' : ''));
+			}
+
 			if (!$update_contact || $no_update) {
 				return $contact_id;
 			}
@@ -1177,77 +1493,37 @@ class Contact extends BaseObject
 			return 0;
 		}
 
-		// When we don't want to update, we look if some of our users already know this contact
-		if ($no_update) {
-			$fields = ['url', 'addr', 'alias', 'notify', 'poll', 'name', 'nick',
-				'photo', 'keywords', 'location', 'about', 'network',
-				'priority', 'batch', 'request', 'confirm', 'poco'];
-			$data = DBA::selectFirst('contact', $fields, ['nurl' => Strings::normaliseLink($url)]);
-
-			if (DBA::isResult($data)) {
-				// For security reasons we don't fetch key data from our users
-				$data["pubkey"] = '';
-			}
+		if ($no_update && empty($default)) {
+			// When we don't want to update, we look if we know this contact in any way
+			$data = self::getProbeDataFromDatabase($url, $contact_id);
+			$background_update = true;
+		} elseif ($no_update && !empty($default['network'])) {
+			// If there are default values, take these
+			$data = $default;
+			$background_update = false;
 		} else {
 			$data = [];
+			$background_update = false;
 		}
 
 		if (empty($data)) {
 			$data = Probe::uri($url, "", $uid);
-
 			// Ensure that there is a gserver entry
 			if (!empty($data['baseurl']) && ($data['network'] != Protocol::PHANTOM)) {
-				PortableContact::checkServer($data['baseurl']);
+				GServer::check($data['baseurl']);
 			}
 		}
 
-		// Last try in gcontact for unsupported networks
-		if (!in_array($data["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::OSTATUS, Protocol::DIASPORA, Protocol::PUMPIO, Protocol::MAIL, Protocol::FEED])) {
-			if ($uid != 0) {
-				return 0;
-			}
-
-			// Get data from the gcontact table
-			$fields = ['name', 'nick', 'url', 'photo', 'addr', 'alias', 'network'];
-			$contact = DBA::selectFirst('gcontact', $fields, ['nurl' => Strings::normaliseLink($url)]);
-			if (!DBA::isResult($contact)) {
-				$contact = DBA::selectFirst('contact', $fields, ['nurl' => Strings::normaliseLink($url)]);
-			}
-
-			if (!DBA::isResult($contact)) {
-				$fields = ['url', 'addr', 'alias', 'notify', 'poll', 'name', 'nick',
-					'photo', 'keywords', 'location', 'about', 'network',
-					'priority', 'batch', 'request', 'confirm', 'poco'];
-				$contact = DBA::selectFirst('contact', $fields, ['addr' => $url]);
-			}
-
-			// The link could be provided as http although we stored it as https
-			$ssl_url = str_replace('http://', 'https://', $url);
-
-			if (!DBA::isResult($contact)) {
-				$condition = ['alias' => [$url, Strings::normaliseLink($url), $ssl_url]];
-				$contact = DBA::selectFirst('contact', $fields, $condition);
-			}
-
-			if (!DBA::isResult($contact)) {
-				$fields = ['url', 'addr', 'alias', 'notify', 'poll', 'name', 'nick',
-					'photo', 'network', 'priority', 'batch', 'request', 'confirm'];
-				$condition = ['url' => [$url, Strings::normaliseLink($url), $ssl_url]];
-				$contact = DBA::selectFirst('fcontact', $fields, $condition);
-			}
-
-			if (!empty($default)) {
-				$contact = $default;
-			}
-
-			if (!DBA::isResult($contact)) {
-				return 0;
-			} else {
-				$data = array_merge($data, $contact);
-			}
+		// Take the default values when probing failed
+		if (!empty($default) && !in_array($data["network"], array_merge(Protocol::NATIVE_SUPPORT, [Protocol::PUMPIO]))) {
+			$data = array_merge($data, $default);
 		}
 
-		if (!$contact_id && ($data["alias"] != '') && ($data["alias"] != $url) && !$in_loop) {
+		if (empty($data)) {
+			return 0;
+		}
+
+		if (!$contact_id && !empty($data['alias']) && ($data['alias'] != $url) && !$in_loop) {
 			$contact_id = self::getIdForURL($data["alias"], $uid, true, $default, true);
 		}
 
@@ -1255,26 +1531,27 @@ class Contact extends BaseObject
 			$fields = [
 				'uid'       => $uid,
 				'created'   => DateTimeFormat::utcNow(),
-				'url'       => $data["url"],
-				'nurl'      => Strings::normaliseLink($data["url"]),
-				'addr'      => $data["addr"],
-				'alias'     => $data["alias"],
-				'notify'    => $data["notify"],
-				'poll'      => $data["poll"],
-				'name'      => $data["name"],
-				'nick'      => $data["nick"],
-				'photo'     => $data["photo"],
-				'keywords'  => $data["keywords"],
-				'location'  => $data["location"],
-				'about'     => $data["about"],
-				'network'   => $data["network"],
-				'pubkey'    => $data["pubkey"],
+				'url'       => $data['url'],
+				'nurl'      => Strings::normaliseLink($data['url']),
+				'addr'      => $data['addr'] ?? '',
+				'alias'     => $data['alias'] ?? '',
+				'notify'    => $data['notify'] ?? '',
+				'poll'      => $data['poll'] ?? '',
+				'name'      => $data['name'] ?? '',
+				'nick'      => $data['nick'] ?? '',
+				'photo'     => $data['photo'] ?? '',
+				'keywords'  => $data['keywords'] ?? '',
+				'location'  => $data['location'] ?? '',
+				'about'     => $data['about'] ?? '',
+				'network'   => $data['network'],
+				'pubkey'    => $data['pubkey'] ?? '',
 				'rel'       => self::SHARING,
-				'priority'  => $data["priority"],
-				'batch'     => $data["batch"],
-				'request'   => $data["request"],
-				'confirm'   => $data["confirm"],
-				'poco'      => $data["poco"],
+				'priority'  => $data['priority'] ?? 0,
+				'batch'     => $data['batch'] ?? '',
+				'request'   => $data['request'] ?? '',
+				'confirm'   => $data['confirm'] ?? '',
+				'poco'      => $data['poco'] ?? '',
+				'baseurl'   => $data['baseurl'] ?? '',
 				'name-date' => DateTimeFormat::utcNow(),
 				'uri-date'  => DateTimeFormat::utcNow(),
 				'avatar-date' => DateTimeFormat::utcNow(),
@@ -1285,101 +1562,121 @@ class Contact extends BaseObject
 
 			$condition = ['nurl' => Strings::normaliseLink($data["url"]), 'uid' => $uid, 'deleted' => false];
 
-			DBA::update('contact', $fields, $condition, true);
+			// Before inserting we do check if the entry does exist now.
+			$contact = DBA::selectFirst('contact', ['id'], $condition, ['order' => ['id']]);
+			if (!DBA::isResult($contact)) {
+				Logger::info('Create new contact', $fields);
 
-			$s = DBA::select('contact', ['id'], $condition, ['order' => ['id'], 'limit' => 2]);
-			$contacts = DBA::toArray($s);
-			if (!DBA::isResult($contacts)) {
-				return 0;
+				self::insert($fields);
+
+				// We intentionally aren't using lastInsertId here. There is a chance for duplicates.
+				$contact = DBA::selectFirst('contact', ['id'], $condition, ['order' => ['id']]);
+				if (!DBA::isResult($contact)) {
+					Logger::info('Contact creation failed', $fields);
+					// Shouldn't happen
+					return 0;
+				}
+			} else {
+				Logger::info('Contact had been created before', ['id' => $contact["id"], 'url' => $url, 'contact' => $fields]);
 			}
 
-			$contact_id = $contacts[0]["id"];
+			$contact_id = $contact["id"];
+		}
 
-			// Update the newly created contact from data in the gcontact table
-			$gcontact = DBA::selectFirst('gcontact', ['location', 'about', 'keywords', 'gender'], ['nurl' => Strings::normaliseLink($data["url"])]);
-			if (DBA::isResult($gcontact)) {
-				// Only use the information when the probing hadn't fetched these values
-				if ($data['keywords'] != '') {
-					unset($gcontact['keywords']);
+		if (!empty($data['photo']) && ($data['network'] != Protocol::FEED)) {
+			self::updateAvatar($data['photo'], $uid, $contact_id);
+		}
+
+		if (in_array($data["network"], array_merge(Protocol::NATIVE_SUPPORT, [Protocol::PUMPIO]))) {
+			if ($background_update) {
+				// Update in the background when we fetched the data solely from the database
+				Worker::add(PRIORITY_MEDIUM, "UpdateContact", $contact_id, ($uid == 0 ? 'force' : ''));
+			} else {
+				// Else do a direct update
+				self::updateFromProbe($contact_id, '', false);
+
+				// Update the gcontact entry
+				if ($uid == 0) {
+					GContact::updateFromPublicContactID($contact_id);
 				}
-				if ($data['location'] != '') {
-					unset($gcontact['location']);
-				}
-				if ($data['about'] != '') {
-					unset($gcontact['about']);
-				}
-				DBA::update('contact', $gcontact, ['id' => $contact_id]);
+			}
+		} else {
+			$fields = ['url', 'nurl', 'addr', 'alias', 'name', 'nick', 'keywords', 'location', 'about', 'avatar-date', 'baseurl'];
+			$contact = DBA::selectFirst('contact', $fields, ['id' => $contact_id]);
+
+			// This condition should always be true
+			if (!DBA::isResult($contact)) {
+				return $contact_id;
 			}
 
-			if (count($contacts) > 1 && $uid == 0 && $contact_id != 0 && $data["url"] != "") {
-				$condition = ["`nurl` = ? AND `uid` = ? AND `id` != ? AND NOT `self`",
-					Strings::normaliseLink($data["url"]), 0, $contact_id];
-				Logger::log('Deleting duplicate contact ' . json_encode($condition), Logger::DEBUG);
-				DBA::delete('contact', $condition);
+			$updated = [
+				'url' => $data['url'],
+				'nurl' => Strings::normaliseLink($data['url']),
+				'updated' => DateTimeFormat::utcNow()
+			];
+
+			$fields = ['addr', 'alias', 'name', 'nick', 'keywords', 'location', 'about', 'baseurl'];
+
+			foreach ($fields as $field) {
+				$updated[$field] = ($data[$field] ?? '') ?: $contact[$field];
 			}
-		}
 
-		self::updateAvatar($data["photo"], $uid, $contact_id);
+			if (($updated['addr'] != $contact['addr']) || (!empty($data['alias']) && ($data['alias'] != $contact['alias']))) {
+				$updated['uri-date'] = DateTimeFormat::utcNow();
+			}
 
-		$fields = ['url', 'nurl', 'addr', 'alias', 'name', 'nick', 'keywords', 'location', 'about', 'avatar-date', 'pubkey'];
-		$contact = DBA::selectFirst('contact', $fields, ['id' => $contact_id]);
+			if (($data['name'] != $contact['name']) || ($data['nick'] != $contact['nick'])) {
+				$updated['name-date'] = DateTimeFormat::utcNow();
+			}
 
-		// This condition should always be true
-		if (!DBA::isResult($contact)) {
-			return $contact_id;
+			DBA::update('contact', $updated, ['id' => $contact_id], $contact);
 		}
-
-		$updated = ['addr' => $data['addr'],
-			'alias' => $data['alias'],
-			'url' => $data['url'],
-			'nurl' => Strings::normaliseLink($data['url']),
-			'name' => $data['name'],
-			'nick' => $data['nick']];
-
-		if ($data['keywords'] != '') {
-			$updated['keywords'] = $data['keywords'];
-		}
-		if ($data['location'] != '') {
-			$updated['location'] = $data['location'];
-		}
-
-		// Update the technical stuff as well - if filled
-		if ($data['notify'] != '') {
-			$updated['notify'] = $data['notify'];
-		}
-		if ($data['poll'] != '') {
-			$updated['poll'] = $data['poll'];
-		}
-		if ($data['batch'] != '') {
-			$updated['batch'] = $data['batch'];
-		}
-		if ($data['request'] != '') {
-			$updated['request'] = $data['request'];
-		}
-		if ($data['confirm'] != '') {
-			$updated['confirm'] = $data['confirm'];
-		}
-		if ($data['poco'] != '') {
-			$updated['poco'] = $data['poco'];
-		}
-
-		// Only fill the pubkey if it had been empty before. We have to prevent identity theft.
-		if (empty($contact['pubkey'])) {
-			$updated['pubkey'] = $data['pubkey'];
-		}
-
-		if (($data["addr"] != $contact["addr"]) || ($data["alias"] != $contact["alias"])) {
-			$updated['uri-date'] = DateTimeFormat::utcNow();
-		}
-		if (($data["name"] != $contact["name"]) || ($data["nick"] != $contact["nick"])) {
-			$updated['name-date'] = DateTimeFormat::utcNow();
-		}
-
-		$updated['avatar-date'] = DateTimeFormat::utcNow();
-
-		DBA::update('contact', $updated, ['id' => $contact_id], $contact);
 
 		return $contact_id;
+	}
+
+	/**
+	 * @brief Checks if the contact is archived
+	 *
+	 * @param int $cid contact id
+	 *
+	 * @return boolean Is the contact archived?
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	public static function isArchived(int $cid)
+	{
+		if ($cid == 0) {
+			return false;
+		}
+
+		$contact = DBA::selectFirst('contact', ['archive', 'url', 'batch'], ['id' => $cid]);
+		if (!DBA::isResult($contact)) {
+			return false;
+		}
+
+		if ($contact['archive']) {
+			return true;
+		}
+
+		// Check status of ActivityPub endpoints
+		$apcontact = APContact::getByURL($contact['url'], false);
+		if (!empty($apcontact)) {
+			if (!empty($apcontact['inbox']) && DBA::exists('inbox-status', ['archive' => true, 'url' => $apcontact['inbox']])) {
+				return true;
+			}
+
+			if (!empty($apcontact['sharedinbox']) && DBA::exists('inbox-status', ['archive' => true, 'url' => $apcontact['sharedinbox']])) {
+				return true;
+			}
+		}
+
+		// Check status of Diaspora endpoints
+		if (!empty($contact['batch'])) {
+			$condition = ['archive' => true, 'uid' => 0, 'network' => Protocol::FEDERATED, 'batch' => $contact['batch'], 'contact-type' => self::TYPE_RELAY];
+			return DBA::exists('contact', $condition);
+                }
+
+		return false;
 	}
 
 	/**
@@ -1450,13 +1747,13 @@ class Contact extends BaseObject
 			return '';
 		}
 
-		if (in_array($contact["network"], [Protocol::ACTIVITYPUB, Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS, ""])) {
+		if (empty($contact["network"]) || in_array($contact["network"], Protocol::FEDERATED)) {
 			$sql = "(`item`.`uid` = 0 OR (`item`.`uid` = ? AND NOT `item`.`global`))";
 		} else {
 			$sql = "`item`.`uid` = ?";
 		}
 
-		$contact_field = ($contact["contact-type"] == self::TYPE_COMMUNITY ? 'owner-id' : 'author-id');
+		$contact_field = ((($contact["contact-type"] == self::TYPE_COMMUNITY) || ($contact['network'] == Protocol::MAIL)) ? 'owner-id' : 'author-id');
 
 		if ($thread_mode) {
 			$condition = ["`$contact_field` = ? AND `gravity` = ? AND " . $sql,
@@ -1468,7 +1765,7 @@ class Contact extends BaseObject
 
 		$pager = new Pager($a->query_string);
 
-		$params = ['order' => ['created' => true],
+		$params = ['order' => ['received' => true],
 			'limit' => [$pager->getStart(), $pager->getItemsPerPage()]];
 
 		if ($thread_mode) {
@@ -1550,13 +1847,13 @@ class Contact extends BaseObject
 	/**
 	 * @brief Blocks a contact
 	 *
-	 * @param int $uid
+	 * @param int $cid
 	 * @return bool
 	 * @throws \Exception
 	 */
-	public static function block($uid)
+	public static function block($cid, $reason = null)
 	{
-		$return = DBA::update('contact', ['blocked' => true], ['id' => $uid]);
+		$return = DBA::update('contact', ['blocked' => true, 'block_reason' => $reason], ['id' => $cid]);
 
 		return $return;
 	}
@@ -1564,13 +1861,13 @@ class Contact extends BaseObject
 	/**
 	 * @brief Unblocks a contact
 	 *
-	 * @param int $uid
+	 * @param int $cid
 	 * @return bool
 	 * @throws \Exception
 	 */
-	public static function unblock($uid)
+	public static function unblock($cid)
 	{
-		$return = DBA::update('contact', ['blocked' => false], ['id' => $uid]);
+		$return = DBA::update('contact', ['blocked' => false, 'block_reason' => null], ['id' => $cid]);
 
 		return $return;
 	}
@@ -1589,7 +1886,7 @@ class Contact extends BaseObject
 	 */
 	public static function updateAvatar($avatar, $uid, $cid, $force = false)
 	{
-		$contact = DBA::selectFirst('contact', ['avatar', 'photo', 'thumb', 'micro', 'nurl'], ['id' => $cid]);
+		$contact = DBA::selectFirst('contact', ['avatar', 'photo', 'thumb', 'micro', 'nurl'], ['id' => $cid, 'self' => false]);
 		if (!DBA::isResult($contact)) {
 			return false;
 		} else {
@@ -1600,17 +1897,14 @@ class Contact extends BaseObject
 			$photos = Photo::importProfilePhoto($avatar, $uid, $cid, true);
 
 			if ($photos) {
-				DBA::update(
-					'contact',
-					['avatar' => $avatar, 'photo' => $photos[0], 'thumb' => $photos[1], 'micro' => $photos[2], 'avatar-date' => DateTimeFormat::utcNow()],
-					['id' => $cid]
-				);
+				$fields = ['avatar' => $avatar, 'photo' => $photos[0], 'thumb' => $photos[1], 'micro' => $photos[2], 'avatar-date' => DateTimeFormat::utcNow()];
+				DBA::update('contact', $fields, ['id' => $cid]);
 
 				// Update the public contact (contact id = 0)
 				if ($uid != 0) {
 					$pcontact = DBA::selectFirst('contact', ['id'], ['nurl' => $contact['nurl'], 'uid' => 0]);
 					if (DBA::isResult($pcontact)) {
-						self::updateAvatar($avatar, 0, $pcontact['id'], $force);
+						DBA::update('contact', $fields, ['id' => $pcontact['id']]);
 					}
 				}
 
@@ -1619,6 +1913,109 @@ class Contact extends BaseObject
 		}
 
 		return $data;
+	}
+
+        /**
+	 * @brief Helper function for "updateFromProbe". Updates personal and public contact
+	 *
+	 * @param integer $id      contact id
+	 * @param integer $uid     user id
+	 * @param string  $url     The profile URL of the contact
+	 * @param array   $fields  The fields that are updated
+	 *
+	 * @throws \Exception
+	 */
+	private static function updateContact($id, $uid, $url, array $fields)
+	{
+		if (!DBA::update('contact', $fields, ['id' => $id])) {
+			Logger::info('Couldn\'t update contact.', ['id' => $id, 'fields' => $fields]);
+			return;
+		}
+
+		// Search for duplicated contacts and get rid of them
+		if (self::removeDuplicates(Strings::normaliseLink($url), $uid) || ($uid != 0)) {
+			return;
+		}
+
+		// Update the corresponding gcontact entry
+		GContact::updateFromPublicContactID($id);
+
+		// Archive or unarchive the contact. We only need to do this for the public contact.
+		// The archive/unarchive function will update the personal contacts by themselves.
+		$contact = DBA::selectFirst('contact', [], ['id' => $id]);
+		if (!DBA::isResult($contact)) {
+			Logger::info('Couldn\'t select contact for archival.', ['id' => $id]);
+			return;
+		}
+
+		if (!empty($fields['success_update'])) {
+			self::unmarkForArchival($contact);
+		} elseif (!empty($fields['failure_update'])) {
+			self::markForArchival($contact);
+		}
+
+		$condition = ['self' => false, 'nurl' => Strings::normaliseLink($url), 'network' => Protocol::FEDERATED];
+
+		// These contacts are sharing with us, we don't poll them.
+		// This means that we don't set the update fields in "OnePoll.php".
+		$condition['rel'] = self::SHARING;
+		DBA::update('contact', $fields, $condition);
+
+		unset($fields['last-update']);
+		unset($fields['success_update']);
+		unset($fields['failure_update']);
+
+		if (empty($fields)) {
+			return;
+		}
+
+		// We are polling these contacts, so we mustn't set the update fields here.
+		$condition['rel'] = [self::FOLLOWER, self::FRIEND];
+		DBA::update('contact', $fields, $condition);
+	}
+
+        /**
+	 * @brief Remove duplicated contacts
+	 *
+	 * @param string  $nurl  Normalised contact url
+	 * @param integer $uid   User id
+	 * @return boolean
+	 * @throws \Exception
+	 */
+	public static function removeDuplicates(string $nurl, int $uid)
+	{
+		$condition = ['nurl' => $nurl, 'uid' => $uid, 'deleted' => false, 'network' => Protocol::FEDERATED];
+		$count = DBA::count('contact', $condition);
+		if ($count <= 1) {
+			return false;
+		}
+
+		$first_contact = DBA::selectFirst('contact', ['id', 'network'], $condition, ['order' => ['id']]);
+		if (!DBA::isResult($first_contact)) {
+			// Shouldn't happen - so we handle it
+			return false;
+		}
+
+		$first = $first_contact['id'];
+		Logger::info('Found duplicates', ['count' => $count, 'first' => $first, 'uid' => $uid, 'nurl' => $nurl]);
+		if (($uid != 0 && ($first_contact['network'] == Protocol::DFRN))) {
+			// Don't handle non public DFRN duplicates by now (legacy DFRN is very special because of the key handling)
+			Logger::info('Not handling non public DFRN duplicate', ['uid' => $uid, 'nurl' => $nurl]);
+			return false;
+		}
+
+		// Find all duplicates
+		$condition = ["`nurl` = ? AND `uid` = ? AND `id` != ? AND NOT `self` AND NOT `deleted`", $nurl, $uid, $first];
+		$duplicates = DBA::select('contact', ['id', 'network'], $condition);
+		while ($duplicate = DBA::fetch($duplicates)) {
+			if (!in_array($duplicate['network'], Protocol::FEDERATED)) {
+				continue;
+			}
+
+			Worker::add(PRIORITY_HIGH, 'MergeContact', $first, $duplicate['id'], $uid);
+		}
+		Logger::info('Duplicates handled', ['uid' => $uid, 'nurl' => $nurl]);
+		return true;
 	}
 
 	/**
@@ -1633,11 +2030,15 @@ class Contact extends BaseObject
 	{
 		/*
 		  Warning: Never ever fetch the public key via Probe::uri and write it into the contacts.
-		  This will reliably kill your communication with Friendica contacts.
+		  This will reliably kill your communication with old Friendica contacts.
 		 */
 
-		$fields = ['avatar', 'uid', 'name', 'nick', 'url', 'addr', 'batch', 'notify',
-			'poll', 'request', 'confirm', 'poco', 'network', 'alias'];
+		// These fields aren't updated by this routine:
+		// 'xmpp', 'sensitive'
+
+		$fields = ['uid', 'avatar', 'name', 'nick', 'location', 'keywords', 'about', 'gender',
+			'unsearchable', 'url', 'addr', 'batch', 'notify', 'poll', 'request', 'confirm', 'poco',
+			'network', 'alias', 'baseurl', 'forum', 'prv', 'contact-type', 'pubkey'];
 		$contact = DBA::selectFirst('contact', $fields, ['id' => $id]);
 		if (!DBA::isResult($contact)) {
 			return false;
@@ -1646,44 +2047,150 @@ class Contact extends BaseObject
 		$uid = $contact['uid'];
 		unset($contact['uid']);
 
+		$pubkey = $contact['pubkey'];
+		unset($contact['pubkey']);
+
 		$contact['photo'] = $contact['avatar'];
 		unset($contact['avatar']);
 
 		$ret = Probe::uri($contact['url'], $network, $uid, !$force);
 
-		// If Probe::uri fails the network code will be different (mostly "feed" or "unkn")
-		if ((in_array($ret['network'], [Protocol::FEED, Protocol::PHANTOM])) && ($ret['network'] != $contact['network'])) {
+		$updated = DateTimeFormat::utcNow();
+
+		// We must not try to update relay contacts via probe. They are no real contacts.
+		// We check after the probing to be able to correct falsely detected contact types.
+		if (($contact['contact-type'] == self::TYPE_RELAY) &&
+			(!Strings::compareLink($ret['url'], $contact['url']) || in_array($ret['network'], [Protocol::FEED, Protocol::PHANTOM]))) {
+			self::updateContact($id, $uid, $contact['url'], ['last-update' => $updated, 'success_update' => $updated]);
+			Logger::info('Not updating relais', ['id' => $id, 'url' => $contact['url']]);
+			return true;
+		}
+
+		// If Probe::uri fails the network code will be different ("feed" or "unkn")
+		if (in_array($ret['network'], [Protocol::FEED, Protocol::PHANTOM]) && ($ret['network'] != $contact['network'])) {
+			if ($force && ($uid == 0)) {
+				self::updateContact($id, $uid, $ret['url'], ['last-update' => $updated, 'failure_update' => $updated]);
+			}
 			return false;
 		}
 
+		if (isset($ret['hide']) && is_bool($ret['hide'])) {
+			$ret['unsearchable'] = $ret['hide'];
+		}
+
+		if (isset($ret['account-type']) && is_int($ret['account-type'])) {
+			$ret['forum'] = false;
+			$ret['prv'] = false;
+			$ret['contact-type'] = $ret['account-type'];
+			if ($ret['contact-type'] == User::ACCOUNT_TYPE_COMMUNITY) {
+				$apcontact = APContact::getByURL($ret['url'], false);
+				if (isset($apcontact['manually-approve'])) {
+					$ret['forum'] = (bool)!$apcontact['manually-approve'];
+					$ret['prv'] = (bool)!$ret['forum'];
+				}
+			}
+		}
+
+		$new_pubkey = $ret['pubkey'];
+
 		$update = false;
 
-		// make sure to not overwrite existing values with blank entries
+		// make sure to not overwrite existing values with blank entries except some technical fields
+		$keep = ['batch', 'notify', 'poll', 'request', 'confirm', 'poco', 'baseurl'];
 		foreach ($ret as $key => $val) {
-			if (!isset($contact[$key])) {
+			if (!array_key_exists($key, $contact)) {
 				unset($ret[$key]);
-			} elseif (($contact[$key] != '') && ($val == '')) {
+			} elseif (($contact[$key] != '') && ($val === '') && !is_bool($ret[$key]) && !in_array($key, $keep)) {
 				$ret[$key] = $contact[$key];
 			} elseif ($ret[$key] != $contact[$key]) {
 				$update = true;
 			}
 		}
 
+		if (!empty($ret['photo']) && ($ret['network'] != Protocol::FEED)) {
+			self::updateAvatar($ret['photo'], $uid, $id, $update || $force);
+		}
+
 		if (!$update) {
+			if ($force) {
+				self::updateContact($id, $uid, $ret['url'], ['last-update' => $updated, 'success_update' => $updated]);
+			}
 			return true;
 		}
 
 		$ret['nurl'] = Strings::normaliseLink($ret['url']);
+		$ret['updated'] = $updated;
 
-		self::updateAvatar($ret['photo'], $uid, $id, true);
+		// Only fill the pubkey if it had been empty before. We have to prevent identity theft.
+		if (empty($pubkey) && !empty($new_pubkey)) {
+			$ret['pubkey'] = $new_pubkey;
+		}
+
+		if (($ret['addr'] != $contact['addr']) || (!empty($ret['alias']) && ($ret['alias'] != $contact['alias']))) {
+			$ret['uri-date'] = DateTimeFormat::utcNow();
+		}
+
+		if (($ret['name'] != $contact['name']) || ($ret['nick'] != $contact['nick'])) {
+			$ret['name-date'] = $updated;
+		}
+
+		if ($force && ($uid == 0)) {
+			$ret['last-update'] = $updated;
+			$ret['success_update'] = $updated;
+		}
 
 		unset($ret['photo']);
-		DBA::update('contact', $ret, ['id' => $id]);
 
-		// Update the corresponding gcontact entry
-		PortableContact::lastUpdated($ret["url"]);
+		self::updateContact($id, $uid, $ret['url'], $ret);
 
 		return true;
+	}
+
+	public static function updateFromProbeByURL($url, $force = false)
+	{
+		$id = self::getIdForURL($url);
+
+		if (empty($id)) {
+			return $id;
+		}
+
+		self::updateFromProbe($id, '', $force);
+
+		return $id;
+	}
+
+	/**
+	 * Detects if a given contact array belongs to a legacy DFRN connection
+	 *
+	 * @param array $contact
+	 * @return boolean
+	 */
+	public static function isLegacyDFRNContact($contact)
+	{
+		// Newer Friendica contacts are connected via AP, then these fields aren't set
+		return !empty($contact['dfrn-id']) || !empty($contact['issued-id']);
+	}
+
+	/**
+	 * Detects the communication protocol for a given contact url.
+	 * This is used to detect Friendica contacts that we can communicate via AP.
+	 *
+	 * @param string $url contact url
+	 * @param string $network Network of that contact
+	 * @return string with protocol
+	 */
+	public static function getProtocol($url, $network)
+	{
+		if ($network != Protocol::DFRN) {
+			return $network;
+		}
+
+		$apcontact = APContact::getByURL($url);
+		if (!empty($apcontact) && !empty($apcontact['generator'])) {
+			return Protocol::ACTIVITYPUB;
+		} else {
+			return $network;
+		}
 	}
 
 	/**
@@ -1761,7 +2268,9 @@ class Contact extends BaseObject
 			$contact = DBA::selectFirst('contact', ['id', 'rel'], $condition);
 		}
 
-		if (($ret['network'] === Protocol::DFRN) && !DBA::isResult($contact)) {
+		$protocol = self::getProtocol($url, $ret['network']);
+
+		if (($protocol === Protocol::DFRN) && !DBA::isResult($contact)) {
 			if ($interactive) {
 				if (strlen($a->getURLPath())) {
 					$myaddr = bin2hex(System::baseUrl() . '/profile/' . $a->user['nickname']);
@@ -1780,7 +2289,7 @@ class Contact extends BaseObject
 		}
 
 		// This extra param just confuses things, remove it
-		if ($ret['network'] === Protocol::DIASPORA) {
+		if ($protocol === Protocol::DIASPORA) {
 			$ret['url'] = str_replace('?absolute=true', '', $ret['url']);
 		}
 
@@ -1803,7 +2312,7 @@ class Contact extends BaseObject
 			return $result;
 		}
 
-		if ($ret['network'] === Protocol::OSTATUS && Config::get('system', 'ostatus_disabled')) {
+		if ($protocol === Protocol::OSTATUS && Config::get('system', 'ostatus_disabled')) {
 			$result['message'] .= L10n::t('The profile address specified belongs to a network which has been disabled on this site.') . EOL;
 			$ret['notify'] = '';
 		}
@@ -1812,15 +2321,21 @@ class Contact extends BaseObject
 			$result['message'] .= L10n::t('Limited profile. This person will be unable to receive direct/personal notifications from you.') . EOL;
 		}
 
-		$writeable = ((($ret['network'] === Protocol::OSTATUS) && ($ret['notify'])) ? 1 : 0);
+		$writeable = ((($protocol === Protocol::OSTATUS) && ($ret['notify'])) ? 1 : 0);
 
-		$subhub = (($ret['network'] === Protocol::OSTATUS) ? true : false);
+		$subhub = (($protocol === Protocol::OSTATUS) ? true : false);
 
-		$hidden = (($ret['network'] === Protocol::MAIL) ? 1 : 0);
+		$hidden = (($protocol === Protocol::MAIL) ? 1 : 0);
 
-		$pending = in_array($ret['network'], [Protocol::ACTIVITYPUB]);
+		$pending = false;
+		if ($protocol == Protocol::ACTIVITYPUB) {
+			$apcontact = APContact::getByURL($url, false);
+			if (isset($apcontact['manually-approve'])) {
+				$pending = (bool)$apcontact['manually-approve'];
+			}
+		}
 
-		if (in_array($ret['network'], [Protocol::MAIL, Protocol::DIASPORA, Protocol::ACTIVITYPUB])) {
+		if (in_array($protocol, [Protocol::MAIL, Protocol::DIASPORA, Protocol::ACTIVITYPUB])) {
 			$writeable = 1;
 		}
 
@@ -1831,10 +2346,10 @@ class Contact extends BaseObject
 			$fields = ['rel' => $new_relation, 'subhub' => $subhub, 'readonly' => false];
 			DBA::update('contact', $fields, ['id' => $contact['id']]);
 		} else {
-			$new_relation = (in_array($ret['network'], [Protocol::MAIL]) ? self::FRIEND : self::SHARING);
+			$new_relation = (in_array($protocol, [Protocol::MAIL]) ? self::FRIEND : self::SHARING);
 
 			// create contact record
-			DBA::insert('contact', [
+			self::insert([
 				'uid'     => $uid,
 				'created' => DateTimeFormat::utcNow(),
 				'url'     => $ret['url'],
@@ -1848,6 +2363,8 @@ class Contact extends BaseObject
 				'name'    => $ret['name'],
 				'nick'    => $ret['nick'],
 				'network' => $ret['network'],
+				'baseurl' => $ret['baseurl'],
+				'protocol' => $protocol,
 				'pubkey'  => $ret['pubkey'],
 				'rel'     => $new_relation,
 				'priority'=> $ret['priority'],
@@ -1881,10 +2398,10 @@ class Contact extends BaseObject
 		$owner = User::getOwnerDataById($uid);
 
 		if (DBA::isResult($owner)) {
-			if (in_array($contact['network'], [Protocol::OSTATUS, Protocol::DFRN])) {
+			if (in_array($protocol, [Protocol::OSTATUS, Protocol::DFRN])) {
 				// create a follow slap
 				$item = [];
-				$item['verb'] = ACTIVITY_FOLLOW;
+				$item['verb'] = Activity::FOLLOW;
 				$item['follow'] = $contact["url"];
 				$item['body'] = '';
 				$item['title'] = '';
@@ -1897,10 +2414,10 @@ class Contact extends BaseObject
 				if (!empty($contact['notify'])) {
 					Salmon::slapper($owner, $contact['notify'], $slap);
 				}
-			} elseif ($contact['network'] == Protocol::DIASPORA) {
+			} elseif ($protocol == Protocol::DIASPORA) {
 				$ret = Diaspora::sendShare($a->user, $contact);
 				Logger::log('share returns: ' . $ret);
-			} elseif ($contact['network'] == Protocol::ACTIVITYPUB) {
+			} elseif ($protocol == Protocol::ACTIVITYPUB) {
 				$activity_id = ActivityPub\Transmitter::activityIDFromContact($contact_id);
 				if (empty($activity_id)) {
 					// This really should never happen
@@ -1928,7 +2445,7 @@ class Contact extends BaseObject
 	public static function updateSslPolicy(array $contact, $new_policy)
 	{
 		$ssl_changed = false;
-		if ((intval($new_policy) == SSL_POLICY_SELFSIGN || $new_policy === 'self') && strstr($contact['url'], 'https:')) {
+		if ((intval($new_policy) == BaseURL::SSL_POLICY_SELFSIGN || $new_policy === 'self') && strstr($contact['url'], 'https:')) {
 			$ssl_changed = true;
 			$contact['url']     = 	str_replace('https:', 'http:', $contact['url']);
 			$contact['request'] = 	str_replace('https:', 'http:', $contact['request']);
@@ -1938,7 +2455,7 @@ class Contact extends BaseObject
 			$contact['poco']    = 	str_replace('https:', 'http:', $contact['poco']);
 		}
 
-		if ((intval($new_policy) == SSL_POLICY_FULL || $new_policy === 'full') && strstr($contact['url'], 'http:')) {
+		if ((intval($new_policy) == BaseURL::SSL_POLICY_FULL || $new_policy === 'full') && strstr($contact['url'], 'http:')) {
 			$ssl_changed = true;
 			$contact['url']     = 	str_replace('http:', 'https:', $contact['url']);
 			$contact['request'] = 	str_replace('http:', 'https:', $contact['request']);
@@ -1958,66 +2475,104 @@ class Contact extends BaseObject
 		return $contact;
 	}
 
-	public static function addRelationship($importer, $contact, $datarray, $item = '', $sharing = false) {
+	/**
+	 * @param array  $importer Owner (local user) data
+	 * @param array  $contact  Existing owner-specific contact data we want to expand the relationship with. Optional.
+	 * @param array  $datarray An item-like array with at least the 'author-id' and 'author-url' keys for the contact. Mandatory.
+	 * @param bool   $sharing  True: Contact is now sharing with Owner; False: Contact is now following Owner (default)
+	 * @param string $note     Introduction additional message
+	 * @return bool|null True: follow request is accepted; False: relationship is rejected; Null: relationship is pending
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \ImagickException
+	 */
+	public static function addRelationship(array $importer, array $contact, array $datarray, $sharing = false, $note = '')
+	{
 		// Should always be set
 		if (empty($datarray['author-id'])) {
-			return;
+			return false;
 		}
 
-		$fields = ['url', 'name', 'nick', 'photo', 'network'];
+		$fields = ['url', 'name', 'nick', 'avatar', 'photo', 'network', 'blocked'];
 		$pub_contact = DBA::selectFirst('contact', $fields, ['id' => $datarray['author-id']]);
 		if (!DBA::isResult($pub_contact)) {
 			// Should never happen
-			return;
+			return false;
 		}
 
-		$url = defaults($datarray, 'author-link', $pub_contact['url']);
+		// Contact is blocked at node-level
+		if (self::isBlocked($datarray['author-id'])) {
+			return false;
+		}
+
+		$url = ($datarray['author-link'] ?? '') ?: $pub_contact['url'];
 		$name = $pub_contact['name'];
-		$photo = $pub_contact['photo'];
+		$photo = ($pub_contact['avatar'] ?? '') ?: $pub_contact["photo"];
 		$nick = $pub_contact['nick'];
 		$network = $pub_contact['network'];
 
-		if (is_array($contact)) {
+		// Ensure that we don't create a new contact when there already is one
+		$cid = self::getIdForURL($url, $importer['uid']);
+		if (!empty($cid)) {
+			$contact = DBA::selectFirst('contact', [], ['id' => $cid]);
+		}
+
+		if (!empty($contact)) {
+			if (!empty($contact['pending'])) {
+				Logger::info('Pending contact request already exists.', ['url' => $url, 'uid' => $importer['uid']]);
+				return null;
+			}
+
+			// Contact is blocked at user-level
+			if (!empty($contact['id']) && !empty($importer['id']) &&
+				self::isBlockedByUser($contact['id'], $importer['id'])) {
+				return false;
+			}
+
+			// Make sure that the existing contact isn't archived
+			self::unmarkForArchival($contact);
+
 			if (($contact['rel'] == self::SHARING)
 				|| ($sharing && $contact['rel'] == self::FOLLOWER)) {
-				DBA::update('contact', ['rel' => self::FRIEND, 'writable' => true],
+				DBA::update('contact', ['rel' => self::FRIEND, 'writable' => true, 'pending' => false],
 						['id' => $contact['id'], 'uid' => $importer['uid']]);
 			}
 
-			if ($contact['network'] == Protocol::ACTIVITYPUB) {
-				ActivityPub\Transmitter::sendContactAccept($contact['url'], $contact['hub-verify'], $importer['uid']);
-			}
+			// Ensure to always have the correct network type, independent from the connection request method
+			self::updateFromProbe($contact['id'], '', true);
 
-			// send email notification to owner?
+			return true;
 		} else {
+			// send email notification to owner?
 			if (DBA::exists('contact', ['nurl' => Strings::normaliseLink($url), 'uid' => $importer['uid'], 'pending' => true])) {
 				Logger::log('ignoring duplicated connection request from pending contact ' . $url);
-				return;
+				return null;
 			}
+
 			// create contact record
-			q("INSERT INTO `contact` (`uid`, `created`, `url`, `nurl`, `name`, `nick`, `photo`, `network`, `rel`,
-				`blocked`, `readonly`, `pending`, `writable`)
-				VALUES (%d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, 0, 0, 1, 1)",
-				intval($importer['uid']),
-				DBA::escape(DateTimeFormat::utcNow()),
-				DBA::escape($url),
-				DBA::escape(Strings::normaliseLink($url)),
-				DBA::escape($name),
-				DBA::escape($nick),
-				DBA::escape($photo),
-				DBA::escape($network),
-				intval(self::FOLLOWER)
-			);
+			DBA::insert('contact', [
+				'uid'      => $importer['uid'],
+				'created'  => DateTimeFormat::utcNow(),
+				'url'      => $url,
+				'nurl'     => Strings::normaliseLink($url),
+				'name'     => $name,
+				'nick'     => $nick,
+				'photo'    => $photo,
+				'network'  => $network,
+				'rel'      => self::FOLLOWER,
+				'blocked'  => 0,
+				'readonly' => 0,
+				'pending'  => 1,
+				'writable' => 1,
+			]);
 
-			$contact_record = [
-				'id' => DBA::lastInsertId(),
-				'network' => $network,
-				'name' => $name,
-				'url' => $url,
-				'photo' => $photo
-			];
+			$contact_id = DBA::lastInsertId();
 
-			Contact::updateAvatar($photo, $importer["uid"], $contact_record["id"], true);
+			// Ensure to always have the correct network type, independent from the connection request method
+			self::updateFromProbe($contact_id, '', true);
+
+			Contact::updateAvatar($photo, $importer["uid"], $contact_id, true);
+
+			$contact_record = DBA::selectFirst('contact', ['id', 'network', 'name', 'url', 'photo'], ['id' => $contact_id]);
 
 			/// @TODO Encapsulate this into a function/method
 			$fields = ['uid', 'username', 'email', 'page-flags', 'notify-flags', 'language'];
@@ -2028,7 +2583,7 @@ class Contact extends BaseObject
 
 				if (is_array($contact_record)) {
 					DBA::insert('intro', ['uid' => $importer['uid'], 'contact-id' => $contact_record['id'],
-								'blocked' => false, 'knowyou' => false,
+								'blocked' => false, 'knowyou' => false, 'note' => $note,
 								'hash' => $hash, 'datetime' => DateTimeFormat::utcNow()]);
 				}
 
@@ -2048,22 +2603,19 @@ class Contact extends BaseObject
 						'source_name'  => ((strlen(stripslashes($contact_record['name']))) ? stripslashes($contact_record['name']) : L10n::t('[Name Withheld]')),
 						'source_link'  => $contact_record['url'],
 						'source_photo' => $contact_record['photo'],
-						'verb'         => ($sharing ? ACTIVITY_FRIEND : ACTIVITY_FOLLOW),
+						'verb'         => ($sharing ? Activity::FRIEND : Activity::FOLLOW),
 						'otype'        => 'intro'
 					]);
-
 				}
 			} elseif (DBA::isResult($user) && in_array($user['page-flags'], [User::PAGE_FLAGS_SOAPBOX, User::PAGE_FLAGS_FREELOVE, User::PAGE_FLAGS_COMMUNITY])) {
 				$condition = ['uid' => $importer['uid'], 'url' => $url, 'pending' => true];
 				DBA::update('contact', ['pending' => false], $condition);
 
-				$contact = DBA::selectFirst('contact', ['url', 'network', 'hub-verify'], ['id' => $contact_record['id']]);
-
-				if ($contact['network'] == Protocol::ACTIVITYPUB) {
-					ActivityPub\Transmitter::sendContactAccept($contact['url'], $contact['hub-verify'], $importer['uid']);
-				}
+				return true;
 			}
 		}
+
+		return null;
 	}
 
 	public static function removeFollower($importer, $contact, array $datarray = [], $item = "")
@@ -2163,16 +2715,19 @@ class Contact extends BaseObject
 	 */
 	public static function magicLink($contact_url, $url = '')
 	{
-		if (!local_user() && !remote_user()) {
+		if (!Session::isAuthenticated()) {
 			return $url ?: $contact_url; // Equivalent to: ($url != '') ? $url : $contact_url;
 		}
 
-		$cid = self::getIdForURL($contact_url, 0, true);
-		if (empty($cid)) {
+		$data = self::getProbeDataFromDatabase($contact_url);
+		if (empty($data)) {
 			return $url ?: $contact_url; // Equivalent to: ($url != '') ? $url : $contact_url;
 		}
 
-		return self::magicLinkbyId($cid, $url);
+		// Prevents endless loop in case only a non-public contact exists for the contact URL
+		unset($data['uid']);
+
+		return self::magicLinkByContact($data, $url ?: $contact_url);
 	}
 
 	/**
@@ -2204,8 +2759,10 @@ class Contact extends BaseObject
 	 */
 	public static function magicLinkByContact($contact, $url = '')
 	{
-		if ((!local_user() && !remote_user()) || ($contact['network'] != Protocol::DFRN)) {
-			return $url ?: $contact['url']; // Equivalent to ($url != '') ? $url : $contact['url'];
+		$destination = $url ?: $contact['url']; // Equivalent to ($url != '') ? $url : $contact['url'];
+
+		if (!Session::isAuthenticated() || ($contact['network'] != Protocol::DFRN)) {
+			return $destination;
 		}
 
 		// Only redirections to the same host do make sense
@@ -2213,13 +2770,17 @@ class Contact extends BaseObject
 			return $url;
 		}
 
-		if ($contact['uid'] != 0) {
+		if (!empty($contact['uid'])) {
 			return self::magicLink($contact['url'], $url);
+		}
+
+		if (empty($contact['id'])) {
+			return $destination;
 		}
 
 		$redirect = 'redir/' . $contact['id'];
 
-		if ($url != '') {
+		if (($url != '') && !Strings::compareLink($contact['url'], $url)) {
 			$redirect .= '?url=' . $url;
 		}
 
@@ -2256,5 +2817,19 @@ class Contact extends BaseObject
 
 		// Is it a forum?
 		return ($contact['forum'] || $contact['prv']);
+	}
+
+	/**
+	 * Can the remote contact receive private messages?
+	 *
+	 * @param array $contact
+	 * @return bool
+	 */
+	public static function canReceivePrivateMessages(array $contact)
+	{
+		$protocol = $contact['network'] ?? $contact['protocol'] ?? Protocol::PHANTOM;
+		$self = $contact['self'] ?? false;
+
+		return in_array($protocol, [Protocol::DFRN, Protocol::DIASPORA, Protocol::ACTIVITYPUB]) && !$self;
 	}
 }

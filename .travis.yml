@@ -19,6 +19,11 @@ before_script:
  - cp config/local-sample.config.php config/local.config.php
  - mysql -e 'CREATE DATABASE IF NOT EXISTS test;'
  - mysql -utravis test < database.sql
- - echo "extension=redis.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
- - echo "extension=memcached.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
+ - pecl channel-update pecl.php.net
+ - pecl config-set preferred_state beta
+ - phpenv config-add .travis/redis.ini
+ - phpenv config-add .travis/memcached.ini
+
+script: vendor/bin/phpunit --configuration tests/phpunit.xml --coverage-clover clover.xml
+
 after_success: bash <(curl -s https://codecov.io/bash)

@@ -7,11 +7,12 @@
  * This script was taken from http://php.net/manual/en/function.pcntl-fork.php
  */
 
+use Dice\Dice;
 use Friendica\Core\Config;
 use Friendica\Core\Logger;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
-use Friendica\Factory;
+use Psr\Log\LoggerInterface;
 
 // Get options
 $shortopts = 'f';
@@ -32,7 +33,11 @@ if (!file_exists("boot.php") && (sizeof($_SERVER["argv"]) != 0)) {
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-$a = Factory\DependencyFactory::setUp('daemon', dirname(__DIR__));
+$dice = (new Dice())->addRules(include __DIR__ . '/../static/dependencies.config.php');
+$dice = $dice->addRule(LoggerInterface::class,['constructParams' => ['daemon']]);
+
+\Friendica\BaseObject::setDependencyInjection($dice);
+$a = \Friendica\BaseObject::getApp();
 
 if ($a->getMode()->isInstall()) {
 	die("Friendica isn't properly installed yet.\n");
@@ -144,9 +149,7 @@ if (!$foreground) {
 	file_put_contents($pidfile, $pid);
 
 	// We lose the database connection upon forking
-	/// @todo refactoring during https://github.com/friendica/friendica/issues/6720
-	$basePath = \Friendica\Util\BasePath::create(dirname(__DIR__), $_SERVER);
-	Factory\DBFactory::init($basePath, $a->getConfigCache(), $a->getProfiler(), $_SERVER);
+	DBA::reconnect();
 }
 
 Config::set('system', 'worker_daemon_mode', true);

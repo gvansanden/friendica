@@ -28,7 +28,7 @@ $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 <html>
 	<head>
 		<title><?php if (!empty($page['title'])) echo $page['title'] ?></title>
-		<meta request="<?php echo htmlspecialchars(defaults($_REQUEST, 'pagename', '')) ?>">
+		<meta request="<?php echo htmlspecialchars($_REQUEST['pagename'] ?? '') ?>">
 		<script  type="text/javascript">var baseurl = "<?php echo System::baseUrl(); ?>";</script>
 		<script type="text/javascript">var frio = "<?php echo 'view/theme/frio'; ?>";</script>
 <?php
@@ -51,6 +51,10 @@ $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 			}
 		} else {
 			$nav_bg = PConfig::get($uid, 'frio', 'nav_bg');
+		}
+
+		if (empty($nav_bg)) {
+			$nav_bg = Config::get('frio', 'nav_bg');
 		}
 
 		if (empty($nav_bg) || !is_string($nav_bg)) {
@@ -79,7 +83,8 @@ $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 	// special minimal style for modal dialogs
 	if ($minimal) {
 ?>
-		<section class="minimal" style="margin:0px!important; padding:0px!important; float:none!important; display:block!important;">
+		<!-- <?php echo __FILE__ ?> -->
+		<section class="minimal">
 			<?php if (!empty($page['content'])) echo $page['content']; ?>
 			<div id="page-footer"></div>
 		</section>
@@ -136,7 +141,7 @@ $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 		</main>
 
 		<footer>
-			<?php echo defaults($page, 'footer', ''); ?>
+			<?php echo $page['footer'] ?? ''; ?>
 		</footer>
 <?php } ?> <!-- End of condition if $minimal else the rest -->
 	</body>

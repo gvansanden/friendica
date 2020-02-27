@@ -1,4 +1,21 @@
 // @license magnet:?xt=urn:btih:0b31508aeb0634b347b8270c7bee4d411b5d4109&dn=agpl-3.0.txt AGPLv3-or-later
+
+// https://developer.mozilla.org/en-US/docs/Web/API/Element/matches#Polyfill
+if (!Element.prototype.matches) {
+	Element.prototype.matches =
+		Element.prototype.matchesSelector ||
+		Element.prototype.mozMatchesSelector ||
+		Element.prototype.msMatchesSelector ||
+		Element.prototype.oMatchesSelector ||
+		Element.prototype.webkitMatchesSelector ||
+		function(s) {
+			var matches = (this.document || this.ownerDocument).querySelectorAll(s),
+				i = matches.length;
+			while (--i >= 0 && matches.item(i) !== this) {}
+			return i > -1;
+		};
+}
+
 function resizeIframe(obj) {
 	_resizeIframe(obj, 0);
 }
@@ -68,6 +85,8 @@ var commentBusy = false;
 var last_popup_menu = null;
 var last_popup_button = null;
 var lockLoadContent = false;
+
+const urlRegex = /^(?:https?:\/\/|\s)[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})(?:\/+[a-z0-9_.:;-]*)*(?:\?[&%|+a-z0-9_=,.:;-]*)?(?:[&%|+&a-z0-9_=,:;.-]*)(?:[!#\/&%|+a-z0-9_=,:;.-]*)}*$/i;
 
 $(function() {
 	$.ajaxSetup({cache: false});
@@ -387,6 +406,61 @@ $(function() {
 	}
 });
 
+/**
+ * Inserts a BBCode tag in the comment textarea identified by id
+ *
+ * @param {string} BBCode
+ * @param {int} id
+ * @returns {boolean}
+ */
+function insertFormatting(BBCode, id) {
+	let textarea = document.getElementById('comment-edit-text-' + id);
+
+	if (textarea.value === '') {
+		$(textarea)
+			.addClass("comment-edit-text-full")
+			.removeClass("comment-edit-text-empty");
+		closeMenu("comment-fake-form-" + id);
+		openMenu("item-comments-" + id);
+	}
+
+	insertBBCodeInTextarea(BBCode, textarea);
+
+	return true;
+}
+
+/**
+ * Inserts a BBCode tag in the provided textarea element, wrapping the currently selected text.
+ * For URL BBCode, it discriminates between link text and non-link text to determine where to insert the selected text.
+ *
+ * @param {string} BBCode
+ * @param {HTMLTextAreaElement} textarea
+ */
+function insertBBCodeInTextarea(BBCode, textarea) {
+	let selectionStart = textarea.selectionStart;
+	let selectionEnd = textarea.selectionEnd;
+	let selectedText = textarea.value.substring(selectionStart, selectionEnd);
+	let openingTag = '[' + BBCode + ']';
+	let closingTag = '[/' + BBCode + ']';
+	let cursorPosition = selectionStart + openingTag.length + selectedText.length;
+
+	if (BBCode === 'url') {
+		if (urlRegex.test(selectedText)) {
+			openingTag = '[' + BBCode + '=' + selectedText + ']';
+			selectedText = '';
+			cursorPosition = selectionStart + openingTag.length;
+		} else {
+			openingTag = '[' + BBCode + '=]';
+			cursorPosition = selectionStart + openingTag.length - 1;
+		}
+	}
+
+	textarea.value = textarea.value.substring(0, selectionStart) + openingTag + selectedText + closingTag + textarea.value.substring(selectionEnd, textarea.value.length);
+	textarea.setSelectionRange(cursorPosition, cursorPosition);
+	textarea.dispatchEvent(new Event('change'));
+	textarea.focus();
+}
+
 function NavUpdate() {
 	if (!stopped) {
 		var pingCmd = 'ping?format=json' + ((localUser != 0) ? '&f=&uid=' + localUser : '');
@@ -449,7 +523,7 @@ function updateConvItems(data) {
 		$('body').css('cursor', 'auto');
 	}
 	/* autocomplete @nicknames */
-	$(".comment-edit-form  textarea").editor_autocomplete(baseurl+"/acl");
+	$(".comment-edit-form  textarea").editor_autocomplete(baseurl + '/search/acl');
 	/* autocomplete bbcode */
 	$(".comment-edit-form  textarea").bbco_autocomplete('bbcode');
 }
@@ -552,18 +626,39 @@ function dostar(ident) {
 	});
 }
 
+function dopin(ident) {
+	ident = ident.toString();
+	$('#like-rotator-' + ident).show();
+	$.get('pinned/' + ident, function(data) {
+		if (data.match(/1/)) {
+			$('#pinned-' + ident).addClass('pinned');
+			$('#pinned-' + ident).removeClass('unpinned');
+			$('#pin-' + ident).addClass('hidden');
+			$('#unpin-' + ident).removeClass('hidden');
+		} else {
+			$('#pinned-' + ident).addClass('unpinned');
+			$('#pinned-' + ident).removeClass('pinned');
+			$('#pin-' + ident).removeClass('hidden');
+			$('#unpin-' + ident).addClass('hidden');
+		}
+		$('#like-rotator-' + ident).hide();
+	});
+}
+
 function doignore(ident) {
 	ident = ident.toString();
 	$('#like-rotator-' + ident).show();
-	$.get('ignored/' + ident, function(data) {
-		if (data.match(/1/)) {
-			$('#ignored-' + ident).addClass('ignored');
-			$('#ignored-' + ident).removeClass('unignored');
+	$.get('item/ignore/' + ident, function(data) {
+		if (data === 1) {
+			$('#ignored-' + ident)
+				.addClass('ignored')
+				.removeClass('unignored');
 			$('#ignore-' + ident).addClass('hidden');
 			$('#unignore-' + ident).removeClass('hidden');
 		} else {
-			$('#ignored-' + ident).addClass('unignored');
-			$('#ignored-' + ident).removeClass('ignored');
+			$('#ignored-' + ident)
+				.addClass('unignored')
+				.removeClass('ignored');
 			$('#ignore-' + ident).removeClass('hidden');
 			$('#unignore-' + ident).addClass('hidden');
 		}
@@ -615,7 +710,6 @@ function post_comment(id) {
 	unpause();
 	commentBusy = true;
 	$('body').css('cursor', 'wait');
-	$("#comment-preview-inp-" + id).val("0");
 	$.post(
 		"item",
 		$("#comment-edit-form-" + id).serialize(),
@@ -644,11 +738,10 @@ function post_comment(id) {
 }
 
 function preview_comment(id) {
-	$("#comment-preview-inp-" + id).val("1");
 	$("#comment-edit-preview-" + id).show();
 	$.post(
 		"item",
-		$("#comment-edit-form-" + id).serialize(),
+		$("#comment-edit-form-" + id).serialize() + '&preview=1',
 		function(data) {
 			if (data.preview) {
 				$("#comment-edit-preview-" + id).html(data.preview);
@@ -673,11 +766,10 @@ function showHideComments(id) {
 }
 
 function preview_post() {
-	$("#jot-preview").val("1");
 	$("#jot-preview-content").show();
 	$.post(
 		"item",
-		$("#profile-jot-form").serialize(),
+		$("#profile-jot-form").serialize() + '&preview=1',
 		function(data) {
 			if (data.preview) {
 				$("#jot-preview-content").html(data.preview);
@@ -687,7 +779,6 @@ function preview_post() {
 		},
 		"json"
 	);
-	$("#jot-preview").val("0");
 	return true;
 }
 

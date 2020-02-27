@@ -123,7 +123,7 @@ function ping_init(App $a)
 		$condition = ["`unseen` AND `uid` = ? AND `contact-id` != ?", local_user(), local_user()];
 		$fields = ['id', 'parent', 'verb', 'author-name', 'unseen', 'author-link', 'author-avatar', 'contact-avatar',
 			'network', 'created', 'object', 'parent-author-name', 'parent-author-link', 'parent-guid', 'wall'];
-		$params = ['order' => ['created' => true]];
+		$params = ['order' => ['received' => true]];
 		$items = Item::selectForUser(local_user(), $fields, $condition, $params);
 
 		if (DBA::isResult($items)) {
@@ -313,14 +313,7 @@ function ping_init(App $a)
 		usort($notifs, $sort_function);
 
 		if (DBA::isResult($notifs)) {
-			// Are the nofications called from the regular process or via the friendica app?
-			$regularnotifications = (!empty($_GET['uid']) && !empty($_GET['_']));
-
 			foreach ($notifs as $notif) {
-				if ($a->isFriendicaApp() || !$regularnotifications) {
-					$notif['message'] = str_replace("{0}", $notif['name'], $notif['message']);
-				}
-
 				$contact = Contact::getDetailsByURL($notif['url']);
 				if (isset($contact['micro'])) {
 					$notif['photo'] = ProxyUtils::proxifyUrl($contact['micro'], false, ProxyUtils::SIZE_MICRO);

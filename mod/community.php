@@ -4,31 +4,24 @@
  */
 
 use Friendica\App;
+use Friendica\Content\Feature;
 use Friendica\Content\Nav;
 use Friendica\Content\Pager;
+use Friendica\Content\Widget\TrendingTags;
 use Friendica\Core\ACL;
 use Friendica\Core\Config;
 use Friendica\Core\L10n;
 use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
-use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Model\User;
-
-function community_init(App $a)
-{
-	if (!local_user()) {
-		unset($_SESSION['theme']);
-		unset($_SESSION['mobile-theme']);
-	}
-}
 
 function community_content(App $a, $update = 0)
 {
 	$o = '';
 
-	if (Config::get('system', 'block_public') && !local_user() && !remote_user()) {
+	if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
 		notice(L10n::t('Public access denied.') . EOL);
 		return;
 	}
@@ -132,7 +125,7 @@ function community_content(App $a, $update = 0)
 				'default_location' => $a->user['default-location'],
 				'nickname' => $a->user['nickname'],
 				'lockstate' => (is_array($a->user) && (strlen($a->user['allow_cid']) || strlen($a->user['allow_gid']) || strlen($a->user['deny_cid']) || strlen($a->user['deny_gid'])) ? 'lock' : 'unlock'),
-				'acl' => ACL::getFullSelectorHTML($a->user, true),
+				'acl' => ACL::getFullSelectorHTML($a->page, $a->user, true),
 				'bang' => '',
 				'visitor' => 'block',
 				'profile_uid' => local_user(),
@@ -198,6 +191,14 @@ function community_content(App $a, $update = 0)
 		$o .= $pager->renderMinimal(count($r));
 	}
 
+	if (empty($a->page['aside'])) {
+		$a->page['aside'] = '';
+	}
+
+	if (Feature::isEnabled(local_user(), 'trending_tags')) {
+		$a->page['aside'] .= TrendingTags::getHTML($content);
+	}
+
 	$t = Renderer::getMarkupTemplate("community.tpl");
 	return Renderer::replaceMacros($t, [
 		'$content' => $o,
@@ -218,6 +219,7 @@ function community_getitems($start, $itemspage, $content, $accounttype)
 			$values = [$start, $itemspage];
 		}
 
+		/// @todo Use "unsearchable" here as well (instead of "hidewall")
 		$r = DBA::p("SELECT `item`.`uri`, `author`.`url` AS `author-link` FROM `thread`
 			STRAIGHT_JOIN `user` ON `user`.`uid` = `thread`.`uid` AND NOT `user`.`hidewall`
 			STRAIGHT_JOIN `item` ON `item`.`id` = `thread`.`iid`
@@ -228,9 +230,9 @@ function community_getitems($start, $itemspage, $content, $accounttype)
 		return DBA::toArray($r);
 	} elseif ($content == 'global') {
 		if (!is_null($accounttype)) {
-			$condition = ["`uid` = ? AND `owner`.`contact-type` = ?", 0, $accounttype];
+			$condition = ["`uid` = ? AND NOT `author`.`unsearchable` AND NOT `owner`.`unsearchable` AND `owner`.`contact-type` = ?", 0, $accounttype];
 		} else {
-			$condition = ['uid' => 0];
+			$condition = ["`uid` = ? AND NOT `author`.`unsearchable` AND NOT `owner`.`unsearchable`", 0];
 		}
 
 		$r = Item::selectThreadForUser(0, ['uri'], $condition, ['order' => ['commented' => true], 'limit' => [$start, $itemspage]]);

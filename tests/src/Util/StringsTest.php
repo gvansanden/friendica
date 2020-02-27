@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  */
 class StringsTest extends TestCase
 {
-    /**
+	/**
 	 * randomnames should be random, even length
 	 */
 	public function testRandomEven()
@@ -64,9 +64,9 @@ class StringsTest extends TestCase
 
 		$randomname2 = Strings::getRandomName(1);
 		$this->assertEquals(1, strlen($randomname2));
-    }
-    
-    /**
+	}
+
+	/**
 	 * test, that tags are escaped
 	 */
 	public function testEscapeHtml()
@@ -81,5 +81,40 @@ class StringsTest extends TestCase
 			"&lt;submit type=&quot;button&quot; onclick=&quot;alert('failed!');&quot; /&gt;",
 			$escapedString
 		);
+	}
+
+	public function dataIsHex()
+	{
+		return [
+			'validHex' => [
+				'input' => '90913473615bf00c122ac78338492980',
+				'valid' => true,
+			],
+			'invalidHex' => [
+				'input' => '90913473615bf00c122ac7833849293',
+				'valid' => false,
+			],
+			'emptyHex' => [
+				'input' => '',
+				'valid' => false,
+			],
+			'nullHex' => [
+				'input' => null,
+				'valid' => false,
+			],
+		];
+	}
+
+	/**
+	 * Tests if the string is a valid hexadecimal value
+	 *
+	 * @param string $input
+	 * @param bool $valid
+	 *
+	 * @dataProvider dataIsHex
+	 */
+	public function testIsHex($input, $valid)
+	{
+		$this->assertEquals($valid, Strings::isHex($input));
 	}
 }

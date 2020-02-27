@@ -8,11 +8,11 @@ namespace Friendica\Module;
 use Friendica\BaseModule;
 use Friendica\Core\L10n;
 use Friendica\Core\System;
+use Friendica\Core\Logger;
 use Friendica\Model\Photo;
 use Friendica\Object\Image;
 use Friendica\Util\HTTPSignature;
 use Friendica\Util\Proxy as ProxyUtils;
-use Friendica\Core\Logger;
 
 /**
  * @brief Module Proxy
@@ -30,7 +30,7 @@ class Proxy extends BaseModule
 	 * Sets application instance and checks if /proxy/ path is writable.
 	 *
 	 */
-	public static function init()
+	public static function init(array $parameters = [])
 	{
 		// Set application instance here
 		$a = self::getApp();
@@ -71,7 +71,7 @@ class Proxy extends BaseModule
 		$request = self::getRequestInfo();
 
 		if (empty($request['url'])) {
-			System::httpExit(400, ['title' => L10n::t('Bad Request.')]);
+			throw new \Friendica\Network\HTTPException\BadRequestException();
 		}
 
 		// Webserver already tried direct cache...
@@ -93,7 +93,8 @@ class Proxy extends BaseModule
 		$img_str = $fetchResult->getBody();
 
 		// If there is an error then return a blank image
-		if ((substr($fetchResult->getReturnCode(), 0, 1) == '4') || (!$img_str)) {
+		if ((substr($fetchResult->getReturnCode(), 0, 1) == '4') || empty($img_str)) {
+			Logger::info('Error fetching image', ['image' => $request['url'], 'return' => $fetchResult->getReturnCode(), 'empty' => empty($img_str)]);
 			self::responseError();
 			// stop.
 		}
@@ -105,6 +106,7 @@ class Proxy extends BaseModule
 
 		$image = new Image($img_str, $mime);
 		if (!$image->isValid()) {
+			Logger::info('The image is invalid', ['image' => $request['url'], 'mime' => $mime]);
 			self::responseError();
 			// stop.
 		}
@@ -159,6 +161,7 @@ class Proxy extends BaseModule
 		$sizetype = '';
 
 		// Look for filename in the arguments
+		// @TODO: Replace with parameter from router
 		if (($a->argc > 1) && !isset($_REQUEST['url'])) {
 			if (isset($a->argv[3])) {
 				$url = $a->argv[3];
@@ -169,6 +172,7 @@ class Proxy extends BaseModule
 			}
 
 			/// @TODO: Why? And what about $url in this case?
+			/// @TODO: Replace with parameter from router
 			if (isset($a->argv[3]) && ($a->argv[3] == 'thumb')) {
 				$size = 200;
 			}
@@ -206,7 +210,7 @@ class Proxy extends BaseModule
 			$url = base64_decode(strtr($url, '-_', '+/'), true);
 
 		} else {
-			$url = defaults($_REQUEST, 'url', '');
+			$url = $_REQUEST['url'] ?? '';
 		}
 
 		return [
@@ -286,14 +290,13 @@ class Proxy extends BaseModule
 	}
 
 	/**
-	 * @brief Output a blank image, without cache headers, in case of errors
+	 * In case of an error just stop. We don't return content to avoid caching problems
 	 *
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	private static function responseError()
 	{
-		header('Content-type: image/png');
-		echo file_get_contents('images/blank.png');
-		exit();
+		throw new \Friendica\Network\HTTPException\InternalServerErrorException();
 	}
 
 	/**
@@ -305,6 +308,7 @@ class Proxy extends BaseModule
 	private static function responseImageHttpCache(Image $img)
 	{
 		if (is_null($img) || !$img->isValid()) {
+			Logger::info('The cached image is invalid');
 			self::responseError();
 			// stop.
 		}

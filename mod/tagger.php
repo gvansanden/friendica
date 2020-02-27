@@ -2,20 +2,24 @@
 /**
  * @file mod/tagger.php
  */
+
 use Friendica\App;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
+use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
 use Friendica\Model\Item;
+use Friendica\Protocol\Activity;
 use Friendica\Util\Strings;
 use Friendica\Util\XML;
+use Friendica\Worker\Delivery;
 
 function tagger_content(App $a) {
 
-	if (!local_user() && !remote_user()) {
+	if (!Session::isAuthenticated()) {
 		return;
 	}
 
@@ -40,14 +44,12 @@ function tagger_content(App $a) {
 	}
 
 	$owner_uid = $item['uid'];
-	$owner_nick = '';
 	$blocktags = 0;
 
-	$r = q("select `nickname`,`blocktags` from user where uid = %d limit 1",
+	$r = q("select `blocktags` from user where uid = %d limit 1",
 		intval($owner_uid)
 	);
 	if (DBA::isResult($r)) {
-		$owner_nick = $r[0]['nickname'];
 		$blocktags = $r[0]['blocktags'];
 	}
 
@@ -68,13 +70,8 @@ function tagger_content(App $a) {
 	$uri = Item::newURI($owner_uid);
 	$xterm = XML::escape($term);
 	$post_type = (($item['resource-id']) ? L10n::t('photo') : L10n::t('status'));
-	$targettype = (($item['resource-id']) ? ACTIVITY_OBJ_IMAGE : ACTIVITY_OBJ_NOTE );
-
-	if ($owner_nick) {
-		$href = System::baseUrl() . '/display/' . $owner_nick . '/' . $item['id'];
-	} else {
-		$href = System::baseUrl() . '/display/' . $item['guid'];
-	}
+	$targettype = (($item['resource-id']) ? Activity\ObjectType::IMAGE : Activity\ObjectType::NOTE );
+	$href = System::baseUrl() . '/display/' . $item['guid'];
 
 	$link = XML::escape('<link rel="alternate" type="text/html" href="'. $href . '" />' . "\n");
 
@@ -92,7 +89,7 @@ function tagger_content(App $a) {
 EOT;
 
 	$tagid = System::baseUrl() . '/search?tag=' . $xterm;
-	$objtype = ACTIVITY_OBJ_TAGTERM;
+	$objtype = Activity\ObjectType::TAGTERM;
 
 	$obj = <<< EOT
 	<object>
@@ -135,7 +132,7 @@ EOT;
 	$plink = '[url=' . $item['plink'] . ']' . $post_type . '[/url]';
 	$arr['body'] =  sprintf( $bodyverb, $ulink, $alink, $plink, $termlink );
 
-	$arr['verb'] = ACTIVITY_TAG;
+	$arr['verb'] = Activity::TAG;
 	$arr['target-type'] = $targettype;
 	$arr['target'] = $target;
 	$arr['object-type'] = $objtype;
@@ -201,7 +198,7 @@ EOT;
 
 	Hook::callAll('post_local_end', $arr);
 
-	Worker::add(PRIORITY_HIGH, "Notifier", "tag", $post_id);
+	Worker::add(PRIORITY_HIGH, "Notifier", Delivery::POST, $post_id);
 
 	exit();
 }

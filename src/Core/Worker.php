@@ -5,10 +5,10 @@
 namespace Friendica\Core;
 
 use Friendica\BaseObject;
+use Friendica\Core;
 use Friendica\Database\DBA;
 use Friendica\Model\Process;
 use Friendica\Util\DateTimeFormat;
-use Friendica\Util\Logger\WorkerLogger;
 use Friendica\Util\Network;
 
 /**
@@ -26,6 +26,9 @@ class Worker
 	const STATE_LONG_LOOP  = 2; // Worker is processing the whole - long - loop.
 	const STATE_REFETCH    = 3; // Worker had refetched jobs in the execution loop.
 	const STATE_SHORT_LOOP = 4; // Worker is processing preassigned jobs, thus saving much time.
+
+	const FAST_COMMANDS = ['APDelivery', 'Delivery', 'CreateShadowEntry'];
+
 
 	private static $up_start;
 	private static $db_duration = 0;
@@ -184,7 +187,7 @@ class Worker
 	private static function deferredEntries()
 	{
 		$stamp = (float)microtime(true);
-		$count = DBA::count('workerqueue', ["NOT `done` AND `pid` = 0 AND `next_try` > ?", DateTimeFormat::utcNow()]);
+		$count = DBA::count('workerqueue', ["NOT `done` AND `pid` = 0 AND `retrial` > ?", 0]);
 		self::$db_duration += (microtime(true) - $stamp);
 		self::$db_duration_count += (microtime(true) - $stamp);
 		return $count;
@@ -375,10 +378,9 @@ class Worker
 
 		$argc = count($argv);
 
-		$logger = $a->getLogger();
-		$workerLogger = new WorkerLogger($logger, $funcname);
+		Logger::enableWorker($funcname);
 
-		$workerLogger ->info("Process start.", ['priority' => $queue["priority"], 'id' => $queue["id"]]);
+		Logger::info("Process start.", ['priority' => $queue["priority"], 'id' => $queue["id"]]);
 
 		$stamp = (float)microtime(true);
 
@@ -394,13 +396,13 @@ class Worker
 		unset($_SESSION);
 
 		// Set the workerLogger as new default logger
-		Logger::init($workerLogger);
 		if ($method_call) {
 			call_user_func_array(sprintf('Friendica\Worker\%s::execute', $funcname), $argv);
 		} else {
 			$funcname($argv, $argc);
 		}
-		Logger::init($logger);
+
+		Logger::disableWorker();
 
 		unset($a->queue);
 
@@ -420,7 +422,7 @@ class Worker
 		$rest    = round(max(0, $up_duration - (self::$db_duration + self::$lock_duration)), 2);
 		$exec    = round($duration, 2);
 
-		$logger->info('Performance:', ['state' => self::$state, 'count' => $dbcount, 'stat' => $dbstat, 'write' => $dbwrite, 'lock' => $dblock, 'total' => $dbtotal, 'rest' => $rest, 'exec' => $exec]);
+		Logger::info('Performance:', ['state' => self::$state, 'count' => $dbcount, 'stat' => $dbstat, 'write' => $dbwrite, 'lock' => $dblock, 'total' => $dbtotal, 'rest' => $rest, 'exec' => $exec]);
 
 		self::$up_start = microtime(true);
 		self::$db_duration = 0;
@@ -430,23 +432,23 @@ class Worker
 		self::$lock_duration = 0;
 
 		if ($duration > 3600) {
-			$logger->info('Longer than 1 hour.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
+			Logger::info('Longer than 1 hour.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
 		} elseif ($duration > 600) {
-			$logger->info('Longer than 10 minutes.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
+			Logger::info('Longer than 10 minutes.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
 		} elseif ($duration > 300) {
-			$logger->info('Longer than 5 minutes.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
+			Logger::info('Longer than 5 minutes.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
 		} elseif ($duration > 120) {
-			$logger->info('Longer than 2 minutes.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
+			Logger::info('Longer than 2 minutes.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration/60, 3)]);
 		}
 
-		$workerLogger->info('Process done.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration, 3)]);
+		Logger::info('Process done.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration, 3)]);
 
 		$a->getProfiler()->saveLog($a->getLogger(), "ID " . $queue["id"] . ": " . $funcname);
 
 		$cooldown = Config::get("system", "worker_cooldown", 0);
 
 		if ($cooldown > 0) {
-			$logger->info('Cooldown.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'cooldown' => $cooldown]);
+			Logger::info('Cooldown.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'cooldown' => $cooldown]);
 			sleep($cooldown);
 		}
 	}
@@ -669,7 +671,7 @@ class Worker
 				$waiting_processes = 0;
 				// Now adding all processes with workerqueue entries
 				$stamp = (float)microtime(true);
-				$jobs = DBA::p("SELECT COUNT(*) AS `entries`, `priority` FROM `workerqueue` WHERE NOT `done` AND `next_try` < ? GROUP BY `priority`", DateTimeFormat::utcNow());
+				$jobs = DBA::p("SELECT COUNT(*) AS `entries`, `priority` FROM `workerqueue` WHERE NOT `done` GROUP BY `priority`");
 				self::$db_duration += (microtime(true) - $stamp);
 				self::$db_duration_stat += (microtime(true) - $stamp);
 				while ($entry = DBA::fetch($jobs)) {
@@ -685,10 +687,8 @@ class Worker
 					DBA::close($processes);
 				}
 				DBA::close($jobs);
-				$entries = $deferred + $waiting_processes;
 			} else {
-				$entries = self::totalEntries();
-				$waiting_processes = max(0, $entries - $deferred);
+				$waiting_processes =  self::totalEntries();
 				$stamp = (float)microtime(true);
 				$jobs = DBA::p("SELECT COUNT(*) AS `running`, `priority` FROM `process` INNER JOIN `workerqueue` ON `workerqueue`.`pid` = `process`.`pid` AND NOT `done` GROUP BY `priority` ORDER BY `priority`");
 				self::$db_duration += (microtime(true) - $stamp);
@@ -700,6 +700,8 @@ class Worker
 				}
 				DBA::close($jobs);
 			}
+
+			$waiting_processes -= $deferred;
 
 			$listitem[0] = "0:" . max(0, $idle_workers);
 
@@ -783,23 +785,24 @@ class Worker
 			return [];
 		}
 
-		if ($priority <= PRIORITY_MEDIUM) {
-			$limit = Config::get('system', 'worker_fetch_limit', 1);
-		} else {
-			$limit = 1;
-		}
+		$limit = Config::get('system', 'worker_fetch_limit', 1);
 
 		$ids = [];
 		$stamp = (float)microtime(true);
 		$condition = ["`priority` = ? AND `pid` = 0 AND NOT `done` AND `next_try` < ?", $priority, DateTimeFormat::utcNow()];
-		$tasks = DBA::select('workerqueue', ['id'], $condition, ['limit' => $limit, 'order' => ['created']]);
+		$tasks = DBA::select('workerqueue', ['id', 'parameter'], $condition, ['limit' => $limit, 'order' => ['created']]);
 		self::$db_duration += (microtime(true) - $stamp);
 		while ($task = DBA::fetch($tasks)) {
 			$ids[] = $task['id'];
+			// Only continue that loop while we are storing commands that can be processed quickly
+			$command = json_decode($task['parameter'])[0];
+			if (!in_array($command, self::FAST_COMMANDS)) {
+				break;
+			}
 		}
 		DBA::close($tasks);
 
-		Logger::info('Found:', ['id' => $ids, 'priority' => $priority]);
+		Logger::info('Found:', ['priority' => $priority, 'id' => $ids]);
 		return $ids;
 	}
 
@@ -890,15 +893,22 @@ class Worker
 
 		// If there is no result we check without priority limit
 		if (empty($ids)) {
+			$limit = Config::get('system', 'worker_fetch_limit', 1);
+
 			$stamp = (float)microtime(true);
 			$condition = ["`pid` = 0 AND NOT `done` AND `next_try` < ?", DateTimeFormat::utcNow()];
-			$result = DBA::select('workerqueue', ['id'], $condition, ['limit' => 1, 'order' => ['priority', 'created']]);
+			$tasks = DBA::select('workerqueue', ['id', 'parameter'], $condition, ['limit' => $limit, 'order' => ['priority', 'created']]);
 			self::$db_duration += (microtime(true) - $stamp);
 
-			while ($id = DBA::fetch($result)) {
-				$ids[] = $id["id"];
+			while ($task = DBA::fetch($tasks)) {
+				$ids[] = $task['id'];
+				// Only continue that loop while we are storing commands that can be processed quickly
+				$command = json_decode($task['parameter'])[0];
+				if (!in_array($command, self::FAST_COMMANDS)) {
+					break;
+				}
 			}
-			DBA::close($result);
+			DBA::close($tasks);
 		}
 
 		if (!empty($ids)) {
@@ -972,7 +982,7 @@ class Worker
 		}
 
 		$url = System::baseUrl()."/worker";
-		Network::fetchUrl($url, false, $redirects, 1);
+		Network::fetchUrl($url, false, 1);
 	}
 
 	/**
@@ -1075,7 +1085,9 @@ class Worker
 
 		$args = ['no_cron' => !$do_cron];
 
-		get_app()->proc_run($command, $args);
+		$a = get_app();
+		$process = new Core\Process($a->getLogger(), $a->getMode(), $a->getConfig(), $a->getBasePath());
+		$process->run($command, $args);
 
 		// after spawning we have to remove the flag.
 		if (Config::get('system', 'worker_daemon_mode', false)) {
@@ -1089,10 +1101,10 @@ class Worker
 	 * @param (integer|array) priority or parameter array, strings are deprecated and are ignored
 	 *
 	 * next args are passed as $cmd command line
-	 * or: Worker::add(PRIORITY_HIGH, "Notifier", "drop", $drop_id);
+	 * or: Worker::add(PRIORITY_HIGH, "Notifier", Delivery::DELETION, $drop_id);
 	 * or: Worker::add(array('priority' => PRIORITY_HIGH, 'dont_fork' => true), "CreateShadowEntry", $post_id);
 	 *
-	 * @return boolean "false" if proc_run couldn't be executed
+	 * @return boolean "false" if worker queue entry already existed or there had been an error
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 * @note $cmd and string args are surrounded with ""
 	 *
@@ -1116,7 +1128,8 @@ class Worker
 		}
 
 		$priority = PRIORITY_MEDIUM;
-		$dont_fork = Config::get("system", "worker_dont_fork", false);
+		// Don't fork from frontend tasks by default
+		$dont_fork = Config::get("system", "worker_dont_fork", false) || !\get_app()->getMode()->isBackend();
 		$created = DateTimeFormat::utcNow();
 		$force_priority = false;
 
@@ -1141,6 +1154,7 @@ class Worker
 
 		$parameters = json_encode($args);
 		$found = DBA::exists('workerqueue', ['parameter' => $parameters, 'done' => false]);
+		$added = false;
 
 		// Quit if there was a database error - a precaution for the update process to 3.5.3
 		if (DBA::errorNo() != 0) {
@@ -1148,19 +1162,22 @@ class Worker
 		}
 
 		if (!$found) {
-			DBA::insert('workerqueue', ['parameter' => $parameters, 'created' => $created, 'priority' => $priority]);
+			$added = DBA::insert('workerqueue', ['parameter' => $parameters, 'created' => $created, 'priority' => $priority]);
+			if (!$added) {
+				return false;
+			}
 		} elseif ($force_priority) {
 			DBA::update('workerqueue', ['priority' => $priority], ['parameter' => $parameters, 'done' => false, 'pid' => 0]);
 		}
 
 		// Should we quit and wait for the worker to be called as a cronjob?
 		if ($dont_fork) {
-			return true;
+			return $added;
 		}
 
 		// If there is a lock then we don't have to check for too much worker
 		if (!Lock::acquire('worker', 0)) {
-			return true;
+			return $added;
 		}
 
 		// If there are already enough workers running, don't fork another one
@@ -1168,28 +1185,55 @@ class Worker
 		Lock::release('worker');
 
 		if ($quit) {
-			return true;
+			return $added;
 		}
 
 		// We tell the daemon that a new job entry exists
 		if (Config::get('system', 'worker_daemon_mode', false)) {
 			// We don't have to set the IPC flag - this is done in "tooMuchWorkers"
-			return true;
+			return $added;
 		}
 
 		// Now call the worker to execute the jobs that we just added to the queue
 		self::spawnWorker();
 
-		return true;
+		return $added;
+	}
+
+	/**
+	 * Returns the next retrial level for worker jobs.
+	 * This function will skip levels when jobs are older.
+	 *
+	 * @param array $queue Worker queue entry
+	 * @param integer $max_level maximum retrial level
+	 * @return integer the next retrial level value
+	 */
+	private static function getNextRetrial($queue, $max_level)
+	{
+		$created = strtotime($queue['created']);
+		$retrial_time = time() - $created;
+
+		$new_retrial = $queue['retrial'] + 1;
+		$total = 0;
+		for ($retrial = 0; $retrial <= $max_level + 1; ++$retrial) {
+			$delay = (($retrial + 3) ** 4) + (rand(1, 30) * ($retrial + 1));
+			$total += $delay;
+			if (($total < $retrial_time) && ($retrial > $queue['retrial'])) {
+				$new_retrial = $retrial;
+			}
+		}
+		Logger::info('New retrial for task', ['id' => $queue['id'], 'created' => $queue['created'], 'old' => $queue['retrial'], 'new' => $new_retrial]);
+		return $new_retrial;
 	}
 
 	/**
 	 * Defers the current worker entry
+	 * @return boolean had the entry been deferred?
 	 */
 	public static function defer()
 	{
 		if (empty(BaseObject::getApp()->queue)) {
-			return;
+			return false;
 		}
 
 		$queue = BaseObject::getApp()->queue;
@@ -1198,30 +1242,36 @@ class Worker
 		$id = $queue['id'];
 		$priority = $queue['priority'];
 
-		if ($retrial > 14) {
-			Logger::log('Id ' . $id . ' had been tried 14 times. We stop now.', Logger::DEBUG);
-			return;
+		$max_level = Config::get('system', 'worker_defer_limit');
+
+		$new_retrial = self::getNextRetrial($queue, $max_level);
+
+		if ($new_retrial > $max_level) {
+			Logger::info('The task exceeded the maximum retry count', ['id' => $id, 'created' => $queue['created'], 'old_prio' => $queue['priority'], 'old_retrial' => $queue['retrial'], 'max_level' => $max_level, 'retrial' => $new_retrial]);
+			return false;
 		}
 
 		// Calculate the delay until the next trial
-		$delay = (($retrial + 3) ** 4) + (rand(1, 30) * ($retrial + 1));
+		$delay = (($new_retrial + 2) ** 4) + (rand(1, 30) * ($new_retrial));
 		$next = DateTimeFormat::utc('now + ' . $delay . ' seconds');
 
-		if (($priority < PRIORITY_MEDIUM) && ($retrial > 2)) {
+		if (($priority < PRIORITY_MEDIUM) && ($new_retrial > 3)) {
 			$priority = PRIORITY_MEDIUM;
-		} elseif (($priority < PRIORITY_LOW) && ($retrial > 5)) {
+		} elseif (($priority < PRIORITY_LOW) && ($new_retrial > 6)) {
 			$priority = PRIORITY_LOW;
-		} elseif (($priority < PRIORITY_NEGLIGIBLE) && ($retrial > 7)) {
+		} elseif (($priority < PRIORITY_NEGLIGIBLE) && ($new_retrial > 8)) {
 			$priority = PRIORITY_NEGLIGIBLE;
 		}
 
-		Logger::log('Defer execution ' . $retrial . ' of id ' . $id . ' to ' . $next . ' - priority old/new: ' . $queue['priority'] . '/' . $priority, Logger::DEBUG);
+		Logger::info('Deferred task', ['id' => $id, 'retrial' => $new_retrial, 'created' => $queue['created'], 'next_execution' => $next, 'old_prio' => $queue['priority'], 'new_prio' => $priority]);
 
 		$stamp = (float)microtime(true);
-		$fields = ['retrial' => $retrial + 1, 'next_try' => $next, 'executed' => DBA::NULL_DATETIME, 'pid' => 0, 'priority' => $priority];
+		$fields = ['retrial' => $new_retrial, 'next_try' => $next, 'executed' => DBA::NULL_DATETIME, 'pid' => 0, 'priority' => $priority];
 		DBA::update('workerqueue', $fields, ['id' => $id]);
 		self::$db_duration += (microtime(true) - $stamp);
 		self::$db_duration_write += (microtime(true) - $stamp);
+
+		return true;
 	}
 
 	/**

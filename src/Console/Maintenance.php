@@ -1,14 +1,31 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
 use Friendica\App;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
 
 /**
- * @brief Sets maintenance mode for this node
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
+ * Sets maintenance mode for this node
  */
 class Maintenance extends \Asika\SimpleConsole\Console
 {
@@ -19,7 +36,7 @@ class Maintenance extends \Asika\SimpleConsole\Console
 	 */
 	private $appMode;
 	/**
-	 * @var Configuration
+	 * @var IConfig
 	 */
 	private $config;
 
@@ -52,7 +69,7 @@ HELP;
 		return $help;
 	}
 
-	public function __construct(App\Mode $appMode, Configuration $config, $argv = null)
+	public function __construct(App\Mode $appMode, IConfig $config, $argv = null)
 	{
 		parent::__construct($argv);
 

@@ -1,21 +1,35 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Api\Mastodon;
 
-use Friendica\Api\Mastodon;
-use Friendica\App\BaseURL;
 use Friendica\Core\System;
-use Friendica\Database\DBA;
-use Friendica\Model\APContact;
-use Friendica\Model\Contact;
-use Friendica\Model\Introduction;
-use Friendica\Module\Base\Api;
+use Friendica\DI;
+use Friendica\Module\BaseApi;
 use Friendica\Network\HTTPException;
 
 /**
- * @see https://docs.joinmastodon.org/api/rest/follow-requests/
+ * @see https://docs.joinmastodon.org/methods/accounts/follow_requests
  */
-class FollowRequests extends Api
+class FollowRequests extends BaseApi
 {
 	public static function init(array $parameters = [])
 	{
@@ -26,29 +40,41 @@ class FollowRequests extends Api
 		}
 	}
 
+	/**
+	 * @param array $parameters
+	 * @throws HTTPException\BadRequestException
+	 * @throws HTTPException\ForbiddenException
+	 * @throws HTTPException\InternalServerErrorException
+	 * @throws HTTPException\NotFoundException
+	 * @throws HTTPException\UnauthorizedException
+	 * @throws \ImagickException
+	 *
+	 * @see https://docs.joinmastodon.org/methods/accounts/follow_requests#accept-follow
+	 * @see https://docs.joinmastodon.org/methods/accounts/follow_requests#reject-follow
+	 */
 	public static function post(array $parameters = [])
 	{
 		parent::post($parameters);
 
-		/** @var Introduction $Intro */
-		$Intro = self::getClass(Introduction::class);
-		$Intro->fetch(['id' => $parameters['id'], 'uid' => self::$current_user_id]);
+		$introduction = DI::intro()->selectFirst(['id' => $parameters['id'], 'uid' => self::$current_user_id]);
 
-		$contactId = $Intro->{'contact-id'};
-
-		$relationship = new Mastodon\Relationship();
-		$relationship->id = $contactId;
+		$contactId = $introduction->{'contact-id'};
 
 		switch ($parameters['action']) {
 			case 'authorize':
-				$Intro->confirm();
-				$relationship = Mastodon\Relationship::createFromContact(Contact::getById($contactId));
+				$introduction->confirm();
+
+				$relationship = DI::mstdnRelationship()->createFromContactId($contactId);
 				break;
 			case 'ignore':
-				$Intro->ignore();
+				$introduction->ignore();
+
+				$relationship = DI::mstdnRelationship()->createDefaultFromContactId($contactId);
 				break;
 			case 'reject':
-				$Intro->discard();
+				$introduction->discard();
+
+				$relationship = DI::mstdnRelationship()->createDefaultFromContactId($contactId);
 				break;
 			default:
 				throw new HTTPException\BadRequestException('Unexpected action parameter, expecting "authorize", "ignore" or "reject"');
@@ -60,7 +86,8 @@ class FollowRequests extends Api
 	/**
 	 * @param array $parameters
 	 * @throws HTTPException\InternalServerErrorException
-	 * @see https://docs.joinmastodon.org/api/rest/follow-requests/#get-api-v1-follow-requests
+	 * @throws \ImagickException
+	 * @see https://docs.joinmastodon.org/methods/accounts/follow_requests#pending-follows
 	 */
 	public static function rawContent(array $parameters = [])
 	{
@@ -68,35 +95,25 @@ class FollowRequests extends Api
 		$max_id = $_GET['max_id'] ?? null;
 		$limit = intval($_GET['limit'] ?? 40);
 
-		if (isset($since_id) && isset($max_id)) {
-			$condition = ['`uid` = ? AND NOT `ignore` AND `id` > ? AND `id` < ?', self::$current_user_id, $since_id, $max_id];
-		} elseif (isset($since_id)) {
-			$condition = ['`uid` = ? AND NOT `ignore` AND `id` > ?', self::$current_user_id, $since_id];
-		} elseif (isset($max_id)) {
-			$condition = ['`uid` = ? AND NOT `ignore` AND `id` < ?', self::$current_user_id, $max_id];
-		} else {
-			$condition = ['`uid` = ? AND NOT `ignore`', self::$current_user_id];
-		}
+		$baseUrl = DI::baseUrl();
 
-		$count = DBA::count('intro', $condition);
-
-		$intros = DBA::selectToArray(
-			'intro',
-			[],
-			$condition,
-			['order' => ['id' => 'DESC'], 'limit' => $limit]
+		$introductions = DI::intro()->selectByBoundaries(
+			['`uid` = ? AND NOT `ignore`', self::$current_user_id],
+			['order' => ['id' => 'DESC']],
+			$since_id,
+			$max_id,
+			$limit
 		);
 
 		$return = [];
-		foreach ($intros as $intro) {
-			$contact = Contact::getById($intro['contact-id']);
-			$apcontact = APContact::getByURL($contact['url'], false);
-			$account = Mastodon\Account::createFromContact($contact, $apcontact);
 
-			// Not ideal, the same "account" can have multiple ids depending on the context
-			$account->id = $intro['id'];
-
-			$return[] = $account;
+		foreach ($introductions as $key => $introduction) {
+			try {
+				$return[] = DI::mstdnFollowRequest()->createFromIntroduction($introduction);
+			} catch (HTTPException\InternalServerErrorException $exception) {
+				DI::intro()->delete($introduction);
+				unset($introductions[$key]);
+			}
 		}
 
 		$base_query = [];
@@ -104,14 +121,14 @@ class FollowRequests extends Api
 			$base_query['limit'] = $limit;
 		}
 
-		/** @var BaseURL $BaseURL */
-		$BaseURL = self::getClass(BaseURL::class);
-
 		$links = [];
-		if ($count > $limit) {
-			$links[] = '<' . $BaseURL->get() . '/api/v1/follow_requests?' . http_build_query($base_query + ['max_id' => $intros[count($intros) - 1]['id']]) . '>; rel="next"';
+		if ($introductions->getTotalCount() > $limit) {
+			$links[] = '<' . $baseUrl->get() . '/api/v1/follow_requests?' . http_build_query($base_query + ['max_id' => $introductions[count($introductions) - 1]->id]) . '>; rel="next"';
 		}
-		$links[] = '<' . $BaseURL->get() . '/api/v1/follow_requests?' . http_build_query($base_query + ['since_id' => $intros[0]['id']]) . '>; rel="prev"';
+
+		if (count($introductions)) {
+			$links[] = '<' . $baseUrl->get() . '/api/v1/follow_requests?' . http_build_query($base_query + ['since_id' => $introductions[0]->id]) . '>; rel="prev"';
+		}
 
 		header('Link: ' . implode(', ', $links));
 

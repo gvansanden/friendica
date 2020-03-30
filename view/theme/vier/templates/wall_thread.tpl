@@ -60,6 +60,9 @@
 				{{if $item.owner_self}}
 					{{include file="sub/delivery_count.tpl" delivery=$item.delivery}}
 				{{/if}}
+				{{if $item.direction}}
+					{{include file="sub/direction.tpl" direction=$item.direction}}
+				{{/if}}
 				<span class="pinned">{{$item.pinned}}</span>
 			</span>
 			{{if $item.lock}}<span class="icon s10 lock fakelink" onclick="lockview(event,{{$item.id}});" title="{{$item.lock}}">{{$item.lock}}</span>{{/if}}
@@ -102,6 +105,10 @@
 			<div class="wall-item-actions-social">
 			{{if $item.threaded}}
 			{{/if}}
+			{{if $item.remote_comment}}
+				<a role="button" title="{{$item.remote_comment.0}}" href="{{$item.remote_comment.2}}"><i class="icon-commenting"><span class="sr-only">{{$item.remote_comment.1}}</span></i></a>
+			{{/if}}
+
 			{{if $item.comment}}
 				<a role="button" id="comment-{{$item.id}}" class="fakelink togglecomment" onclick="openClose('item-comments-{{$item.id}}'); commentExpand({{$item.id}});" title="{{$item.switchcomment}}"><i class="icon-commenting"><span class="sr-only">{{$item.switchcomment}}</span></i></a>
 			{{/if}}

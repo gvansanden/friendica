@@ -1,13 +1,32 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
 use Friendica\App;
 use Friendica\BaseModule;
 use Friendica\Core;
-use Friendica\Core\Config\Cache\ConfigCache;
-use Friendica\Core\L10n;
+use Friendica\Core\Config\Cache;
 use Friendica\Core\Renderer;
+use Friendica\DI;
 use Friendica\Network\HTTPException;
 use Friendica\Util\BasePath;
 use Friendica\Util\Strings;
@@ -48,16 +67,15 @@ class Install extends BaseModule
 
 	public static function init(array $parameters = [])
 	{
-		$a = self::getApp();
+		$a = DI::app();
 
-		if (!$a->getMode()->isInstall()) {
+		if (!DI::mode()->isInstall()) {
 			throw new HTTPException\ForbiddenException();
 		}
 
 		// route: install/testrwrite
 		// $baseurl/install/testrwrite to test if rewrite in .htaccess is working
-		// @TODO: Replace with parameter from router
-		if ($a->getArgumentValue(1, '') == 'testrewrite') {
+		if (DI::args()->get(1, '') == 'testrewrite') {
 			// Status Code 204 means that it worked without content
 			throw new HTTPException\NoContentException();
 		}
@@ -71,14 +89,14 @@ class Install extends BaseModule
 
 		// We overwrite current theme css, because during install we may not have a working mod_rewrite
 		// so we may not have a css at all. Here we set a static css file for the install procedure pages
-		Renderer::$theme['stylesheet'] = $a->getBaseURL() . '/view/install/style.css';
+		Renderer::$theme['stylesheet'] = DI::baseUrl()->get() . '/view/install/style.css';
 
 		self::$currentWizardStep = ($_POST['pass'] ?? '') ?: self::SYSTEM_CHECK;
 	}
 
 	public static function post(array $parameters = [])
 	{
-		$a           = self::getApp();
+		$a           = DI::app();
 		$configCache = $a->getConfigCache();
 
 		switch (self::$currentWizardStep) {
@@ -110,7 +128,7 @@ class Install extends BaseModule
 				self::checkSetting($configCache, $_POST, 'database', 'database', '');
 
 				// If we cannot connect to the database, return to the previous step
-				if (!self::$installer->checkDB($a->getDBA())) {
+				if (!self::$installer->checkDB(DI::dba())) {
 					self::$currentWizardStep = self::DATABASE_CONFIG;
 				}
 
@@ -134,7 +152,7 @@ class Install extends BaseModule
 				self::checkSetting($configCache, $_POST, 'config', 'admin_email', '');
 
 				// If we cannot connect to the database, return to the Database config wizard
-				if (!self::$installer->checkDB($a->getDBA())) {
+				if (!self::$installer->checkDB(DI::dba())) {
 					self::$currentWizardStep = self::DATABASE_CONFIG;
 					return;
 				}
@@ -151,65 +169,65 @@ class Install extends BaseModule
 
 	public static function content(array $parameters = [])
 	{
-		$a           = self::getApp();
+		$a           = DI::app();
 		$configCache = $a->getConfigCache();
 
 		$output = '';
 
-		$install_title = L10n::t('Friendica Communications Server - Setup');
+		$install_title = DI::l10n()->t('Friendica Communications Server - Setup');
 
 		switch (self::$currentWizardStep) {
 			case self::SYSTEM_CHECK:
 				$php_path = $configCache->get('config', 'php_path');
 
-				$status = self::$installer->checkEnvironment($a->getBaseURL(), $php_path);
+				$status = self::$installer->checkEnvironment(DI::baseUrl()->get(), $php_path);
 
 				$tpl    = Renderer::getMarkupTemplate('install_checks.tpl');
 				$output .= Renderer::replaceMacros($tpl, [
 					'$title'       => $install_title,
-					'$pass'        => L10n::t('System check'),
+					'$pass'        => DI::l10n()->t('System check'),
 					'$checks'      => self::$installer->getChecks(),
 					'$passed'      => $status,
-					'$see_install' => L10n::t('Please see the file "INSTALL.txt".'),
-					'$next'        => L10n::t('Next'),
-					'$reload'      => L10n::t('Check again'),
+					'$see_install' => DI::l10n()->t('Please see the file "INSTALL.txt".'),
+					'$next'        => DI::l10n()->t('Next'),
+					'$reload'      => DI::l10n()->t('Check again'),
 					'$php_path'    => $php_path,
 				]);
 				break;
 
 			case self::BASE_CONFIG:
 				$ssl_choices = [
-					App\BaseURL::SSL_POLICY_NONE     => L10n::t("No SSL policy, links will track page SSL state"),
-					App\BaseURL::SSL_POLICY_FULL     => L10n::t("Force all links to use SSL"),
-					App\BaseURL::SSL_POLICY_SELFSIGN => L10n::t("Self-signed certificate, use SSL for local links only \x28discouraged\x29")
+					App\BaseURL::SSL_POLICY_NONE     => DI::l10n()->t("No SSL policy, links will track page SSL state"),
+					App\BaseURL::SSL_POLICY_FULL     => DI::l10n()->t("Force all links to use SSL"),
+					App\BaseURL::SSL_POLICY_SELFSIGN => DI::l10n()->t("Self-signed certificate, use SSL for local links only \x28discouraged\x29")
 				];
 
 				$tpl    = Renderer::getMarkupTemplate('install_base.tpl');
 				$output .= Renderer::replaceMacros($tpl, [
 					'$title'      => $install_title,
-					'$pass'       => L10n::t('Base settings'),
+					'$pass'       => DI::l10n()->t('Base settings'),
 					'$ssl_policy' => ['system-ssl_policy',
-						L10n::t("SSL link policy"),
+						DI::l10n()->t("SSL link policy"),
 						$configCache->get('system', 'ssl_policy'),
-						L10n::t("Determines whether generated links should be forced to use SSL"),
+						DI::l10n()->t("Determines whether generated links should be forced to use SSL"),
 						$ssl_choices],
 					'$hostname'   => ['config-hostname',
-						L10n::t('Host name'),
+						DI::l10n()->t('Host name'),
 						$configCache->get('config', 'hostname'),
-						L10n::t('Overwrite this field in case the determinated hostname isn\'t right, otherweise leave it as is.'),
+						DI::l10n()->t('Overwrite this field in case the determinated hostname isn\'t right, otherweise leave it as is.'),
 						'required'],
 					'$basepath'   => ['system-basepath',
-						L10n::t("Base path to installation"),
+						DI::l10n()->t("Base path to installation"),
 						$configCache->get('system', 'basepath'),
-						L10n::t("If the system cannot detect the correct path to your installation, enter the correct path here. This setting should only be set if you are using a restricted system and symbolic links to your webroot."),
+						DI::l10n()->t("If the system cannot detect the correct path to your installation, enter the correct path here. This setting should only be set if you are using a restricted system and symbolic links to your webroot."),
 						'required'],
 					'$urlpath'    => ['system-urlpath',
-						L10n::t('Sub path of the URL'),
+						DI::l10n()->t('Sub path of the URL'),
 						$configCache->get('system', 'urlpath'),
-						L10n::t('Overwrite this field in case the sub path determination isn\'t right, otherwise leave it as is. Leaving this field blank means the installation is at the base URL without sub path.'),
+						DI::l10n()->t('Overwrite this field in case the sub path determination isn\'t right, otherwise leave it as is. Leaving this field blank means the installation is at the base URL without sub path.'),
 						''],
 					'$php_path'   => $configCache->get('config', 'php_path'),
-					'$submit'     => L10n::t('Submit'),
+					'$submit'     => DI::l10n()->t('Submit'),
 				]);
 				break;
 
@@ -217,51 +235,51 @@ class Install extends BaseModule
 				$tpl    = Renderer::getMarkupTemplate('install_db.tpl');
 				$output .= Renderer::replaceMacros($tpl, [
 					'$title'      => $install_title,
-					'$pass'       => L10n::t('Database connection'),
-					'$info_01'    => L10n::t('In order to install Friendica we need to know how to connect to your database.'),
-					'$info_02'    => L10n::t('Please contact your hosting provider or site administrator if you have questions about these settings.'),
-					'$info_03'    => L10n::t('The database you specify below should already exist. If it does not, please create it before continuing.'),
+					'$pass'       => DI::l10n()->t('Database connection'),
+					'$info_01'    => DI::l10n()->t('In order to install Friendica we need to know how to connect to your database.'),
+					'$info_02'    => DI::l10n()->t('Please contact your hosting provider or site administrator if you have questions about these settings.'),
+					'$info_03'    => DI::l10n()->t('The database you specify below should already exist. If it does not, please create it before continuing.'),
 					'checks'      => self::$installer->getChecks(),
 					'$hostname'   => $configCache->get('config', 'hostname'),
 					'$ssl_policy' => $configCache->get('system', 'ssl_policy'),
 					'$basepath'   => $configCache->get('system', 'basepath'),
 					'$urlpath'    => $configCache->get('system', 'urlpath'),
 					'$dbhost'     => ['database-hostname',
-						L10n::t('Database Server Name'),
+						DI::l10n()->t('Database Server Name'),
 						$configCache->get('database', 'hostname'),
 						'',
 						'required'],
 					'$dbuser'     => ['database-username',
-						L10n::t('Database Login Name'),
+						DI::l10n()->t('Database Login Name'),
 						$configCache->get('database', 'username'),
 						'',
 						'required',
 						'autofocus'],
 					'$dbpass'     => ['database-password',
-						L10n::t('Database Login Password'),
+						DI::l10n()->t('Database Login Password'),
 						$configCache->get('database', 'password'),
-						L10n::t("For security reasons the password must not be empty"),
+						DI::l10n()->t("For security reasons the password must not be empty"),
 						'required'],
 					'$dbdata'     => ['database-database',
-						L10n::t('Database Name'),
+						DI::l10n()->t('Database Name'),
 						$configCache->get('database', 'database'),
 						'',
 						'required'],
-					'$lbl_10'     => L10n::t('Please select a default timezone for your website'),
+					'$lbl_10'     => DI::l10n()->t('Please select a default timezone for your website'),
 					'$php_path'   => $configCache->get('config', 'php_path'),
-					'$submit'     => L10n::t('Submit')
+					'$submit'     => DI::l10n()->t('Submit')
 				]);
 				break;
 
 			case self::SITE_SETTINGS:
 				/* Installed langs */
-				$lang_choices = L10n::getAvailableLanguages();
+				$lang_choices = DI::l10n()->getAvailableLanguages();
 
 				$tpl    = Renderer::getMarkupTemplate('install_settings.tpl');
 				$output .= Renderer::replaceMacros($tpl, [
 					'$title'      => $install_title,
 					'$checks'     => self::$installer->getChecks(),
-					'$pass'       => L10n::t('Site settings'),
+					'$pass'       => DI::l10n()->t('Site settings'),
 					'$hostname'   => $configCache->get('config', 'hostname'),
 					'$ssl_policy' => $configCache->get('system', 'ssl_policy'),
 					'$basepath'   => $configCache->get('system', 'basepath'),
@@ -271,21 +289,21 @@ class Install extends BaseModule
 					'$dbpass'     => $configCache->get('database', 'password'),
 					'$dbdata'     => $configCache->get('database', 'database'),
 					'$adminmail'  => ['config-admin_email',
-						L10n::t('Site administrator email address'),
+						DI::l10n()->t('Site administrator email address'),
 						$configCache->get('config', 'admin_email'),
-						L10n::t('Your account email address must match this in order to use the web admin panel.'),
+						DI::l10n()->t('Your account email address must match this in order to use the web admin panel.'),
 						'required', 'autofocus', 'email'],
 					'$timezone'   => Temporal::getTimezoneField('system-default_timezone',
-						L10n::t('Please select a default timezone for your website'),
+						DI::l10n()->t('Please select a default timezone for your website'),
 						$configCache->get('system', 'default_timezone'),
 						''),
 					'$language'   => ['system-language',
-						L10n::t('System Language:'),
+						DI::l10n()->t('System Language:'),
 						$configCache->get('system', 'language'),
-						L10n::t('Set the default language for your Friendica installation interface and to send emails.'),
+						DI::l10n()->t('Set the default language for your Friendica installation interface and to send emails.'),
 						$lang_choices],
 					'$php_path'   => $configCache->get('config', 'php_path'),
-					'$submit'     => L10n::t('Submit')
+					'$submit'     => DI::l10n()->t('Submit')
 				]);
 				break;
 
@@ -294,7 +312,7 @@ class Install extends BaseModule
 
 				if (count(self::$installer->getChecks()) == 0) {
 					$txt            = '<p style="font-size: 130%;">';
-					$txt            .= L10n::t('Your Friendica site database has been installed.') . EOL;
+					$txt            .= DI::l10n()->t('Your Friendica site database has been installed.') . EOL;
 					$db_return_text .= $txt;
 				}
 
@@ -302,8 +320,8 @@ class Install extends BaseModule
 				$output .= Renderer::replaceMacros($tpl, [
 					'$title'  => $install_title,
 					'$checks' => self::$installer->getChecks(),
-					'$pass'   => L10n::t('Installation finished'),
-					'$text'   => $db_return_text . self::whatNext($a),
+					'$pass'   => DI::l10n()->t('Installation finished'),
+					'$text'   => $db_return_text . self::whatNext(),
 				]);
 
 				break;
@@ -315,33 +333,31 @@ class Install extends BaseModule
 	/**
 	 * Creates the text for the next steps
 	 *
-	 * @param App $a The global App
-	 *
 	 * @return string The text for the next steps
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
-	private static function whatNext($a)
+	private static function whatNext()
 	{
-		$baseurl = $a->getBaseUrl();
+		$baseurl = DI::baseUrl()->get();
 		return
-			L10n::t('<h1>What next</h1>')
-			. "<p>" . L10n::t('IMPORTANT: You will need to [manually] setup a scheduled task for the worker.')
-			. L10n::t('Please see the file "INSTALL.txt".')
+			DI::l10n()->t('<h1>What next</h1>')
+			. "<p>" . DI::l10n()->t('IMPORTANT: You will need to [manually] setup a scheduled task for the worker.')
+			. DI::l10n()->t('Please see the file "INSTALL.txt".')
 			. "</p><p>"
-			. L10n::t('Go to your new Friendica node <a href="%s/register">registration page</a> and register as new user. Remember to use the same email you have entered as administrator email. This will allow you to enter the site admin panel.', $baseurl)
+			. DI::l10n()->t('Go to your new Friendica node <a href="%s/register">registration page</a> and register as new user. Remember to use the same email you have entered as administrator email. This will allow you to enter the site admin panel.', $baseurl)
 			. "</p>";
 	}
 
 	/**
 	 * Checks the $_POST settings and updates the config Cache for it
 	 *
-	 * @param ConfigCache $configCache The current config cache
+	 * @param Cache       $configCache The current config cache
 	 * @param array       $post        The $_POST data
 	 * @param string      $cat         The category of the setting
 	 * @param string      $key         The key of the setting
 	 * @param null|string $default     The default value
 	 */
-	private static function checkSetting(ConfigCache $configCache, array $post, $cat, $key, $default = null)
+	private static function checkSetting(Cache $configCache, array $post, $cat, $key, $default = null)
 	{
 		$configCache->set($cat, $key,
 			Strings::escapeTags(

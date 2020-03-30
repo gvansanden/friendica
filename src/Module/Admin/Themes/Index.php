@@ -1,27 +1,43 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Admin\Themes;
 
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\Theme;
-use Friendica\Module\BaseAdminModule;
+use Friendica\DI;
+use Friendica\Module\BaseAdmin;
 use Friendica\Util\Strings;
 
-class Index extends BaseAdminModule
+class Index extends BaseAdmin
 {
 	public static function content(array $parameters = [])
 	{
 		parent::content($parameters);
 
-		$a = self::getApp();
-
 		$allowed_themes = Theme::getAllowedList();
 
 		// reload active themes
 		if (!empty($_GET['action'])) {
-			parent::checkFormSecurityTokenRedirectOnError($a->getBaseURL() . '/admin/themes', 'admin_themes', 't');
+			parent::checkFormSecurityTokenRedirectOnError(DI::baseUrl()->get() . '/admin/themes', 'admin_themes', 't');
 
 			switch ($_GET['action']) {
 				case 'reload':
@@ -40,17 +56,17 @@ class Index extends BaseAdminModule
 					if ($theme) {
 						$theme = Strings::sanitizeFilePathItem($theme);
 						if (!is_dir("view/theme/$theme")) {
-							notice(L10n::t('Item not found.'));
+							notice(DI::l10n()->t('Item not found.'));
 							return '';
 						}
 
 						if (in_array($theme, Theme::getAllowedList())) {
 							Theme::uninstall($theme);
-							info(L10n::t('Theme %s disabled.', $theme));
+							info(DI::l10n()->t('Theme %s disabled.', $theme));
 						} elseif (Theme::install($theme)) {
-							info(L10n::t('Theme %s successfully enabled.', $theme));
+							info(DI::l10n()->t('Theme %s successfully enabled.', $theme));
 						} else {
-							info(L10n::t('Theme %s failed to install.', $theme));
+							info(DI::l10n()->t('Theme %s failed to install.', $theme));
 						}
 					}
 
@@ -58,7 +74,7 @@ class Index extends BaseAdminModule
 
 			}
 
-			$a->internalRedirect('admin/themes');
+			DI::baseUrl()->redirect('admin/themes');
 		}
 
 		$themes = [];
@@ -79,7 +95,7 @@ class Index extends BaseAdminModule
 				$is_supported = 1 - (intval(file_exists($file . '/unsupported')));
 				$is_allowed = intval(in_array($theme, $allowed_themes));
 
-				if ($is_allowed || $is_supported || Config::get('system', 'show_unsupported_themes')) {
+				if ($is_allowed || $is_supported || DI::config()->get('system', 'show_unsupported_themes')) {
 					$themes[] = ['name' => $theme, 'experimental' => $is_experimental, 'supported' => $is_supported, 'allowed' => $is_allowed];
 				}
 			}
@@ -92,17 +108,17 @@ class Index extends BaseAdminModule
 
 		$t = Renderer::getMarkupTemplate('admin/addons/index.tpl');
 		return Renderer::replaceMacros($t, [
-			'$title'               => L10n::t('Administration'),
-			'$page'                => L10n::t('Themes'),
-			'$submit'              => L10n::t('Save Settings'),
-			'$reload'              => L10n::t('Reload active themes'),
-			'$baseurl'             => $a->getBaseURL(true),
+			'$title'               => DI::l10n()->t('Administration'),
+			'$page'                => DI::l10n()->t('Themes'),
+			'$submit'              => DI::l10n()->t('Save Settings'),
+			'$reload'              => DI::l10n()->t('Reload active themes'),
+			'$baseurl'             => DI::baseUrl()->get(true),
 			'$function'            => 'themes',
 			'$addons'              => $addons,
 			'$pcount'              => count($themes),
-			'$noplugshint'         => L10n::t('No themes found on the system. They should be placed in %1$s', '<code>/view/themes</code>'),
-			'$experimental'        => L10n::t('[Experimental]'),
-			'$unsupported'         => L10n::t('[Unsupported]'),
+			'$noplugshint'         => DI::l10n()->t('No themes found on the system. They should be placed in %1$s', '<code>/view/themes</code>'),
+			'$experimental'        => DI::l10n()->t('[Experimental]'),
+			'$unsupported'         => DI::l10n()->t('[Unsupported]'),
 			'$form_security_token' => parent::getFormSecurityToken('admin_themes'),
 		]);
 	}

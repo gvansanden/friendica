@@ -1,24 +1,39 @@
 <?php
-
 /**
- * @file src/Model/User.php
- * @brief This file includes the User class with user related database functions
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Model;
 
 use DivineOmega\PasswordExposed;
 use Exception;
-use Friendica\Core\Config;
+use Friendica\Content\Pager;
 use Friendica\Core\Hook;
 use Friendica\Core\L10n;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\TwoFactor\AppSpecificPassword;
+use Friendica\Network\HTTPException\InternalServerErrorException;
 use Friendica\Object\Image;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
@@ -29,7 +44,7 @@ use Friendica\Worker\Delivery;
 use LightOpenID;
 
 /**
- * @brief This class handles User related functions
+ * This class handles User related functions
  */
 class User
 {
@@ -138,7 +153,7 @@ class User
 	}
 
 	/**
-	 * @brief Returns the user id of a given profile URL
+	 * Returns the user id of a given profile URL
 	 *
 	 * @param string $url
 	 *
@@ -171,7 +186,7 @@ class User
 	}
 
 	/**
-	 * @brief Get owner data by user id
+	 * Get owner data by user id
 	 *
 	 * @param int $uid
 	 * @param boolean $check_valid Test if data is invalid and correct it
@@ -216,12 +231,12 @@ class User
 		// Check if the returned data is valid, otherwise fix it. See issue #6122
 
 		// Check for correct url and normalised nurl
-		$url = System::baseUrl() . '/profile/' . $r['nickname'];
+		$url = DI::baseUrl() . '/profile/' . $r['nickname'];
 		$repair = ($r['url'] != $url) || ($r['nurl'] != Strings::normaliseLink($r['url']));
 
 		if (!$repair) {
 			// Check if "addr" is present and correct
-			$addr = $r['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+			$addr = $r['nickname'] . '@' . substr(DI::baseUrl(), strpos(DI::baseUrl(), '://') + 3);
 			$repair = ($addr != $r['addr']);
 		}
 
@@ -243,7 +258,7 @@ class User
 	}
 
 	/**
-	 * @brief Get owner data by nick name
+	 * Get owner data by nick name
 	 *
 	 * @param int $nick
 	 * @return boolean|array
@@ -261,20 +276,20 @@ class User
 	}
 
 	/**
-	 * @brief Returns the default group for a given user and network
+	 * Returns the default group for a given user and network
 	 *
 	 * @param int $uid User id
 	 * @param string $network network name
 	 *
 	 * @return int group id
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws InternalServerErrorException
 	 */
 	public static function getDefaultGroup($uid, $network = '')
 	{
 		$default_group = 0;
 
 		if ($network == Protocol::OSTATUS) {
-			$default_group = PConfig::get($uid, "ostatus", "default_group");
+			$default_group = DI::pConfig()->get($uid, "ostatus", "default_group");
 		}
 
 		if ($default_group != 0) {
@@ -294,7 +309,6 @@ class User
 	/**
 	 * Authenticate a user with a clear text password
 	 *
-	 * @brief      Authenticate a user with a clear text password
 	 * @param mixed  $user_info
 	 * @param string $password
 	 * @param bool   $third_party
@@ -312,9 +326,10 @@ class User
 	}
 
 	/**
+	 * Authenticate a user with a clear text password
+	 *
 	 * Returns the user id associated with a successful password authentication
 	 *
-	 * @brief Authenticate a user with a clear text password
 	 * @param mixed  $user_info
 	 * @param string $password
 	 * @param bool   $third_party
@@ -325,7 +340,7 @@ class User
 	{
 		$user = self::getAuthenticationInfo($user_info);
 
-		if ($third_party && PConfig::get($user['uid'], '2fa', 'verified')) {
+		if ($third_party && DI::pConfig()->get($user['uid'], '2fa', 'verified')) {
 			// Third-party apps can't verify two-factor authentication, we use app-specific passwords instead
 			if (AppSpecificPassword::authenticateUser($user['uid'], $password)) {
 				return $user['uid'];
@@ -354,7 +369,7 @@ class User
 			return $user['uid'];
 		}
 
-		throw new Exception(L10n::t('Login failed'));
+		throw new Exception(DI::l10n()->t('Login failed'));
 	}
 
 	/**
@@ -386,7 +401,7 @@ class User
 				|| !isset($user['password'])
 				|| !isset($user['legacy_password'])
 			) {
-				throw new Exception(L10n::t('Not enough information to authenticate'));
+				throw new Exception(DI::l10n()->t('Not enough information to authenticate'));
 			}
 		} elseif (is_int($user_info) || is_string($user_info)) {
 			if (is_int($user_info)) {
@@ -412,7 +427,7 @@ class User
 			}
 
 			if (!DBA::isResult($user)) {
-				throw new Exception(L10n::t('User not found'));
+				throw new Exception(DI::l10n()->t('User not found'));
 			}
 		}
 
@@ -480,7 +495,7 @@ class User
 	public static function hashPassword($password)
 	{
 		if (!trim($password)) {
-			throw new Exception(L10n::t('Password can\'t be empty'));
+			throw new Exception(DI::l10n()->t('Password can\'t be empty'));
 		}
 
 		return password_hash($password, PASSWORD_DEFAULT);
@@ -499,17 +514,17 @@ class User
 		$password = trim($password);
 
 		if (empty($password)) {
-			throw new Exception(L10n::t('Empty passwords are not allowed.'));
+			throw new Exception(DI::l10n()->t('Empty passwords are not allowed.'));
 		}
 
-		if (!Config::get('system', 'disable_password_exposed', false) && self::isPasswordExposed($password)) {
-			throw new Exception(L10n::t('The new password has been exposed in a public data dump, please choose another.'));
+		if (!DI::config()->get('system', 'disable_password_exposed', false) && self::isPasswordExposed($password)) {
+			throw new Exception(DI::l10n()->t('The new password has been exposed in a public data dump, please choose another.'));
 		}
 
 		$allowed_characters = '!"#$%&\'()*+,-./;<=>?@[\]^_`{|}~';
 
 		if (!preg_match('/^[a-z0-9' . preg_quote($allowed_characters, '/') . ']+$/i', $password)) {
-			throw new Exception(L10n::t('The password can\'t contain accentuated letters, white spaces or colons (:)'));
+			throw new Exception(DI::l10n()->t('The password can\'t contain accentuated letters, white spaces or colons (:)'));
 		}
 
 		return self::updatePasswordHashed($uid, self::hashPassword($password));
@@ -536,7 +551,7 @@ class User
 	}
 
 	/**
-	 * @brief Checks if a nickname is in the list of the forbidden nicknames
+	 * Checks if a nickname is in the list of the forbidden nicknames
 	 *
 	 * Check if a nickname is forbidden from registration on the node by the
 	 * admin. Forbidden nicknames (e.g. role namess) can be configured in the
@@ -544,11 +559,11 @@ class User
 	 *
 	 * @param string $nickname The nickname that should be checked
 	 * @return boolean True is the nickname is blocked on the node
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws InternalServerErrorException
 	 */
 	public static function isNicknameBlocked($nickname)
 	{
-		$forbidden_nicknames = Config::get('system', 'forbidden_nicknames', '');
+		$forbidden_nicknames = DI::config()->get('system', 'forbidden_nicknames', '');
 
 		// if the config variable is empty return false
 		if (empty($forbidden_nicknames)) {
@@ -567,7 +582,7 @@ class User
 	}
 
 	/**
-	 * @brief Catch-all user creation function
+	 * Catch-all user creation function
 	 *
 	 * Creates a user from the provided data array, either form fields or OpenID.
 	 * Required: { username, nickname, email } or { openid_url }
@@ -581,16 +596,15 @@ class User
 	 * @param  array $data
 	 * @return array
 	 * @throws \ErrorException
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws InternalServerErrorException
 	 * @throws \ImagickException
 	 * @throws Exception
 	 */
 	public static function create(array $data)
 	{
-		$a = \get_app();
 		$return = ['user' => null, 'password' => ''];
 
-		$using_invites = Config::get('system', 'invitation_only');
+		$using_invites = DI::config()->get('system', 'invitation_only');
 
 		$invite_id  = !empty($data['invite_id'])  ? Strings::escapeTags(trim($data['invite_id']))  : '';
 		$username   = !empty($data['username'])   ? Strings::escapeTags(trim($data['username']))   : '';
@@ -605,22 +619,21 @@ class User
 		$verified   = !empty($data['verified']);
 		$language   = !empty($data['language'])   ? Strings::escapeTags(trim($data['language']))   : 'en';
 
-		$publish = !empty($data['profile_publish_reg']);
-		$netpublish = $publish && Config::get('system', 'directory');
+		$netpublish = $publish = !empty($data['profile_publish_reg']);
 
 		if ($password1 != $confirm) {
-			throw new Exception(L10n::t('Passwords do not match. Password unchanged.'));
+			throw new Exception(DI::l10n()->t('Passwords do not match. Password unchanged.'));
 		} elseif ($password1 != '') {
 			$password = $password1;
 		}
 
 		if ($using_invites) {
 			if (!$invite_id) {
-				throw new Exception(L10n::t('An invitation is required.'));
+				throw new Exception(DI::l10n()->t('An invitation is required.'));
 			}
 
 			if (!Register::existsByHash($invite_id)) {
-				throw new Exception(L10n::t('Invitation could not be verified.'));
+				throw new Exception(DI::l10n()->t('Invitation could not be verified.'));
 			}
 		}
 
@@ -628,26 +641,26 @@ class User
 		if (empty($username) || empty($email) || empty($nickname)) {
 			if ($openid_url) {
 				if (!Network::isUrlValid($openid_url)) {
-					throw new Exception(L10n::t('Invalid OpenID url'));
+					throw new Exception(DI::l10n()->t('Invalid OpenID url'));
 				}
 				$_SESSION['register'] = 1;
 				$_SESSION['openid'] = $openid_url;
 
-				$openid = new LightOpenID($a->getHostName());
+				$openid = new LightOpenID(DI::baseUrl()->getHostname());
 				$openid->identity = $openid_url;
-				$openid->returnUrl = System::baseUrl() . '/openid';
+				$openid->returnUrl = DI::baseUrl() . '/openid';
 				$openid->required = ['namePerson/friendly', 'contact/email', 'namePerson'];
 				$openid->optional = ['namePerson/first', 'media/image/aspect11', 'media/image/default'];
 				try {
 					$authurl = $openid->authUrl();
 				} catch (Exception $e) {
-					throw new Exception(L10n::t('We encountered a problem while logging in with the OpenID you provided. Please check the correct spelling of the ID.') . EOL . EOL . L10n::t('The error message was:') . $e->getMessage(), 0, $e);
+					throw new Exception(DI::l10n()->t('We encountered a problem while logging in with the OpenID you provided. Please check the correct spelling of the ID.') . EOL . EOL . DI::l10n()->t('The error message was:') . $e->getMessage(), 0, $e);
 				}
 				System::externalRedirect($authurl);
 				// NOTREACHED
 			}
 
-			throw new Exception(L10n::t('Please enter the required information.'));
+			throw new Exception(DI::l10n()->t('Please enter the required information.'));
 		}
 
 		if (!Network::isUrlValid($openid_url)) {
@@ -657,61 +670,61 @@ class User
 		// collapse multiple spaces in name
 		$username = preg_replace('/ +/', ' ', $username);
 
-		$username_min_length = max(1, min(64, intval(Config::get('system', 'username_min_length', 3))));
-		$username_max_length = max(1, min(64, intval(Config::get('system', 'username_max_length', 48))));
+		$username_min_length = max(1, min(64, intval(DI::config()->get('system', 'username_min_length', 3))));
+		$username_max_length = max(1, min(64, intval(DI::config()->get('system', 'username_max_length', 48))));
 
 		if ($username_min_length > $username_max_length) {
-			Logger::log(L10n::t('system.username_min_length (%s) and system.username_max_length (%s) are excluding each other, swapping values.', $username_min_length, $username_max_length), Logger::WARNING);
+			Logger::log(DI::l10n()->t('system.username_min_length (%s) and system.username_max_length (%s) are excluding each other, swapping values.', $username_min_length, $username_max_length), Logger::WARNING);
 			$tmp = $username_min_length;
 			$username_min_length = $username_max_length;
 			$username_max_length = $tmp;
 		}
 
 		if (mb_strlen($username) < $username_min_length) {
-			throw new Exception(L10n::tt('Username should be at least %s character.', 'Username should be at least %s characters.', $username_min_length));
+			throw new Exception(DI::l10n()->tt('Username should be at least %s character.', 'Username should be at least %s characters.', $username_min_length));
 		}
 
 		if (mb_strlen($username) > $username_max_length) {
-			throw new Exception(L10n::tt('Username should be at most %s character.', 'Username should be at most %s characters.', $username_max_length));
+			throw new Exception(DI::l10n()->tt('Username should be at most %s character.', 'Username should be at most %s characters.', $username_max_length));
 		}
 
 		// So now we are just looking for a space in the full name.
-		$loose_reg = Config::get('system', 'no_regfullname');
+		$loose_reg = DI::config()->get('system', 'no_regfullname');
 		if (!$loose_reg) {
 			$username = mb_convert_case($username, MB_CASE_TITLE, 'UTF-8');
 			if (strpos($username, ' ') === false) {
-				throw new Exception(L10n::t("That doesn't appear to be your full (First Last) name."));
+				throw new Exception(DI::l10n()->t("That doesn't appear to be your full (First Last) name."));
 			}
 		}
 
 		if (!Network::isEmailDomainAllowed($email)) {
-			throw new Exception(L10n::t('Your email domain is not among those allowed on this site.'));
+			throw new Exception(DI::l10n()->t('Your email domain is not among those allowed on this site.'));
 		}
 
 		if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !Network::isEmailDomainValid($email)) {
-			throw new Exception(L10n::t('Not a valid email address.'));
+			throw new Exception(DI::l10n()->t('Not a valid email address.'));
 		}
 		if (self::isNicknameBlocked($nickname)) {
-			throw new Exception(L10n::t('The nickname was blocked from registration by the nodes admin.'));
+			throw new Exception(DI::l10n()->t('The nickname was blocked from registration by the nodes admin.'));
 		}
 
-		if (Config::get('system', 'block_extended_register', false) && DBA::exists('user', ['email' => $email])) {
-			throw new Exception(L10n::t('Cannot use that email.'));
+		if (DI::config()->get('system', 'block_extended_register', false) && DBA::exists('user', ['email' => $email])) {
+			throw new Exception(DI::l10n()->t('Cannot use that email.'));
 		}
 
 		// Disallow somebody creating an account using openid that uses the admin email address,
 		// since openid bypasses email verification. We'll allow it if there is not yet an admin account.
-		if (Config::get('config', 'admin_email') && strlen($openid_url)) {
-			$adminlist = explode(',', str_replace(' ', '', strtolower(Config::get('config', 'admin_email'))));
+		if (DI::config()->get('config', 'admin_email') && strlen($openid_url)) {
+			$adminlist = explode(',', str_replace(' ', '', strtolower(DI::config()->get('config', 'admin_email'))));
 			if (in_array(strtolower($email), $adminlist)) {
-				throw new Exception(L10n::t('Cannot use that email.'));
+				throw new Exception(DI::l10n()->t('Cannot use that email.'));
 			}
 		}
 
 		$nickname = $data['nickname'] = strtolower($nickname);
 
 		if (!preg_match('/^[a-z0-9][a-z0-9\_]*$/', $nickname)) {
-			throw new Exception(L10n::t('Your nickname can only contain a-z, 0-9 and _.'));
+			throw new Exception(DI::l10n()->t('Your nickname can only contain a-z, 0-9 and _.'));
 		}
 
 		// Check existing and deleted accounts for this nickname.
@@ -719,7 +732,7 @@ class User
 			DBA::exists('user', ['nickname' => $nickname])
 			|| DBA::exists('userd', ['username' => $nickname])
 		) {
-			throw new Exception(L10n::t('Nickname is already registered. Please choose another.'));
+			throw new Exception(DI::l10n()->t('Nickname is already registered. Please choose another.'));
 		}
 
 		$new_password = strlen($password) ? $password : User::generateNewPassword();
@@ -729,7 +742,7 @@ class User
 
 		$keys = Crypto::newKeypair(4096);
 		if ($keys === false) {
-			throw new Exception(L10n::t('SERIOUS ERROR: Generation of security keys failed.'));
+			throw new Exception(DI::l10n()->t('SERIOUS ERROR: Generation of security keys failed.'));
 		}
 
 		$prvkey = $keys['prvkey'];
@@ -763,11 +776,11 @@ class User
 			$uid = DBA::lastInsertId();
 			$user = DBA::selectFirst('user', [], ['uid' => $uid]);
 		} else {
-			throw new Exception(L10n::t('An error occurred during registration. Please try again.'));
+			throw new Exception(DI::l10n()->t('An error occurred during registration. Please try again.'));
 		}
 
 		if (!$uid) {
-			throw new Exception(L10n::t('An error occurred during registration. Please try again.'));
+			throw new Exception(DI::l10n()->t('An error occurred during registration. Please try again.'));
 		}
 
 		// if somebody clicked submit twice very quickly, they could end up with two accounts
@@ -776,43 +789,41 @@ class User
 		if ($user_count > 1) {
 			DBA::delete('user', ['uid' => $uid]);
 
-			throw new Exception(L10n::t('Nickname is already registered. Please choose another.'));
+			throw new Exception(DI::l10n()->t('Nickname is already registered. Please choose another.'));
 		}
 
 		$insert_result = DBA::insert('profile', [
 			'uid' => $uid,
 			'name' => $username,
-			'photo' => System::baseUrl() . "/photo/profile/{$uid}.jpg",
-			'thumb' => System::baseUrl() . "/photo/avatar/{$uid}.jpg",
+			'photo' => DI::baseUrl() . "/photo/profile/{$uid}.jpg",
+			'thumb' => DI::baseUrl() . "/photo/avatar/{$uid}.jpg",
 			'publish' => $publish,
-			'is-default' => 1,
 			'net-publish' => $netpublish,
-			'profile-name' => L10n::t('default')
 		]);
 		if (!$insert_result) {
 			DBA::delete('user', ['uid' => $uid]);
 
-			throw new Exception(L10n::t('An error occurred creating your default profile. Please try again.'));
+			throw new Exception(DI::l10n()->t('An error occurred creating your default profile. Please try again.'));
 		}
 
 		// Create the self contact
 		if (!Contact::createSelfFromUserId($uid)) {
 			DBA::delete('user', ['uid' => $uid]);
 
-			throw new Exception(L10n::t('An error occurred creating your self contact. Please try again.'));
+			throw new Exception(DI::l10n()->t('An error occurred creating your self contact. Please try again.'));
 		}
 
 		// Create a group with no members. This allows somebody to use it
 		// right away as a default group for new contacts.
-		$def_gid = Group::create($uid, L10n::t('Friends'));
+		$def_gid = Group::create($uid, DI::l10n()->t('Friends'));
 		if (!$def_gid) {
 			DBA::delete('user', ['uid' => $uid]);
 
-			throw new Exception(L10n::t('An error occurred creating your default contact group. Please try again.'));
+			throw new Exception(DI::l10n()->t('An error occurred creating your default contact group. Please try again.'));
 		}
 
 		$fields = ['def_gid' => $def_gid];
-		if (Config::get('system', 'newuser_private') && $def_gid) {
+		if (DI::config()->get('system', 'newuser_private') && $def_gid) {
 			$fields['allow_gid'] = '<' . $def_gid . '>';
 		}
 
@@ -838,7 +849,7 @@ class User
 
 				$resource_id = Photo::newResource();
 
-				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, L10n::t('Profile Photos'), 4);
+				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, DI::l10n()->t('Profile Photos'), 4);
 
 				if ($r === false) {
 					$photo_failure = true;
@@ -846,7 +857,7 @@ class User
 
 				$Image->scaleDown(80);
 
-				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, L10n::t('Profile Photos'), 5);
+				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, DI::l10n()->t('Profile Photos'), 5);
 
 				if ($r === false) {
 					$photo_failure = true;
@@ -854,7 +865,7 @@ class User
 
 				$Image->scaleDown(48);
 
-				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, L10n::t('Profile Photos'), 6);
+				$r = Photo::store($Image, $uid, 0, $resource_id, $filename, DI::l10n()->t('Profile Photos'), 6);
 
 				if ($r === false) {
 					$photo_failure = true;
@@ -873,18 +884,178 @@ class User
 	}
 
 	/**
-	 * @brief Sends pending registration confirmation email
+	 * Sets block state for a given user
+	 *
+	 * @param int  $uid   The user id
+	 * @param bool $block Block state (default is true)
+	 *
+	 * @return bool True, if successfully blocked
+
+	 * @throws Exception
+	 */
+	public static function block(int $uid, bool $block = true)
+	{
+		return DBA::update('user', ['blocked' => $block], ['uid' => $uid]);
+	}
+
+	/**
+	 * Allows a registration based on a hash
+	 *
+	 * @param string $hash
+	 *
+	 * @return bool True, if the allow was successful
+	 *
+	 * @throws InternalServerErrorException
+	 * @throws Exception
+	 */
+	public static function allow(string $hash)
+	{
+		$register = Register::getByHash($hash);
+		if (!DBA::isResult($register)) {
+			return false;
+		}
+
+		$user = User::getById($register['uid']);
+		if (!DBA::isResult($user)) {
+			return false;
+		}
+
+		Register::deleteByHash($hash);
+
+		DBA::update('user', ['blocked' => false, 'verified' => true], ['uid' => $register['uid']]);
+
+		$profile = DBA::selectFirst('profile', ['net-publish'], ['uid' => $register['uid']]);
+
+		if (DBA::isResult($profile) && $profile['net-publish'] && DI::config()->get('system', 'directory')) {
+			$url = DI::baseUrl() . '/profile/' . $user['nickname'];
+			Worker::add(PRIORITY_LOW, "Directory", $url);
+		}
+
+		$l10n = DI::l10n()->withLang($register['language']);
+
+		return User::sendRegisterOpenEmail(
+			$l10n,
+			$user,
+			DI::config()->get('config', 'sitename'),
+			DI::baseUrl()->get(),
+			($register['password'] ?? '') ?: 'Sent in a previous email'
+		);
+	}
+
+	/**
+	 * Denys a pending registration
+	 *
+	 * @param string $hash The hash of the pending user
+	 *
+	 * This does not have to go through user_remove() and save the nickname
+	 * permanently against re-registration, as the person was not yet
+	 * allowed to have friends on this system
+	 *
+	 * @return bool True, if the deny was successfull
+	 * @throws Exception
+	 */
+	public static function deny(string $hash)
+	{
+		$register = Register::getByHash($hash);
+		if (!DBA::isResult($register)) {
+			return false;
+		}
+
+		$user = User::getById($register['uid']);
+		if (!DBA::isResult($user)) {
+			return false;
+		}
+
+		return DBA::delete('user', ['uid' => $register['uid']]) &&
+		       Register::deleteByHash($register['hash']);
+	}
+
+	/**
+	 * Creates a new user based on a minimal set and sends an email to this user
+	 *
+	 * @param string $name  The user's name
+	 * @param string $email The user's email address
+	 * @param string $nick  The user's nick name
+	 * @param string $lang  The user's language (default is english)
+	 *
+	 * @return bool True, if the user was created successfully
+	 * @throws InternalServerErrorException
+	 * @throws \ErrorException
+	 * @throws \ImagickException
+	 */
+	public static function createMinimal(string $name, string $email, string $nick, string $lang = L10n::DEFAULT)
+	{
+		if (empty($name) ||
+		    empty($email) ||
+		    empty($nick)) {
+			throw new InternalServerErrorException('Invalid arguments.');
+		}
+
+		$result = self::create([
+			'username' => $name,
+			'email' => $email,
+			'nickname' => $nick,
+			'verified' => 1,
+			'language' => $lang
+		]);
+
+		$user = $result['user'];
+		$preamble = Strings::deindent(DI::l10n()->t('
+		Dear %1$s,
+			the administrator of %2$s has set up an account for you.'));
+		$body = Strings::deindent(DI::l10n()->t('
+		The login details are as follows:
+
+		Site Location:	%1$s
+		Login Name:		%2$s
+		Password:		%3$s
+
+		You may change your password from your account "Settings" page after logging
+		in.
+
+		Please take a few moments to review the other account settings on that page.
+
+		You may also wish to add some basic information to your default profile
+		(on the "Profiles" page) so that other people can easily find you.
+
+		We recommend setting your full name, adding a profile photo,
+		adding some profile "keywords" (very useful in making new friends) - and
+		perhaps what country you live in; if you do not wish to be more specific
+		than that.
+
+		We fully respect your right to privacy, and none of these items are necessary.
+		If you are new and do not know anybody here, they may help
+		you to make some new and interesting friends.
+
+		If you ever want to delete your account, you can do so at %1$s/removeme
+
+		Thank you and welcome to %4$s.'));
+
+		$preamble = sprintf($preamble, $user['username'], DI::config()->get('config', 'sitename'));
+		$body = sprintf($body, DI::baseUrl()->get(), $user['nickname'], $result['password'], DI::config()->get('config', 'sitename'));
+
+		$email = DI::emailer()
+			->newSystemMail()
+			->withMessage(DI::l10n()->t('Registration details for %s', DI::config()->get('config', 'sitename')), $preamble, $body)
+			->forUser($user)
+			->withRecipient($user['email'])
+			->build();
+		return DI::emailer()->send($email);
+	}
+
+	/**
+	 * Sends pending registration confirmation email
 	 *
 	 * @param array  $user     User record array
 	 * @param string $sitename
 	 * @param string $siteurl
 	 * @param string $password Plaintext password
 	 * @return NULL|boolean from notification() and email() inherited
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws InternalServerErrorException
 	 */
 	public static function sendRegisterPendingEmail($user, $sitename, $siteurl, $password)
 	{
-		$body = Strings::deindent(L10n::t(
+		$body = Strings::deindent(DI::l10n()->t(
 			'
 			Dear %1$s,
 				Thank you for registering at %2$s. Your account is pending for approval by the administrator.
@@ -902,30 +1073,32 @@ class User
 			$password
 		));
 
-		return notification([
-			'type'     => SYSTEM_EMAIL,
-			'uid'      => $user['uid'],
-			'to_email' => $user['email'],
-			'subject'  => L10n::t('Registration at %s', $sitename),
-			'body'     => $body
-		]);
+		$email = DI::emailer()
+			->newSystemMail()
+			->withMessage(DI::l10n()->t('Registration at %s', $sitename), $body)
+			->forUser($user)
+			->withRecipient($user['email'])
+			->build();
+		return DI::emailer()->send($email);
 	}
 
 	/**
-	 * @brief Sends registration confirmation
+	 * Sends registration confirmation
 	 *
 	 * It's here as a function because the mail is sent from different parts
 	 *
-	 * @param array  $user     User record array
-	 * @param string $sitename
-	 * @param string $siteurl
-	 * @param string $password Plaintext password
+	 * @param \Friendica\Core\L10n $l10n     The used language
+	 * @param array                $user     User record array
+	 * @param string               $sitename
+	 * @param string               $siteurl
+	 * @param string               $password Plaintext password
+	 *
 	 * @return NULL|boolean from notification() and email() inherited
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws InternalServerErrorException
 	 */
-	public static function sendRegisterOpenEmail($user, $sitename, $siteurl, $password)
+	public static function sendRegisterOpenEmail(\Friendica\Core\L10n $l10n, $user, $sitename, $siteurl, $password)
 	{
-		$preamble = Strings::deindent(L10n::t(
+		$preamble = Strings::deindent($l10n->t(
 			'
 				Dear %1$s,
 				Thank you for registering at %2$s. Your account has been created.
@@ -933,7 +1106,7 @@ class User
 			$user['username'],
 			$sitename
 		));
-		$body = Strings::deindent(L10n::t(
+		$body = Strings::deindent($l10n->t(
 			'
 			The login details are as follows:
 
@@ -968,23 +1141,21 @@ class User
 			$password
 		));
 
-		return notification([
-			'uid'      => $user['uid'],
-			'language' => $user['language'],
-			'type'     => SYSTEM_EMAIL,
-			'to_email' => $user['email'],
-			'subject'  => L10n::t('Registration details for %s', $sitename),
-			'preamble' => $preamble,
-			'body'     => $body
-		]);
+		$email = DI::emailer()
+			->newSystemMail()
+			->withMessage(DI::l10n()->t('Registration details for %s', $sitename), $preamble, $body)
+			->forUser($user)
+			->withRecipient($user['email'])
+			->build();
+		return DI::emailer()->send($email);
 	}
 
 	/**
-	 * @param object $uid user to remove
+	 * @param int $uid user to remove
 	 * @return bool
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws InternalServerErrorException
 	 */
-	public static function remove($uid)
+	public static function remove(int $uid)
 	{
 		if (!$uid) {
 			return false;
@@ -1114,11 +1285,14 @@ class User
 
 		$userStmt = DBA::p("SELECT `user`.`uid`, `user`.`login_date`, `contact`.`last-item`
 			FROM `user`
-			INNER JOIN `profile` ON `profile`.`uid` = `user`.`uid` AND `profile`.`is-default`
 			INNER JOIN `contact` ON `contact`.`uid` = `user`.`uid` AND `contact`.`self`
-			WHERE (`profile`.`publish` OR `profile`.`net-publish`) AND `user`.`verified`
-				AND NOT `user`.`blocked` AND NOT `user`.`account_removed`
-				AND NOT `user`.`account_expired`");
+			WHERE `user`.`verified`
+				AND `user`.`login_date` > ?
+				AND NOT `user`.`blocked`
+				AND NOT `user`.`account_removed`
+				AND NOT `user`.`account_expired`",
+				DBA::NULL_DATETIME
+		);
 
 		if (!DBA::isResult($userStmt)) {
 			return $statistics;
@@ -1142,5 +1316,48 @@ class User
 		}
 
 		return $statistics;
+	}
+
+	/**
+	 * Get all users of the current node
+	 *
+	 * @param int    $start Start count (Default is 0)
+	 * @param int    $count Count of the items per page (Default is @see Pager::ITEMS_PER_PAGE)
+	 * @param string $type  The type of users, which should get (all, bocked, removed)
+	 * @param string $order Order of the user list (Default is 'contact.name')
+	 * @param string $order_direction Order direction (Default is ASC)
+	 *
+	 * @return array The list of the users
+	 * @throws Exception
+	 */
+	public static function getList($start = 0, $count = Pager::ITEMS_PER_PAGE, $type = 'all', $order = 'contact.name', $order_direction = '+')
+	{
+		$sql_order           = '`' . str_replace('.', '`.`', $order) . '`';
+		$sql_order_direction = ($order_direction === '+') ? 'ASC' : 'DESC';
+
+		switch ($type) {
+			case 'active':
+				$sql_extra = 'AND `user`.`blocked` = 0';
+				break;
+			case 'blocked':
+				$sql_extra = 'AND `user`.`blocked` = 1';
+				break;
+			case 'removed':
+				$sql_extra = 'AND `user`.`account_removed` = 1';
+				break;
+			case 'all':
+			default:
+				$sql_extra = '';
+				break;
+		}
+
+		$usersStmt = DBA::p("SELECT `user`.*, `contact`.`name`, `contact`.`url`, `contact`.`micro`, `user`.`account_expired`, `contact`.`last-item` AS `lastitem_date`, `contact`.`nick`, `contact`.`created`
+				FROM `user`
+				INNER JOIN `contact` ON `contact`.`uid` = `user`.`uid` AND `contact`.`self`
+				WHERE `user`.`verified` $sql_extra
+				ORDER BY $sql_order $sql_order_direction LIMIT ?, ?", $start, $count
+		);
+
+		return DBA::toArray($usersStmt);
 	}
 }

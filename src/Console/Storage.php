@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
@@ -6,12 +25,24 @@ use Asika\SimpleConsole\CommandArgsException;
 use Friendica\Core\StorageManager;
 
 /**
- * @brief tool to manage storage backend and stored data from CLI
- *
+ * tool to manage storage backend and stored data from CLI
  */
 class Storage extends \Asika\SimpleConsole\Console
 {
 	protected $helpOptions = ['h', 'help', '?'];
+
+	/** @var StorageManager */
+	private $storageManager;
+
+	/**
+	 * @param StorageManager $storageManager
+	 */
+	public function __construct(StorageManager $storageManager, array $argv = [])
+	{
+		parent::__construct($argv);
+
+		$this->storageManager = $storageManager;
+	}
 
 	protected function getHelp()
 	{
@@ -69,13 +100,13 @@ HELP;
 	protected function doList()
 	{
 		$rowfmt = ' %-3s | %-20s';
-		$current = StorageManager::getBackend();
+		$current = $this->storageManager->getBackend();
 		$this->out(sprintf($rowfmt, 'Sel', 'Name'));
 		$this->out('-----------------------');
 		$isregisterd = false;
-		foreach (StorageManager::listBackends() as $name => $class) {
+		foreach ($this->storageManager->listBackends() as $name => $class) {
 			$issel = ' ';
-			if ($current === $class) {
+			if ($current::getName() == $name) {
 				$issel = '*';
 				$isregisterd = true;
 			};
@@ -100,14 +131,14 @@ HELP;
 		}
 
 		$name = $this->args[1];
-		$class = StorageManager::getByName($name);
+		$class = $this->storageManager->getByName($name);
 
 		if ($class === '') {
 			$this->out($name . ' is not a registered backend.');
 			return -1;
 		}
 
-		if (!StorageManager::setBackend($class)) {
+		if (!$this->storageManager->setBackend($class)) {
 			$this->out($class . ' is not a valid backend storage class.');
 			return -1;
 		}
@@ -117,7 +148,6 @@ HELP;
 
 	protected function doMove()
 	{
-		$tables = null;
 		if (count($this->args) < 1 || count($this->args) > 2) {
 			throw new CommandArgsException('Invalid arguments');
 		}
@@ -128,13 +158,15 @@ HELP;
 				throw new CommandArgsException('Invalid table');
 			}
 			$tables = [$table];
+		} else {
+			$tables = StorageManager::TABLES;
 		}
 
-		$current = StorageManager::getBackend();
+		$current = $this->storageManager->getBackend();
 		$total = 0;
 
 		do {
-			$moved = StorageManager::move($current, $tables, $this->getOption('n', 5000));
+			$moved = $this->storageManager->move($current, $tables, $this->getOption('n', 5000));
 			if ($moved) {
 				$this->out(date('[Y-m-d H:i:s] ') . sprintf('Moved %d files', $moved));
 			}

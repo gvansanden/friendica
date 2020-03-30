@@ -1,8 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Filer;
 
 use Friendica\BaseModule;
+use Friendica\DI;
 use Friendica\Model\FileTag;
 use Friendica\Network\HTTPException;
 use Friendica\Util\XML;
@@ -18,8 +38,8 @@ class RemoveTag extends BaseModule
 			throw new HTTPException\ForbiddenException();
 		}
 
-		$app = self::getApp();
-		$logger = $app->getLogger();
+		$app = DI::app();
+		$logger = DI::logger();
 
 		$item_id = (($app->argc > 1) ? intval($app->argv[1]) : 0);
 
@@ -46,6 +66,6 @@ class RemoveTag extends BaseModule
 			info('Item was not deleted');
 		}
 
-		$app->internalRedirect('network?file=' . rawurlencode($term));
+		DI::baseUrl()->redirect('network?file=' . rawurlencode($term));
 	}
 }

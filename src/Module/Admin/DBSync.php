@@ -1,22 +1,40 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Admin;
 
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\Update;
 use Friendica\Database\DBA;
 use Friendica\Database\DBStructure;
-use Friendica\Module\BaseAdminModule;
+use Friendica\DI;
+use Friendica\Module\BaseAdmin;
 
-class DBSync extends BaseAdminModule
+class DBSync extends BaseAdmin
 {
 	public static function content(array $parameters = [])
 	{
 		parent::content($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		$o = '';
 
@@ -24,14 +42,14 @@ class DBSync extends BaseAdminModule
 			// @TODO: Replace with parameter from router
 			$update = intval($a->argv[3]);
 			if ($update) {
-				Config::set('database', 'update_' . $update, 'success');
-				$curr = Config::get('system', 'build');
+				DI::config()->set('database', 'update_' . $update, 'success');
+				$curr = DI::config()->get('system', 'build');
 				if (intval($curr) == $update) {
-					Config::set('system', 'build', intval($curr) + 1);
+					DI::config()->set('system', 'build', intval($curr) + 1);
 				}
-				info(L10n::t('Update has been marked successful') . EOL);
+				info(DI::l10n()->t('Update has been marked successful') . EOL);
 			}
-			$a->internalRedirect('admin/dbsync');
+			DI::baseUrl()->redirect('admin/dbsync');
 		}
 
 		if ($a->argc > 2) {
@@ -39,11 +57,11 @@ class DBSync extends BaseAdminModule
 				// @TODO Seems like a similar logic like Update::check()
 				$retval = DBStructure::update($a->getBasePath(), false, true);
 				if ($retval === '') {
-					$o .= L10n::t("Database structure update %s was successfully applied.", DB_UPDATE_VERSION) . "<br />";
-					Config::set('database', 'last_successful_update', DB_UPDATE_VERSION);
-					Config::set('database', 'last_successful_update_time', time());
+					$o .= DI::l10n()->t("Database structure update %s was successfully applied.", DB_UPDATE_VERSION) . "<br />";
+					DI::config()->set('database', 'last_successful_update', DB_UPDATE_VERSION);
+					DI::config()->set('database', 'last_successful_update_time', time());
 				} else {
-					$o .= L10n::t("Executing of database structure update %s failed with error: %s", DB_UPDATE_VERSION, $retval) . "<br />";
+					$o .= DI::l10n()->t("Executing of database structure update %s failed with error: %s", DB_UPDATE_VERSION, $retval) . "<br />";
 				}
 				if ($a->argv[2] === 'check') {
 					return $o;
@@ -60,16 +78,16 @@ class DBSync extends BaseAdminModule
 					$retval = $func();
 
 					if ($retval === Update::FAILED) {
-						$o .= L10n::t("Executing %s failed with error: %s", $func, $retval);
+						$o .= DI::l10n()->t("Executing %s failed with error: %s", $func, $retval);
 					} elseif ($retval === Update::SUCCESS) {
-						$o .= L10n::t('Update %s was successfully applied.', $func);
-						Config::set('database', $func, 'success');
+						$o .= DI::l10n()->t('Update %s was successfully applied.', $func);
+						DI::config()->set('database', $func, 'success');
 					} else {
-						$o .= L10n::t('Update %s did not return a status. Unknown if it succeeded.', $func);
+						$o .= DI::l10n()->t('Update %s did not return a status. Unknown if it succeeded.', $func);
 					}
 				} else {
-					$o .= L10n::t('There was no additional update function %s that needed to be called.', $func) . "<br />";
-					Config::set('database', $func, 'success');
+					$o .= DI::l10n()->t('There was no additional update function %s that needed to be called.', $func) . "<br />";
+					DI::config()->set('database', $func, 'success');
 				}
 
 				return $o;
@@ -87,17 +105,17 @@ class DBSync extends BaseAdminModule
 
 		if (!count($failed)) {
 			$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('admin/dbsync/structure_check.tpl'), [
-				'$base' => $a->getBaseURL(true),
-				'$banner' => L10n::t('No failed updates.'),
-				'$check' => L10n::t('Check database structure'),
+				'$base' => DI::baseUrl()->get(true),
+				'$banner' => DI::l10n()->t('No failed updates.'),
+				'$check' => DI::l10n()->t('Check database structure'),
 			]);
 		} else {
 			$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('admin/dbsync/failed_updates.tpl'), [
-				'$base' => $a->getBaseURL(true),
-				'$banner' => L10n::t('Failed Updates'),
-				'$desc' => L10n::t('This does not include updates prior to 1139, which did not return a status.'),
-				'$mark' => L10n::t("Mark success \x28if update was manually applied\x29"),
-				'$apply' => L10n::t('Attempt to execute this update step automatically'),
+				'$base' => DI::baseUrl()->get(true),
+				'$banner' => DI::l10n()->t('Failed Updates'),
+				'$desc' => DI::l10n()->t('This does not include updates prior to 1139, which did not return a status.'),
+				'$mark' => DI::l10n()->t("Mark success \x28if update was manually applied\x29"),
+				'$apply' => DI::l10n()->t('Attempt to execute this update step automatically'),
 				'$failed' => $failed
 			]);
 		}

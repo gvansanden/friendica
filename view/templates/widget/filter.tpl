@@ -1,6 +1,10 @@
-
-<div id="{{$type}}-sidebar" class="widget">
+<span id="{{$type}}-sidebar-inflated" class="widget fakelink" onclick="openCloseWidget('{{$type}}-sidebar', '{{$type}}-sidebar-inflated');">
 	<h3>{{$title}}</h3>
+</span>
+<div id="{{$type}}-sidebar" class="widget">
+	<span class="fakelink" onclick="openCloseWidget('{{$type}}-sidebar', '{{$type}}-sidebar-inflated');">
+		<h3>{{$title}}</h3>
+	</span>
 	<div id="{{$type}}-desc">{{$desc nofilter}}</div>
 	<ul role="menu" class="{{$type}}-ul">
 		<li role="menuitem" {{if !$selected}}class="selected"{{/if}}><a href="{{$base}}" class="{{$type}}-link{{if !$selected}} {{$type}}-selected{{/if}} {{$type}}-all">{{$all_label}}</a></li>
@@ -9,3 +13,6 @@
 		{{/foreach}}
 	</ul>
 </div>
+<script>
+initWidget('{{$type}}-sidebar', '{{$type}}-sidebar-inflated');
+</script>

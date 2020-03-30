@@ -1,22 +1,35 @@
 <?php
 /**
- * @file src/Database/DBStructure.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Database;
 
 use Exception;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
+use Friendica\DI;
 use Friendica\Util\DateTimeFormat;
 
 require_once __DIR__ . '/../../include/dba.php';
 
 /**
- * @brief This class contain functions for the database management
- *
  * This class contains functions that doesn't need to know if pdo, mysqli or whatever is used.
  */
 class DBStructure
@@ -35,7 +48,7 @@ class DBStructure
 	 */
 	private static $definition = [];
 
-	/*
+	/**
 	 * Converts all tables from MyISAM to InnoDB
 	 */
 	public static function convertToInnoDB()
@@ -47,12 +60,12 @@ class DBStructure
 		);
 
 		if (!DBA::isResult($tables)) {
-			echo L10n::t('There are no tables on MyISAM.') . "\n";
+			echo DI::l10n()->t('There are no tables on MyISAM.') . "\n";
 			return;
 		}
 
 		foreach ($tables AS $table) {
-			$sql = "ALTER TABLE " . DBA::quoteIdentifier($table['TABLE_NAME']) . " engine=InnoDB;";
+			$sql = "ALTER TABLE " . DBA::quoteIdentifier($table['table_name']) . " engine=InnoDB;";
 			echo $sql . "\n";
 
 			$result = DBA::e($sql);
@@ -63,7 +76,7 @@ class DBStructure
 	}
 
 	/**
-	 * @brief Print out database error messages
+	 * Print out database error messages
 	 *
 	 * @param string $message Message to be added to the error message
 	 *
@@ -71,10 +84,10 @@ class DBStructure
 	 */
 	private static function printUpdateError($message)
 	{
-		echo L10n::t("\nError %d occurred during database update:\n%s\n",
+		echo DI::l10n()->t("\nError %d occurred during database update:\n%s\n",
 			DBA::errorNo(), DBA::errorMessage());
 
-		return L10n::t('Errors encountered performing database changes: ') . $message . EOL;
+		return DI::l10n()->t('Errors encountered performing database changes: ') . $message . EOL;
 	}
 
 	public static function printStructure($basePath)
@@ -262,8 +275,8 @@ class DBStructure
 	public static function update($basePath, $verbose, $action, $install = false, array $tables = null, array $definition = null)
 	{
 		if ($action && !$install) {
-			Config::set('system', 'maintenance', 1);
-			Config::set('system', 'maintenance_reason', L10n::t('%s: Database update', DateTimeFormat::utcNow() . ' ' . date('e')));
+			DI::config()->set('system', 'maintenance', 1);
+			DI::config()->set('system', 'maintenance_reason', DI::l10n()->t('%s: Database update', DateTimeFormat::utcNow() . ' ' . date('e')));
 		}
 
 		$errors = '';
@@ -524,7 +537,7 @@ class DBStructure
 
 				if ($action) {
 					if (!$install) {
-						Config::set('system', 'maintenance_reason', L10n::t('%s: updating %s table.', DateTimeFormat::utcNow() . ' ' . date('e'), $name));
+						DI::config()->set('system', 'maintenance_reason', DI::l10n()->t('%s: updating %s table.', DateTimeFormat::utcNow() . ' ' . date('e'), $name));
 					}
 
 					// Ensure index conversion to unique removes duplicates
@@ -576,13 +589,13 @@ class DBStructure
 		}
 
 		if ($action && !$install) {
-			Config::set('system', 'maintenance', 0);
-			Config::set('system', 'maintenance_reason', '');
+			DI::config()->set('system', 'maintenance', 0);
+			DI::config()->set('system', 'maintenance_reason', '');
 
 			if ($errors) {
-				Config::set('system', 'dbupdate', self::UPDATE_FAILED);
+				DI::config()->set('system', 'dbupdate', self::UPDATE_FAILED);
 			} else {
-				Config::set('system', 'dbupdate', self::UPDATE_SUCCESSFUL);
+				DI::config()->set('system', 'dbupdate', self::UPDATE_SUCCESSFUL);
 			}
 		}
 

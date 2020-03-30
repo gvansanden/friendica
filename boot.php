@@ -1,11 +1,21 @@
 <?php
 /**
- * @file boot.php
- * This file defines some global constants and includes the central App class.
- */
-
-/**
- * Friendica
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  * Friendica is a communications platform for integrated social communications
  * utilising decentralised communications and linkage to several indie social
@@ -17,27 +27,24 @@
  * easily as email does today.
  */
 
-use Friendica\App;
-use Friendica\BaseObject;
-use Friendica\Core\Config;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
-use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
+use Friendica\Model\Notify;
 use Friendica\Model\Term;
 use Friendica\Util\BasePath;
 use Friendica\Util\DateTimeFormat;
 
 define('FRIENDICA_PLATFORM',     'Friendica');
-define('FRIENDICA_CODENAME',     'Dalmatian Bellflower');
-define('FRIENDICA_VERSION',      '2019.12');
+define('FRIENDICA_CODENAME',     'Red Hot Poker');
+define('FRIENDICA_VERSION',      '2020.03');
 define('DFRN_PROTOCOL_VERSION',  '2.23');
 define('NEW_UPDATE_ROUTINE_VERSION', 1170);
 
 /**
- * @brief Constant with a HTML line break.
+ * Constant with a HTML line break.
  *
  * Contains a HTML line break (br) element and a real carriage return with line
  * feed for the source.
@@ -46,7 +53,7 @@ define('NEW_UPDATE_ROUTINE_VERSION', 1170);
 define('EOL',                    "<br />\r\n");
 
 /**
- * @brief Image storage quality.
+ * Image storage quality.
  *
  * Lower numbers save space at cost of image detail.
  * For ease of upgrade, please do not change here. Set system.jpegquality = n in config/local.config.php,
@@ -144,21 +151,31 @@ define('MAX_LIKERS',    75);
  * Email notification options
  * @{
  */
-define('NOTIFY_INTRO',        1);
-define('NOTIFY_CONFIRM',      2);
-define('NOTIFY_WALL',         4);
-define('NOTIFY_COMMENT',      8);
-define('NOTIFY_MAIL',        16);
-define('NOTIFY_SUGGEST',     32);
-define('NOTIFY_PROFILE',     64);
-define('NOTIFY_TAGSELF',    128);
-define('NOTIFY_TAGSHARE',   256);
-define('NOTIFY_POKE',       512);
-define('NOTIFY_SHARE',     1024);
+/** @deprecated since 2020.03, use Notify\Type::INTRO instead */
+define('NOTIFY_INTRO',        Notify\Type::INTRO);
+/** @deprecated since 2020.03, use Notify\Type::CONFIRM instead */
+define('NOTIFY_CONFIRM',      Notify\Type::CONFIRM);
+/** @deprecated since 2020.03, use Notify\Type::WALL instead */
+define('NOTIFY_WALL',         Notify\Type::WALL);
+/** @deprecated since 2020.03, use Notify\Type::COMMENT instead */
+define('NOTIFY_COMMENT',      Notify\Type::COMMENT);
+/** @deprecated since 2020.03, use Notify\Type::MAIL instead */
+define('NOTIFY_MAIL',        Notify\Type::MAIL);
+/** @deprecated since 2020.03, use Notify\Type::SUGGEST instead */
+define('NOTIFY_SUGGEST',     Notify\Type::SUGGEST);
+/** @deprecated since 2020.03, use Notify\Type::PROFILE instead */
+define('NOTIFY_PROFILE',     Notify\Type::PROFILE);
+/** @deprecated since 2020.03, use Notify\Type::TAG_SELF instead */
+define('NOTIFY_TAGSELF',     Notify\Type::TAG_SELF);
+/** @deprecated since 2020.03, use Notify\Type::TAG_SHARE instead */
+define('NOTIFY_TAGSHARE',    Notify\Type::TAG_SHARE);
+/** @deprecated since 2020.03, use Notify\Type::POKE instead */
+define('NOTIFY_POKE',        Notify\Type::POKE);
+/** @deprecated since 2020.03, use Notify\Type::SHARE instead */
+define('NOTIFY_SHARE',       Notify\Type::SHARE);
 
-define('SYSTEM_EMAIL',    16384);
-
-define('NOTIFY_SYSTEM',   32768);
+/** @deprecated since 2020.12, use Notify\Type::SYSTEM instead */
+define('NOTIFY_SYSTEM',      Notify\Type::SYSTEM);
 /* @}*/
 
 
@@ -236,30 +253,7 @@ if (!defined('CURLE_OPERATION_TIMEDOUT')) {
 }
 
 /**
- * @brief Retrieve the App structure
- *
- * Useful in functions which require it but don't get it passed to them
- *
- * @deprecated since version 2018.09
- * @see BaseObject::getApp()
- * @return App
- */
-function get_app()
-{
-	return BaseObject::getApp();
-}
-
-/**
- * @brief Used to end the current process, after saving session state.
- * @deprecated
- */
-function killme()
-{
-	exit();
-}
-
-/**
- * @brief Returns the user id of locally logged in user or false.
+ * Returns the user id of locally logged in user or false.
  *
  * @return int|bool user id or false
  */
@@ -272,7 +266,7 @@ function local_user()
 }
 
 /**
- * @brief Returns the public contact id of logged in user or false.
+ * Returns the public contact id of logged in user or false.
  *
  * @return int|bool public contact id or false
  */
@@ -296,7 +290,7 @@ function public_contact()
 }
 
 /**
- * @brief Returns contact id of authenticated site visitor or false
+ * Returns contact id of authenticated site visitor or false
  *
  * @return int|bool visitor_id or false
  */
@@ -314,7 +308,7 @@ function remote_user()
 }
 
 /**
- * @brief Show an error message to user.
+ * Show an error message to user.
  *
  * This function save text in session, to be shown to the user at next page load
  *
@@ -326,7 +320,7 @@ function notice($s)
 		return;
 	}
 
-	$a = \get_app();
+	$a = DI::app();
 	if (empty($_SESSION['sysmsg'])) {
 		$_SESSION['sysmsg'] = [];
 	}
@@ -336,7 +330,7 @@ function notice($s)
 }
 
 /**
- * @brief Show an info message to user.
+ * Show an info message to user.
  *
  * This function save text in session, to be shown to the user at next page load
  *
@@ -344,11 +338,7 @@ function notice($s)
  */
 function info($s)
 {
-	$a = \get_app();
-
-	if (local_user() && PConfig::get(local_user(), 'system', 'ignore_info')) {
-		return;
-	}
+	$a = DI::app();
 
 	if (empty($_SESSION['sysmsg_info'])) {
 		$_SESSION['sysmsg_info'] = [];
@@ -382,7 +372,7 @@ function feed_birthday($uid, $tz)
 		$tz = 'UTC';
 	}
 
-	$profile = DBA::selectFirst('profile', ['dob'], ['is-default' => true, 'uid' => $uid]);
+	$profile = DBA::selectFirst('profile', ['dob'], ['uid' => $uid]);
 	if (DBA::isResult($profile)) {
 		$tmp_dob = substr($profile['dob'], 5);
 		if (intval($tmp_dob)) {
@@ -401,15 +391,15 @@ function feed_birthday($uid, $tz)
 }
 
 /**
- * @brief Check if current user has admin role.
+ * Check if current user has admin role.
  *
  * @return bool true if user is an admin
  */
 function is_site_admin()
 {
-	$a = \get_app();
+	$a = DI::app();
 
-	$admin_email = Config::get('config', 'admin_email');
+	$admin_email = DI::config()->get('config', 'admin_email');
 
 	$adminlist = explode(',', str_replace(' ', '', $admin_email));
 
@@ -470,22 +460,9 @@ function curPageURL()
 	return $pageURL;
 }
 
-function get_server()
-{
-	$server = Config::get("system", "directory");
-
-	if ($server == "") {
-		$server = "https://dir.friendica.social";
-	}
-
-	return $server;
-}
-
 function get_temppath()
 {
-	$a = \get_app();
-
-	$temppath = Config::get("system", "temppath");
+	$temppath = DI::config()->get("system", "temppath");
 
 	if (($temppath != "") && System::isDirectoryUsable($temppath)) {
 		// We have a temp path and it is usable
@@ -501,7 +478,7 @@ function get_temppath()
 		$temppath = BasePath::getRealPath($temppath);
 
 		// To avoid any interferences with other systems we create our own directory
-		$new_temppath = $temppath . "/" . $a->getHostName();
+		$new_temppath = $temppath . "/" . DI::baseUrl()->getHostname();
 		if (!is_dir($new_temppath)) {
 			/// @TODO There is a mkdir()+chmod() upwards, maybe generalize this (+ configurable) into a function/method?
 			mkdir($new_temppath);
@@ -509,7 +486,7 @@ function get_temppath()
 
 		if (System::isDirectoryUsable($new_temppath)) {
 			// The new path is usable, we are happy
-			Config::set("system", "temppath", $new_temppath);
+			DI::config()->set("system", "temppath", $new_temppath);
 			return $new_temppath;
 		} else {
 			// We can't create a subdirectory, strange.
@@ -559,7 +536,7 @@ function clear_cache($basepath = "", $path = "")
 		return;
 	}
 
-	$cachetime = (int) Config::get('system', 'itemcache_duration');
+	$cachetime = (int) DI::config()->get('system', 'itemcache_duration');
 	if ($cachetime == 0) {
 		$cachetime = 86400;
 	}
@@ -583,12 +560,12 @@ function clear_cache($basepath = "", $path = "")
 function get_itemcachepath()
 {
 	// Checking, if the cache is deactivated
-	$cachetime = (int) Config::get('system', 'itemcache_duration');
+	$cachetime = (int) DI::config()->get('system', 'itemcache_duration');
 	if ($cachetime < 0) {
 		return "";
 	}
 
-	$itemcache = Config::get('system', 'itemcache');
+	$itemcache = DI::config()->get('system', 'itemcache');
 	if (($itemcache != "") && System::isDirectoryUsable($itemcache)) {
 		return BasePath::getRealPath($itemcache);
 	}
@@ -602,7 +579,7 @@ function get_itemcachepath()
 		}
 
 		if (System::isDirectoryUsable($itemcache)) {
-			Config::set("system", "itemcache", $itemcache);
+			DI::config()->set("system", "itemcache", $itemcache);
 			return $itemcache;
 		}
 	}
@@ -610,13 +587,13 @@ function get_itemcachepath()
 }
 
 /**
- * @brief Returns the path where spool files are stored
+ * Returns the path where spool files are stored
  *
  * @return string Spool path
  */
 function get_spoolpath()
 {
-	$spoolpath = Config::get('system', 'spoolpath');
+	$spoolpath = DI::config()->get('system', 'spoolpath');
 	if (($spoolpath != "") && System::isDirectoryUsable($spoolpath)) {
 		// We have a spool path and it is usable
 		return $spoolpath;
@@ -634,7 +611,7 @@ function get_spoolpath()
 
 		if (System::isDirectoryUsable($spoolpath)) {
 			// The new path is usable, we are happy
-			Config::set("system", "spoolpath", $spoolpath);
+			DI::config()->set("system", "spoolpath", $spoolpath);
 			return $spoolpath;
 		} else {
 			// We can't create a subdirectory, strange.
@@ -685,23 +662,4 @@ function validate_include(&$file)
 
 	// Simply return flag
 	return $valid;
-}
-
-/**
- * PHP 5 compatible dirname() with count parameter
- *
- * @see http://php.net/manual/en/function.dirname.php#113193
- *
- * @deprecated with PHP 7
- * @param string $path
- * @param int    $levels
- * @return string
- */
-function rdirname($path, $levels = 1)
-{
-	if ($levels > 1) {
-		return dirname(rdirname($path, --$levels));
-	} else {
-		return dirname($path);
-	}
 }

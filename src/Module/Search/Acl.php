@@ -1,15 +1,34 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Search;
 
 use Friendica\BaseModule;
 use Friendica\Content\Widget;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\Search;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Network\HTTPException;
@@ -34,7 +53,7 @@ class Acl extends BaseModule
 	public static function rawContent(array $parameters = [])
 	{
 		if (!local_user()) {
-			throw new HTTPException\UnauthorizedException(L10n::t('You must be logged in to use this module.'));
+			throw new HTTPException\UnauthorizedException(DI::l10n()->t('You must be logged in to use this module.'));
 		}
 
 		$type = $_REQUEST['type'] ?? self::TYPE_MENTION_CONTACT_GROUP;

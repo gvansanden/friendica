@@ -1,11 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\Util;
 
 use Dice\Dice;
 use Friendica\App;
-use Friendica\BaseObject;
 use Friendica\Core\Config;
+use Friendica\DI;
 use Friendica\Render\FriendicaSmartyEngine;
 use Friendica\Util\Profiler;
 use Mockery\MockInterface;
@@ -22,7 +41,7 @@ trait AppMockTrait
 	protected $app;
 
 	/**
-	 * @var MockInterface|Config\Configuration The mocked Config Cache
+	 * @var MockInterface|Config\IConfig The mocked Config Cache
 	 */
 	protected $configMock;
 
@@ -52,9 +71,9 @@ trait AppMockTrait
 		$this->dice = \Mockery::mock(Dice::class)->makePartial();
 		$this->dice = $this->dice->addRules(include __DIR__ . '/../../static/dependencies.config.php');
 
-		$this->configMock = \Mockery::mock(Config\Cache\ConfigCache::class);
+		$this->configMock = \Mockery::mock(Config\Cache::class);
 		$this->dice->shouldReceive('create')
-		           ->with(Config\Cache\ConfigCache::class)
+		           ->with(Config\Cache::class)
 		           ->andReturn($this->configMock);
 		$this->mode = \Mockery::mock(App\Mode::class);
 		$this->dice->shouldReceive('create')
@@ -64,9 +83,9 @@ trait AppMockTrait
 		// Disable the adapter
 		$configModel->shouldReceive('isConnected')->andReturn(false);
 
-		$config = new Config\JitConfiguration($this->configMock, $configModel);
+		$config = new Config\JitConfig($this->configMock, $configModel);
 		$this->dice->shouldReceive('create')
-		           ->with(Config\Configuration::class)
+		           ->with(Config\IConfig::class)
 		           ->andReturn($config);
 
 		// Mocking App and most used functions
@@ -78,10 +97,6 @@ trait AppMockTrait
 			->shouldReceive('getBasePath')
 			->andReturn($root->url());
 
-		$this->app
-			->shouldReceive('getMode')
-			->andReturn($this->mode);
-
 		$this->profilerMock = \Mockery::mock(Profiler::class);
 		$this->profilerMock->shouldReceive('saveTimestamp');
 		$this->dice->shouldReceive('create')
@@ -92,24 +107,13 @@ trait AppMockTrait
 			->shouldReceive('getConfigCache')
 			->andReturn($this->configMock);
 		$this->app
-			->shouldReceive('getConfig')
-			->andReturn($config);
-		$this->app
 			->shouldReceive('getTemplateEngine')
 			->andReturn(new FriendicaSmartyEngine());
 		$this->app
 			->shouldReceive('getCurrentTheme')
 			->andReturn('Smarty3');
-		$this->app
-			->shouldReceive('getProfiler')
-			->andReturn($this->profilerMock);
-		$this->app
-			->shouldReceive('getBaseUrl')
-			->andReturnUsing(function () {
-				return $this->configMock->get('system', 'url');
-			});
 
-		BaseObject::setDependencyInjection($this->dice);
+		DI::init($this->dice);
 
 		if ($raw) {
 			return;

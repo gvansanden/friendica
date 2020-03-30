@@ -1,16 +1,31 @@
 <?php
 /**
- * @file src/Model/FileTag.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Model;
 
-use Friendica\Core\L10n;
-use Friendica\Core\PConfig;
 use Friendica\Database\DBA;
+use Friendica\DI;
 
 /**
- * @brief This class handles FileTag related functions
+ * This class handles FileTag related functions
  *
  * post categories and "save to file" use the same item.file table for storage.
  * We will differentiate the different uses by wrapping categories in angle brackets
@@ -20,7 +35,7 @@ use Friendica\Database\DBA;
 class FileTag
 {
 	/**
-	 * @brief URL encode <, >, left and right brackets
+	 * URL encode <, >, left and right brackets
 	 *
 	 * @param string $s String to be URL encoded.
 	 *
@@ -32,7 +47,7 @@ class FileTag
 	}
 
 	/**
-	 * @brief URL decode <, >, left and right brackets
+	 * URL decode <, >, left and right brackets
 	 *
 	 * @param string $s The URL encoded string to be decoded
 	 *
@@ -44,7 +59,7 @@ class FileTag
 	}
 
 	/**
-	 * @brief Query files for tag
+	 * Query files for tag
 	 *
 	 * @param string $table The table to be queired.
 	 * @param string $s     The search term
@@ -124,7 +139,7 @@ class FileTag
 	}
 
 	/**
-	 * @brief      Get file tags from list
+	 * Get file tags from list
 	 *
 	 * ex. given music,video return <music><video> or [music][video]
 	 * @param string $list A comma delimited list of tags.
@@ -141,7 +156,7 @@ class FileTag
 	}
 
 	/**
-	 * @brief      Get list from file tags
+	 * Get list from file tags
 	 *
 	 * ex. given <music><video>[friends], return music,video or friends
 	 * @param string $file File tags
@@ -156,7 +171,7 @@ class FileTag
 	}
 
 	/**
-	 * @brief Update file tags in PConfig
+	 * Update file tags in PConfig
 	 *
 	 * @param int    $uid      Unique Identity.
 	 * @param string $file_old Categories previously associated with an item
@@ -174,7 +189,7 @@ class FileTag
 			return true;
 		}
 
-		$saved = PConfig::get($uid, 'system', 'filetags');
+		$saved = DI::pConfig()->get($uid, 'system', 'filetags');
 
 		if (strlen($saved)) {
 			if ($type == 'file') {
@@ -222,19 +237,19 @@ class FileTag
 			}
 
 			if ($saved != $filetags_updated) {
-				PConfig::set($uid, 'system', 'filetags', $filetags_updated);
+				DI::pConfig()->set($uid, 'system', 'filetags', $filetags_updated);
 			}
 
 			return true;
 		} elseif (strlen($file_new)) {
-			PConfig::set($uid, 'system', 'filetags', $file_new);
+			DI::pConfig()->set($uid, 'system', 'filetags', $file_new);
 		}
 
 		return true;
 	}
 
 	/**
-	 * @brief Add tag to file
+	 * Add tag to file
 	 *
 	 * @param int    $uid     Unique identity.
 	 * @param int    $item_id Item identity.
@@ -256,20 +271,20 @@ class FileTag
 				Item::update($fields, ['id' => $item_id]);
 			}
 
-			$saved = PConfig::get($uid, 'system', 'filetags');
+			$saved = DI::pConfig()->get($uid, 'system', 'filetags');
 
 			if (!strlen($saved) || !stristr($saved, '[' . self::encode($file) . ']')) {
-				PConfig::set($uid, 'system', 'filetags', $saved . '[' . self::encode($file) . ']');
+				DI::pConfig()->set($uid, 'system', 'filetags', $saved . '[' . self::encode($file) . ']');
 			}
 
-			info(L10n::t('Item filed'));
+			info(DI::l10n()->t('Item filed'));
 		}
 
 		return true;
 	}
 
 	/**
-	 * @brief Remove tag from file
+	 * Remove tag from file
 	 *
 	 * @param int     $uid     Unique identity.
 	 * @param int     $item_id Item identity.
@@ -311,8 +326,8 @@ class FileTag
 		);
 
 		if (!DBA::isResult($r)) {
-			$saved = PConfig::get($uid, 'system', 'filetags');
-			PConfig::set($uid, 'system', 'filetags', str_replace($pattern, '', $saved));
+			$saved = DI::pConfig()->get($uid, 'system', 'filetags');
+			DI::pConfig()->set($uid, 'system', 'filetags', str_replace($pattern, '', $saved));
 		}
 
 		return true;

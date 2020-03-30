@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
@@ -7,9 +26,9 @@ use Friendica\Content\Nav;
 use Friendica\Content\Pager;
 use Friendica\Content\Widget;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Session;
 use Friendica\Core\Renderer;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Network\HTTPException;
@@ -23,17 +42,17 @@ class Directory extends BaseModule
 {
 	public static function content(array $parameters = [])
 	{
-		$app = self::getApp();
-		$config = $app->getConfig();
+		$app = DI::app();
+		$config = DI::config();
 
 		if (($config->get('system', 'block_public') && !Session::isAuthenticated()) ||
 			($config->get('system', 'block_local_dir') && !Session::isAuthenticated())) {
-			throw new HTTPException\ForbiddenException(L10n::t('Public access denied.'));
+			throw new HTTPException\ForbiddenException(DI::l10n()->t('Public access denied.'));
 		}
 
 		if (local_user()) {
-			$app->page['aside'] .= Widget::findPeople();
-			$app->page['aside'] .= Widget::follow();
+			DI::page()['aside'] .= Widget::findPeople();
+			DI::page()['aside'] .= Widget::follow();
 		}
 
 		$output = '';
@@ -51,12 +70,12 @@ class Directory extends BaseModule
 			$gDirPath = Profile::zrl($dirURL, true);
 		}
 
-		$pager = new Pager($app->query_string, 60);
+		$pager = new Pager(DI::l10n(), DI::args()->getQueryString(), 60);
 
 		$profiles = Profile::searchProfiles($pager->getStart(), $pager->getItemsPerPage(), $search);
 
 		if ($profiles['total'] === 0) {
-			info(L10n::t('No entries (some entries may be hidden).') . EOL);
+			info(DI::l10n()->t('No entries (some entries may be hidden).') . EOL);
 		} else {
 			if (in_array('small', $app->argv)) {
 				$photo = 'thumb';
@@ -73,15 +92,15 @@ class Directory extends BaseModule
 
 		$output .= Renderer::replaceMacros($tpl, [
 			'$search'     => $search,
-			'$globaldir'  => L10n::t('Global Directory'),
+			'$globaldir'  => DI::l10n()->t('Global Directory'),
 			'$gDirPath'   => $gDirPath,
-			'$desc'       => L10n::t('Find on this site'),
+			'$desc'       => DI::l10n()->t('Find on this site'),
 			'$contacts'   => $entries,
-			'$finding'    => L10n::t('Results for:'),
+			'$finding'    => DI::l10n()->t('Results for:'),
 			'$findterm'   => (strlen($search) ? $search : ""),
-			'$title'      => L10n::t('Site Directory'),
+			'$title'      => DI::l10n()->t('Site Directory'),
 			'$search_mod' => 'directory',
-			'$submit'     => L10n::t('Find'),
+			'$submit'     => DI::l10n()->t('Find'),
 			'$paginate'   => $pager->renderFull($profiles['total']),
 		]);
 
@@ -105,7 +124,7 @@ class Directory extends BaseModule
 
 		$profile_link = $contact['profile_url'];
 
-		$pdesc = (($contact['pdesc']) ? $contact['pdesc'] . '<br />' : '');
+		$about = (($contact['about']) ? $contact['about'] . '<br />' : '');
 
 		$details = '';
 		if (strlen($contact['locality'])) {
@@ -132,20 +151,17 @@ class Directory extends BaseModule
 			|| !empty($profile['postal-code'])
 			|| !empty($profile['country-name'])
 		) {
-			$location = L10n::t('Location:');
+			$location = DI::l10n()->t('Location:');
 		} else {
 			$location = '';
 		}
 
-		$gender =   (!empty($profile['gender'])   ? L10n::t('Gender:')   : false);
-		$marital =  (!empty($profile['marital'])  ? L10n::t('Status:')   : false);
-		$homepage = (!empty($profile['homepage']) ? L10n::t('Homepage:') : false);
-		$about =    (!empty($profile['about'])    ? L10n::t('About:')    : false);
+		$homepage = (!empty($profile['homepage']) ? DI::l10n()->t('Homepage:') : false);
 
 		$location_e = $location;
 
 		$photo_menu = [
-			'profile' => [L10n::t("View Profile"), Contact::magicLink($profile_link)]
+			'profile' => [DI::l10n()->t("View Profile"), Contact::magicLink($profile_link)]
 		];
 
 		$entry = [
@@ -160,11 +176,8 @@ class Directory extends BaseModule
 			'profile'      => $profile,
 			'location'     => $location_e,
 			'tags'         => $contact['pub_keywords'],
-			'gender'       => $gender,
-			'pdesc'        => $pdesc,
-			'marital'      => $marital,
-			'homepage'     => $homepage,
 			'about'        => $about,
+			'homepage'     => $homepage,
 			'photo_menu'   => $photo_menu,
 
 		];

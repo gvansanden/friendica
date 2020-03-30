@@ -1,8 +1,27 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Database;
 
-use Friendica\Core\Config\Cache\ConfigCache;
+use Friendica\Core\Config\Cache;
 use Friendica\Core\System;
 use Friendica\Network\HTTPException\InternalServerErrorException;
 use Friendica\Util\DateTimeFormat;
@@ -16,8 +35,6 @@ use PDOStatement;
 use Psr\Log\LoggerInterface;
 
 /**
- * @class MySQL database class
- *
  * This class is for the low level database stuff that does driver specific things.
  */
 class Database
@@ -25,7 +42,7 @@ class Database
 	protected $connected = false;
 
 	/**
-	 * @var ConfigCache
+	 * @var Cache
 	 */
 	protected $configCache;
 	/**
@@ -47,7 +64,7 @@ class Database
 	protected $in_retrial     = false;
 	private $relation       = [];
 
-	public function __construct(ConfigCache $configCache, Profiler $profiler, LoggerInterface $logger, array $server = [])
+	public function __construct(Cache $configCache, Profiler $profiler, LoggerInterface $logger, array $server = [])
 	{
 		// We are storing these values for being able to perform a reconnect
 		$this->configCache   = $configCache;
@@ -226,7 +243,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the MySQL server version string
+	 * Returns the MySQL server version string
 	 *
 	 * This function discriminate between the deprecated mysql API and the current
 	 * object-oriented mysqli API. Example of returned string: 5.5.46-0+deb8u1
@@ -249,7 +266,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the selected database name
+	 * Returns the selected database name
 	 *
 	 * @return string
 	 * @throws \Exception
@@ -262,7 +279,7 @@ class Database
 	}
 
 	/**
-	 * @brief Analyze a database query and log this if some conditions are met.
+	 * Analyze a database query and log this if some conditions are met.
 	 *
 	 * @param string $query The database query that will be analyzed
 	 *
@@ -378,8 +395,8 @@ class Database
 	}
 
 	/**
-	 * @brief Replaces ANY_VALUE() function by MIN() function,
-	 *  if the database server does not support ANY_VALUE().
+	 * Replaces ANY_VALUE() function by MIN() function,
+	 * if the database server does not support ANY_VALUE().
 	 *
 	 * Considerations for Standard SQL, or MySQL with ONLY_FULL_GROUP_BY (default since 5.7.5).
 	 * ANY_VALUE() is available from MySQL 5.7.5 https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html
@@ -400,7 +417,7 @@ class Database
 	}
 
 	/**
-	 * @brief Replaces the ? placeholders with the parameters in the $args array
+	 * Replaces the ? placeholders with the parameters in the $args array
 	 *
 	 * @param string $sql  SQL query
 	 * @param array  $args The parameters that are to replace the ? placeholders
@@ -427,7 +444,8 @@ class Database
 	}
 
 	/**
-	 * @brief Executes a prepared statement that returns data
+	 * Executes a prepared statement that returns data
+	 *
 	 * @usage Example: $r = p("SELECT * FROM `item` WHERE `guid` = ?", $guid);
 	 *
 	 * Please only use it with complicated queries.
@@ -667,7 +685,7 @@ class Database
 	}
 
 	/**
-	 * @brief Executes a prepared statement like UPDATE or INSERT that doesn't return data
+	 * Executes a prepared statement like UPDATE or INSERT that doesn't return data
 	 *
 	 * Please use DBA::delete, DBA::insert, DBA::update, ... instead
 	 *
@@ -733,7 +751,7 @@ class Database
 	}
 
 	/**
-	 * @brief Check if data exists
+	 * Check if data exists
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $condition array of fields for condition
@@ -777,7 +795,7 @@ class Database
 	 *
 	 * Please use DBA::selectFirst or DBA::exists whenever this is possible.
 	 *
-	 * @brief Fetches the first row
+	 * Fetches the first row
 	 *
 	 * @param string $sql SQL statement
 	 *
@@ -802,7 +820,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the number of affected rows of the last statement
+	 * Returns the number of affected rows of the last statement
 	 *
 	 * @return int Number of rows
 	 */
@@ -812,7 +830,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the number of columns of a statement
+	 * Returns the number of columns of a statement
 	 *
 	 * @param object Statement object
 	 *
@@ -833,7 +851,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the number of rows of a statement
+	 * Returns the number of rows of a statement
 	 *
 	 * @param PDOStatement|mysqli_result|mysqli_stmt Statement object
 	 *
@@ -854,7 +872,7 @@ class Database
 	}
 
 	/**
-	 * @brief Fetch a single row
+	 * Fetch a single row
 	 *
 	 * @param mixed $stmt statement object
 	 *
@@ -914,7 +932,7 @@ class Database
 	}
 
 	/**
-	 * @brief Insert a row into a table
+	 * Insert a row into a table
 	 *
 	 * @param string|array $table               Table name or array [schema => table]
 	 * @param array        $param               parameter array
@@ -951,7 +969,7 @@ class Database
 	}
 
 	/**
-	 * @brief Fetch the id of the last insert command
+	 * Fetch the id of the last insert command
 	 *
 	 * @return integer Last inserted id
 	 */
@@ -969,7 +987,7 @@ class Database
 	}
 
 	/**
-	 * @brief Locks a table for exclusive write access
+	 * Locks a table for exclusive write access
 	 *
 	 * This function can be extended in the future to accept a table array as well.
 	 *
@@ -1007,7 +1025,7 @@ class Database
 	}
 
 	/**
-	 * @brief Unlocks all locked tables
+	 * Unlocks all locked tables
 	 *
 	 * @return boolean was the unlock successful?
 	 * @throws \Exception
@@ -1035,7 +1053,7 @@ class Database
 	}
 
 	/**
-	 * @brief Starts a transaction
+	 * Starts a transaction
 	 *
 	 * @return boolean Was the command executed successfully?
 	 */
@@ -1081,7 +1099,7 @@ class Database
 	}
 
 	/**
-	 * @brief Does a commit
+	 * Does a commit
 	 *
 	 * @return boolean Was the command executed successfully?
 	 */
@@ -1095,7 +1113,7 @@ class Database
 	}
 
 	/**
-	 * @brief Does a rollback
+	 * Does a rollback
 	 *
 	 * @return boolean Was the command executed successfully?
 	 */
@@ -1121,7 +1139,7 @@ class Database
 	}
 
 	/**
-	 * @brief Build the array with the table relations
+	 * Build the array with the table relations
 	 *
 	 * The array is build from the database definitions in DBStructure.php
 	 *
@@ -1143,7 +1161,7 @@ class Database
 	}
 
 	/**
-	 * @brief Delete a row from a table
+	 * Delete a row from a table
 	 *
 	 * Note: this methods does NOT accept schema => table arrays because of the complex relation stuff.
 	 *
@@ -1244,7 +1262,7 @@ class Database
 
 			if ((count($command['conditions']) > 1) || is_int($first_key)) {
 				$sql = "DELETE FROM " . DBA::quoteIdentifier($command['table']) . " " . $condition_string;
-				$this->logger->debug($this->replaceParameters($sql, $conditions));
+				$this->logger->info($this->replaceParameters($sql, $conditions), ['callstack' => System::callstack(6), 'internal_callstack' => $callstack]);
 
 				if (!$this->e($sql, $conditions)) {
 					if ($do_transaction) {
@@ -1274,7 +1292,7 @@ class Database
 					$sql = "DELETE FROM " . DBA::quoteIdentifier($table) . " WHERE " . DBA::quoteIdentifier($field) . " IN (" .
 					       substr(str_repeat("?, ", count($field_values)), 0, -2) . ");";
 
-					$this->logger->debug($this->replaceParameters($sql, $field_values));
+					$this->logger->info($this->replaceParameters($sql, $field_values), ['callstack' => System::callstack(6), 'internal_callstack' => $callstack]);
 
 					if (!$this->e($sql, $field_values)) {
 						if ($do_transaction) {
@@ -1292,7 +1310,7 @@ class Database
 	}
 
 	/**
-	 * @brief Updates rows
+	 * Updates rows
 	 *
 	 * Updates rows in the database. When $old_fields is set to an array,
 	 * the system will only do an update if the fields in that array changed.
@@ -1327,10 +1345,6 @@ class Database
 			return false;
 		}
 
-		$table_string = DBA::buildTableString($table);
-
-		$condition_string = DBA::buildCondition($condition);
-
 		if (is_bool($old_fields)) {
 			$do_insert = $old_fields;
 
@@ -1345,37 +1359,32 @@ class Database
 			}
 		}
 
-		$do_update = (count($old_fields) == 0);
-
 		foreach ($old_fields AS $fieldname => $content) {
-			if (isset($fields[$fieldname])) {
-				if (($fields[$fieldname] == $content) && !is_null($content)) {
-					unset($fields[$fieldname]);
-				} else {
-					$do_update = true;
-				}
+			if (isset($fields[$fieldname]) && !is_null($content) && ($fields[$fieldname] == $content)) {
+				unset($fields[$fieldname]);
 			}
 		}
 
-		if (!$do_update || (count($fields) == 0)) {
+		if (count($fields) == 0) {
 			return true;
 		}
+
+		$table_string = DBA::buildTableString($table);
+
+		$condition_string = DBA::buildCondition($condition);
 
 		$sql = "UPDATE " . $table_string . " SET "
 			. implode(" = ?, ", array_map([DBA::class, 'quoteIdentifier'], array_keys($fields))) . " = ?"
 			. $condition_string;
 
-		$params1 = array_values($fields);
-		$params2 = array_values($condition);
-		$params  = array_merge_recursive($params1, $params2);
+		// Combines the updated fields parameter values with the condition parameter values
+		$params  = array_merge(array_values($fields), $condition);
 
 		return $this->e($sql, $params);
 	}
 
 	/**
 	 * Retrieve a single record from a table and returns it in an associative array
-	 *
-	 * @brief Retrieve a single record from a table
 	 *
 	 * @param string|array $table
 	 * @param array        $fields
@@ -1401,7 +1410,7 @@ class Database
 	}
 
 	/**
-	 * @brief Select rows from a table and fills an array with the data
+	 * Select rows from a table and fills an array with the data
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $fields    Array of selected fields, empty for all
@@ -1418,7 +1427,7 @@ class Database
 	}
 
 	/**
-	 * @brief Select rows from a table
+	 * Select rows from a table
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $fields    Array of selected fields, empty for all
@@ -1466,7 +1475,7 @@ class Database
 	}
 
 	/**
-	 * @brief Counts the rows from a table satisfying the provided condition
+	 * Counts the rows from a table satisfying the provided condition
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $condition Array of fields for condition
@@ -1510,7 +1519,7 @@ class Database
 	}
 
 	/**
-	 * @brief Fills an array with data from a query
+	 * Fills an array with data from a query
 	 *
 	 * @param object $stmt statement object
 	 * @param bool   $do_close
@@ -1536,7 +1545,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the error number of the last query
+	 * Returns the error number of the last query
 	 *
 	 * @return string Error number (0 if no error)
 	 */
@@ -1546,7 +1555,7 @@ class Database
 	}
 
 	/**
-	 * @brief Returns the error message of the last query
+	 * Returns the error message of the last query
 	 *
 	 * @return string Error message ('' if no error)
 	 */
@@ -1556,7 +1565,7 @@ class Database
 	}
 
 	/**
-	 * @brief Closes the current statement
+	 * Closes the current statement
 	 *
 	 * @param object $stmt statement object
 	 *
@@ -1597,7 +1606,7 @@ class Database
 	}
 
 	/**
-	 * @brief Return a list of database processes
+	 * Return a list of database processes
 	 *
 	 * @return array
 	 *      'list' => List of processes, separated in their different states
@@ -1653,7 +1662,7 @@ class Database
 	}
 
 	/**
-	 * @brief Callback function for "esc_array"
+	 * Callback function for "esc_array"
 	 *
 	 * @param mixed   $value         Array value
 	 * @param string  $key           Array key
@@ -1682,7 +1691,7 @@ class Database
 	}
 
 	/**
-	 * @brief Escapes a whole array
+	 * Escapes a whole array
 	 *
 	 * @param mixed   $arr           Array with values to be escaped
 	 * @param boolean $add_quotation add quotation marks for string values

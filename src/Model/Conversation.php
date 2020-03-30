@@ -1,6 +1,22 @@
 <?php
 /**
- * @file src/Model/Conversation
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Model;
@@ -25,13 +41,26 @@ class Conversation
 	const PARCEL_TWITTER            = 67;
 	const PARCEL_UNKNOWN            = 255;
 
+	/**
+	 * Unknown message direction
+	 */
+	const UNKNOWN = 0;
+	/**
+	 * The message had been pushed to this sytem
+	 */
+	const PUSH    = 1;
+	/**
+	 * The message had been fetched by our system
+	 */
+	const PULL    = 2;
+
 	public static function getByItemUri($item_uri)
 	{
 		return DBA::selectFirst('conversation', [], ['item-uri' => $item_uri]);
 	}
 
 	/**
-	 * @brief Store the conversation data
+	 * Store the conversation data
 	 *
 	 * @param array $arr Item array with conversation data
 	 * @return array Item array with removed conversation data
@@ -61,6 +90,10 @@ class Conversation
 
 			if (isset($arr['protocol'])) {
 				$conversation['protocol'] = $arr['protocol'];
+			}
+
+			if (isset($arr['direction'])) {
+				$conversation['direction'] = $arr['direction'];
 			}
 
 			if (isset($arr['source'])) {
@@ -102,6 +135,7 @@ class Conversation
 		unset($arr['conversation-href']);
 		unset($arr['protocol']);
 		unset($arr['source']);
+		unset($arr['direction']);
 
 		return $arr;
 	}

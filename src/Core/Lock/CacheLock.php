@@ -1,11 +1,31 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core\Lock;
 
-use Friendica\Core\Cache;
+use Friendica\Core\BaseLock;
+use Friendica\Core\Cache\Duration;
 use Friendica\Core\Cache\IMemoryCache;
 
-class CacheLock extends Lock
+class CacheLock extends BaseLock
 {
 	/**
 	 * @var string The static prefix of all locks inside the cache
@@ -30,7 +50,7 @@ class CacheLock extends Lock
 	/**
 	 * (@inheritdoc)
 	 */
-	public function acquireLock($key, $timeout = 120, $ttl = Cache\Cache::FIVE_MINUTES)
+	public function acquire($key, $timeout = 120, $ttl = Duration::FIVE_MINUTES)
 	{
 		$got_lock = false;
 		$start    = time();
@@ -66,7 +86,7 @@ class CacheLock extends Lock
 	/**
 	 * (@inheritdoc)
 	 */
-	public function releaseLock($key, $override = false)
+	public function release($key, $override = false)
 	{
 		$cachekey = self::getLockKey($key);
 
@@ -122,7 +142,7 @@ class CacheLock extends Lock
 		$locks = $this->getLocks();
 
 		foreach ($locks as $lock) {
-			if (!$this->releaseLock($lock, $override)) {
+			if (!$this->release($lock, $override)) {
 				$success = false;
 			}
 		}

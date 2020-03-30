@@ -1,52 +1,42 @@
 <?php
 /**
- * @file src/Content/ContactSelector.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Content;
 
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
 
 /**
- * @brief ContactSelector class
+ * ContactSelector class
  */
 class ContactSelector
 {
 	/**
-	 * @param string $current     current
-	 * @param string $foreign_net network
-	 * @return string
-	 * @throws \Exception
-	 */
-	public static function profileAssign($current, $foreign_net)
-	{
-		$o = '';
-
-		$disabled = (($foreign_net) ? ' disabled="true" ' : '');
-
-		$o .= "<select id=\"contact-profile-selector\" class=\"form-control\" $disabled name=\"profile-assign\" >\r\n";
-
-		$s = DBA::select('profile', ['id', 'profile-name', 'is-default'], ['uid' => $_SESSION['uid']]);
-		$r = DBA::toArray($s);
-
-		if (DBA::isResult($r)) {
-			foreach ($r as $rr) {
-				$selected = (($rr['id'] == $current || ($current == 0 && $rr['is-default'] == 1)) ? " selected=\"selected\" " : "");
-				$o .= "<option value=\"{$rr['id']}\" $selected >{$rr['profile-name']}</option>\r\n";
-			}
-		}
-		$o .= "</select>\r\n";
-		return $o;
-	}
-
-	/**
 	 * @param string  $current  current
 	 * @param boolean $disabled optional, default false
-	 * @return object
+	 * @return string
 	 */
 	public static function pollInterval($current, $disabled = false)
 	{
@@ -55,12 +45,12 @@ class ContactSelector
 		$o .= "<select id=\"contact-poll-interval\" name=\"poll\" $dis />" . "\r\n";
 
 		$rep = [
-			0 => L10n::t('Frequently'),
-			1 => L10n::t('Hourly'),
-			2 => L10n::t('Twice daily'),
-			3 => L10n::t('Daily'),
-			4 => L10n::t('Weekly'),
-			5 => L10n::t('Monthly')
+			0 => DI::l10n()->t('Frequently'),
+			1 => DI::l10n()->t('Hourly'),
+			2 => DI::l10n()->t('Twice daily'),
+			3 => DI::l10n()->t('Daily'),
+			4 => DI::l10n()->t('Weekly'),
+			5 => DI::l10n()->t('Monthly')
 		];
 
 		foreach ($rep as $k => $v) {
@@ -74,7 +64,7 @@ class ContactSelector
 	/**
 	 * @param string $profile Profile URL
 	 * @return string Server URL
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \Exception
 	 */
 	private static function getServerURLForProfile($profile)
 	{
@@ -105,31 +95,32 @@ class ContactSelector
 	}
 
 	/**
-	 * @param string $network network
-	 * @param string $profile optional, default empty
+	 * @param string $network  network of the contact
+	 * @param string $profile  optional, default empty
+	 * @param string $protocol (Optional) Protocol that is used for the transmission
 	 * @return string
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
-	public static function networkToName($network, $profile = "")
+	public static function networkToName($network, $profile = '', $protocol = '')
 	{
 		$nets = [
-			Protocol::DFRN      =>   L10n::t('DFRN'),
-			Protocol::OSTATUS   =>   L10n::t('OStatus'),
-			Protocol::FEED      =>   L10n::t('RSS/Atom'),
-			Protocol::MAIL      =>   L10n::t('Email'),
-			Protocol::DIASPORA  =>   L10n::t('Diaspora'),
-			Protocol::ZOT       =>   L10n::t('Zot!'),
-			Protocol::LINKEDIN  =>   L10n::t('LinkedIn'),
-			Protocol::XMPP      =>   L10n::t('XMPP/IM'),
-			Protocol::MYSPACE   =>   L10n::t('MySpace'),
-			Protocol::GPLUS     =>   L10n::t('Google+'),
-			Protocol::PUMPIO    =>   L10n::t('pump.io'),
-			Protocol::TWITTER   =>   L10n::t('Twitter'),
-			Protocol::DISCOURSE =>   L10n::t('Discourse'),
-			Protocol::DIASPORA2 =>   L10n::t('Diaspora Connector'),
-			Protocol::STATUSNET =>   L10n::t('GNU Social Connector'),
-			Protocol::ACTIVITYPUB => L10n::t('ActivityPub'),
-			Protocol::PNUT      =>   L10n::t('pnut'),
+			Protocol::DFRN      =>   DI::l10n()->t('DFRN'),
+			Protocol::OSTATUS   =>   DI::l10n()->t('OStatus'),
+			Protocol::FEED      =>   DI::l10n()->t('RSS/Atom'),
+			Protocol::MAIL      =>   DI::l10n()->t('Email'),
+			Protocol::DIASPORA  =>   DI::l10n()->t('Diaspora'),
+			Protocol::ZOT       =>   DI::l10n()->t('Zot!'),
+			Protocol::LINKEDIN  =>   DI::l10n()->t('LinkedIn'),
+			Protocol::XMPP      =>   DI::l10n()->t('XMPP/IM'),
+			Protocol::MYSPACE   =>   DI::l10n()->t('MySpace'),
+			Protocol::GPLUS     =>   DI::l10n()->t('Google+'),
+			Protocol::PUMPIO    =>   DI::l10n()->t('pump.io'),
+			Protocol::TWITTER   =>   DI::l10n()->t('Twitter'),
+			Protocol::DISCOURSE =>   DI::l10n()->t('Discourse'),
+			Protocol::DIASPORA2 =>   DI::l10n()->t('Diaspora Connector'),
+			Protocol::STATUSNET =>   DI::l10n()->t('GNU Social Connector'),
+			Protocol::ACTIVITYPUB => DI::l10n()->t('ActivityPub'),
+			Protocol::PNUT      =>   DI::l10n()->t('pnut'),
 		];
 
 		Hook::callAll('network_to_name', $nets);
@@ -162,6 +153,10 @@ class ContactSelector
 			}
 		}
 
+		if (!empty($protocol) && ($protocol != $network)) {
+			$networkname = DI::l10n()->t('%s (via %s)', $networkname, self::networkToName($protocol));
+		}
+
 		return $networkname;
 	}
 
@@ -169,7 +164,7 @@ class ContactSelector
 	 * @param string $network network
 	 * @param string $profile optional, default empty
 	 * @return string
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 * @throws \Exception
 	 */
 	public static function networkToIcon($network, $profile = "")
 	{
@@ -177,7 +172,7 @@ class ContactSelector
 			Protocol::DFRN      =>   'friendica',
 			Protocol::OSTATUS   =>   'gnu-social', // There is no generic OStatus icon
 			Protocol::FEED      =>   'rss',
-			Protocol::MAIL      =>   'file-text-o', /// @todo
+			Protocol::MAIL      =>   'inbox',
 			Protocol::DIASPORA  =>   'diaspora',
 			Protocol::ZOT       =>   'hubzilla',
 			Protocol::LINKEDIN  =>   'linkedin',
@@ -216,75 +211,5 @@ class ContactSelector
 		}
 
 		return $network_icon;
-	}
-
-	/**
-	 * @param string $current optional, default empty
-	 * @param string $suffix  optionsl, default empty
-	 * @return string
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
-	 */
-	public static function gender($current = "", $suffix = "")
-	{
-		$o = '';
-		$select = ['', L10n::t('Male'), L10n::t('Female')];
-		Hook::callAll('gender_selector', $select);
-
-		$o .= "<select name=\"gender$suffix\" id=\"gender-select$suffix\" size=\"1\" >";
-		foreach ($select as $neutral => $selection) {
-			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
-			}
-		}
-		$o .= '</select>';
-		return $o;
-	}
-
-	/**
-	 * @param string $current optional, default empty
-	 * @param string $suffix  optionsl, default empty
-	 * @return string
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
-	 */
-	public static function sexualPreference($current = "", $suffix = "")
-	{
-		$o = '';
-		$select = ['', L10n::t('Males'), L10n::t('Females')];
-
-		Hook::callAll('sexpref_selector', $select);
-
-		$o .= "<select name=\"sexual$suffix\" id=\"sexual-select$suffix\" size=\"1\" >";
-		foreach ($select as $neutral => $selection) {
-			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
-			}
-		}
-		$o .= '</select>';
-		return $o;
-	}
-
-	/**
-	 * @param string $current optional, default empty
-	 * @return string
-	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
-	 */
-	public static function maritalStatus($current = "")
-	{
-		$o = '';
-		$select = ['', L10n::t('Single'), L10n::t('Unavailable'), L10n::t('Engaged'), L10n::t('Married'), L10n::t('Don\'t care'), L10n::t('Ask me')];
-
-		Hook::callAll('marital_selector', $select);
-
-		$o .= '<select name="marital" id="marital-select" size="1" >';
-		foreach ($select as $neutral => $selection) {
-			if ($selection !== 'NOTRANSLATION') {
-				$selected = (($neutral == $current) ? ' selected="selected" ' : '');
-				$o .= "<option value=\"$neutral\" $selected >$selection</option>";
-			}
-		}
-		$o .= '</select>';
-		return $o;
 	}
 }

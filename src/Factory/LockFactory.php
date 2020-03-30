@@ -1,10 +1,29 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Factory;
 
-use Friendica\Core\Cache\Cache;
 use Friendica\Core\Cache\IMemoryCache;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Cache\Type;
+use Friendica\Core\Config\IConfig;
 use Friendica\Core\Lock;
 use Friendica\Database\Database;
 use Psr\Log\LoggerInterface;
@@ -24,7 +43,7 @@ class LockFactory
 	const DEFAULT_DRIVER = 'default';
 
 	/**
-	 * @var Configuration The configuration to read parameters out of the config
+	 * @var IConfig The configuration to read parameters out of the config
 	 */
 	private $config;
 
@@ -43,7 +62,7 @@ class LockFactory
 	 */
 	private $logger;
 
-	public function __construct(CacheFactory $cacheFactory, Configuration $config, Database $dba, LoggerInterface $logger)
+	public function __construct(CacheFactory $cacheFactory, IConfig $config, Database $dba, LoggerInterface $logger)
 	{
 		$this->cacheFactory = $cacheFactory;
 		$this->config       = $config;
@@ -57,10 +76,10 @@ class LockFactory
 
 		try {
 			switch ($lock_type) {
-				case Cache::TYPE_MEMCACHE:
-				case Cache::TYPE_MEMCACHED:
-				case Cache::TYPE_REDIS:
-				case Cache::TYPE_APCU:
+				case Type::MEMCACHE:
+				case Type::MEMCACHED:
+				case Type::REDIS:
+				case Type::APCU:
 					$cache = $this->cacheFactory->create($lock_type);
 					if ($cache instanceof IMemoryCache) {
 						return new Lock\CacheLock($cache);
@@ -87,7 +106,7 @@ class LockFactory
 	}
 
 	/**
-	 * @brief This method tries to find the best - local - locking method for Friendica
+	 * This method tries to find the best - local - locking method for Friendica
 	 *
 	 * The following sequence will be tried:
 	 * 1. Semaphore Locking
@@ -109,7 +128,7 @@ class LockFactory
 
 		// 2. Try to use Cache Locking (don't use the DB-Cache Locking because it works different!)
 		$cache_type = $this->config->get('system', 'cache_driver', 'database');
-		if ($cache_type != Cache::TYPE_DATABASE) {
+		if ($cache_type != Type::DATABASE) {
 			try {
 				$cache = $this->cacheFactory->create($cache_type);
 				if ($cache instanceof IMemoryCache) {

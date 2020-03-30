@@ -7,15 +7,19 @@ namespace Friendica\Test;
 
 use Dice\Dice;
 use Friendica\App;
-use Friendica\BaseObject;
-use Friendica\Core\Config\Configuration;
-use Friendica\Core\Config\PConfiguration;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\PConfig\IPConfig;
 use Friendica\Core\Protocol;
+use Friendica\Core\Session;
+use Friendica\Core\Session\ISession;
 use Friendica\Core\System;
 use Friendica\Database\Database;
+use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Network\HTTPException;
 use Friendica\Test\Util\Database\StaticDatabase;
+use Friendica\Util\Temporal;
 use Monolog\Handler\TestHandler;
 
 require_once __DIR__ . '/../../include/api.php';
@@ -45,7 +49,7 @@ class ApiTest extends DatabaseTest
 	/** @var App */
 	protected $app;
 
-	/** @var Configuration */
+	/** @var IConfig */
 	protected $config;
 
 	/** @var Dice */
@@ -60,14 +64,15 @@ class ApiTest extends DatabaseTest
 
 		$this->dice = (new Dice())
 			->addRules(include __DIR__ . '/../../static/dependencies.config.php')
-			->addRule(Database::class, ['instanceOf' => StaticDatabase::class, 'shared' => true]);
-		BaseObject::setDependencyInjection($this->dice);
+			->addRule(Database::class, ['instanceOf' => StaticDatabase::class, 'shared' => true])
+			->addRule(ISession::class, ['instanceOf' => Session\Memory::class, 'shared' => true, 'call' => null]);
+		DI::init($this->dice);
 
 		/** @var Database $dba */
 		$dba = $this->dice->create(Database::class);
 
-		/** @var Configuration $config */
-		$this->config = $this->dice->create(Configuration::class);
+		/** @var IConfig $config */
+		$this->config = $this->dice->create(IConfig::class);
 
 		$this->config->set('system', 'url', 'http://localhost');
 		$this->config->set('system', 'hostname', 'localhost');
@@ -84,7 +89,7 @@ class ApiTest extends DatabaseTest
 		$this->loadFixture(__DIR__ . '/../datasets/api.fixture.php', $dba);
 
 		/** @var App app */
-		$this->app = BaseObject::getApp();
+		$this->app = DI::app();
 
 		$this->app->argc = 1;
 		$this->app->argv = ['home'];
@@ -111,6 +116,8 @@ class ApiTest extends DatabaseTest
 
 		// User ID that we know is not in the database
 		$this->wrongUserId = 666;
+
+		DI::session()->start();
 
 		// Most API require login so we force the session
 		$_SESSION = [
@@ -427,12 +434,14 @@ class ApiTest extends DatabaseTest
 			}
 		];
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path';
 		$_GET['callback']          = 'callback_name';
 
-		$this->app->query_string = 'api_path';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'callback_name(["some_data"])',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -451,7 +460,12 @@ class ApiTest extends DatabaseTest
 				return ['data' => ['some_data']];
 			}
 		];
+
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path';
+
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->config->set('system', 'profiler', true);
 		$this->config->set('rendertime', 'callstack', true);
 		$this->app->callstack = [
@@ -462,10 +476,9 @@ class ApiTest extends DatabaseTest
 			'network'        => ['some_function' => 200]
 		];
 
-		$this->app->query_string = 'api_path';
 		$this->assertEquals(
 			'["some_data"]',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -485,11 +498,13 @@ class ApiTest extends DatabaseTest
 			}
 		];
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path';
 
-		$this->app->query_string = 'api_path';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'{"status":{"error":"Internal Server Error","code":"500 Internal Server Error","request":"api_path"}}',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -523,11 +538,13 @@ class ApiTest extends DatabaseTest
 			}
 		];
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path.json';
 
-		$this->app->query_string = 'api_path.json';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'["some_data"]',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -547,11 +564,13 @@ class ApiTest extends DatabaseTest
 			}
 		];
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path.xml';
 
-		$this->app->query_string = 'api_path.xml';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'some_data',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -571,12 +590,14 @@ class ApiTest extends DatabaseTest
 			}
 		];
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path.rss';
 
-		$this->app->query_string = 'api_path.rss';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'<?xml version="1.0" encoding="UTF-8"?>' . "\n" .
 			'some_data',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -596,12 +617,14 @@ class ApiTest extends DatabaseTest
 			}
 		];
 		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path.atom';
 
-		$this->app->query_string = 'api_path.atom';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'<?xml version="1.0" encoding="UTF-8"?>' . "\n" .
 			'some_data',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -616,10 +639,13 @@ class ApiTest extends DatabaseTest
 		global $API;
 		$API['api_path'] = ['method' => 'method'];
 
-		$this->app->query_string = 'api_path';
+		$_SERVER['QUERY_STRING'] = 'q=api_path';
+
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'{"status":{"error":"Method Not Allowed","code":"405 Method Not Allowed","request":"api_path"}}',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -636,13 +662,15 @@ class ApiTest extends DatabaseTest
 			'method' => 'method',
 			'auth'   => true
 		];
-		$_SERVER['REQUEST_METHOD'] = 'method';
 		$_SESSION['authenticated'] = false;
+		$_SERVER['REQUEST_METHOD'] = 'method';
+		$_SERVER['QUERY_STRING'] = 'q=api_path';
 
-		$this->app->query_string = 'api_path';
+		$args = DI::args()->determine($_SERVER, $_GET);
+
 		$this->assertEquals(
 			'{"status":{"error":"This API requires login","code":"401 Unauthorized","request":"api_path"}}',
-			api_call($this->app)
+			api_call($this->app, $args)
 		);
 	}
 
@@ -656,7 +684,7 @@ class ApiTest extends DatabaseTest
 	{
 		$this->assertEquals(
 			'{"status":{"error":"error_message","code":"200 OK","request":""}}',
-			api_error('json', new HTTPException\OKException('error_message'))
+			api_error('json', new HTTPException\OKException('error_message'), DI::args())
 		);
 	}
 
@@ -677,7 +705,7 @@ class ApiTest extends DatabaseTest
 			'  <code>200 OK</code>' . "\n" .
 			'  <request/>' . "\n" .
 			'</status>' . "\n",
-			api_error('xml', new HTTPException\OKException('error_message'))
+			api_error('xml', new HTTPException\OKException('error_message'), DI::args())
 		);
 	}
 
@@ -698,7 +726,7 @@ class ApiTest extends DatabaseTest
 			'  <code>200 OK</code>' . "\n" .
 			'  <request/>' . "\n" .
 			'</status>' . "\n",
-			api_error('rss', new HTTPException\OKException('error_message'))
+			api_error('rss', new HTTPException\OKException('error_message'), DI::args())
 		);
 	}
 
@@ -719,7 +747,7 @@ class ApiTest extends DatabaseTest
 			'  <code>200 OK</code>' . "\n" .
 			'  <request/>' . "\n" .
 			'</status>' . "\n",
-			api_error('atom', new HTTPException\OKException('error_message'))
+			api_error('atom', new HTTPException\OKException('error_message'), DI::args())
 		);
 	}
 
@@ -801,7 +829,7 @@ class ApiTest extends DatabaseTest
 	 */
 	public function testApiGetUserWithFrioSchema()
 	{
-		$pConfig = $this->dice->create(PConfiguration::class);
+		$pConfig = $this->dice->create(IPConfig::class);
 		$pConfig->set($this->selfUser['id'], 'frio', 'schema', 'red');
 		$user = api_get_user($this->app);
 		$this->assertSelfUser($user);
@@ -817,7 +845,7 @@ class ApiTest extends DatabaseTest
 	 */
 	public function testApiGetUserWithCustomFrioSchema()
 	{
-		$pConfig = $this->dice->create(PConfiguration::class);
+		$pConfig = $this->dice->create(IPConfig::class);
 		$pConfig->set($this->selfUser['id'], 'frio', 'schema', '---');
 		$pConfig->set($this->selfUser['id'], 'frio', 'nav_bg', '#123456');
 		$pConfig->set($this->selfUser['id'], 'frio', 'link_color', '#123456');
@@ -836,7 +864,7 @@ class ApiTest extends DatabaseTest
 	 */
 	public function testApiGetUserWithEmptyFrioSchema()
 	{
-		$pConfig = $this->dice->create(PConfiguration::class);
+		$pConfig = $this->dice->create(IPConfig::class);
 		$pConfig->set($this->selfUser['id'], 'frio', 'schema', '---');
 		$user = api_get_user($this->app);
 		$this->assertSelfUser($user);
@@ -1357,7 +1385,7 @@ class ApiTest extends DatabaseTest
 				'type'     => 'image/png'
 			]
 		];
-		$app       = \get_app();
+		$app       = DI::app();
 		$app->argc = 2;
 
 		$result = api_media_upload();
@@ -2392,7 +2420,7 @@ class ApiTest extends DatabaseTest
 	public function testApiFormatItemsEmbededImages()
 	{
 		$this->assertEquals(
-			'text ' . System::baseUrl() . '/display/item_guid',
+			'text ' . DI::baseUrl() . '/display/item_guid',
 			api_format_items_embeded_images(['guid' => 'item_guid'], 'text data:image/foo')
 		);
 	}
@@ -2459,102 +2487,6 @@ class ApiTest extends DatabaseTest
 		$this->assertArrayHasKey('friendica:attendyes', $result);
 		$this->assertArrayHasKey('friendica:attendno', $result);
 		$this->assertArrayHasKey('friendica:attendmaybe', $result);
-	}
-
-	/**
-	 * Test the api_format_items_profiles() function.
-	 *
-	 * @return void
-	 */
-	public function testApiFormatItemsProfiles()
-	{
-		$profile_row = [
-			'id'           => 'profile_id',
-			'profile-name' => 'profile_name',
-			'is-default'   => true,
-			'hide-friends' => true,
-			'photo'        => 'profile_photo',
-			'thumb'        => 'profile_thumb',
-			'publish'      => true,
-			'net-publish'  => true,
-			'pdesc'        => 'description',
-			'dob'          => 'date_of_birth',
-			'address'      => 'address',
-			'locality'     => 'city',
-			'region'       => 'region',
-			'postal-code'  => 'postal_code',
-			'country-name' => 'country',
-			'hometown'     => 'hometown',
-			'gender'       => 'gender',
-			'marital'      => 'marital',
-			'with'         => 'marital_with',
-			'howlong'      => 'marital_since',
-			'sexual'       => 'sexual',
-			'politic'      => 'politic',
-			'religion'     => 'religion',
-			'pub_keywords' => 'public_keywords',
-			'prv_keywords' => 'private_keywords',
-
-			'likes'     => 'likes',
-			'dislikes'  => 'dislikes',
-			'about'     => 'about',
-			'music'     => 'music',
-			'book'      => 'book',
-			'tv'        => 'tv',
-			'film'      => 'film',
-			'interest'  => 'interest',
-			'romance'   => 'romance',
-			'work'      => 'work',
-			'education' => 'education',
-			'contact'   => 'social_networks',
-			'homepage'  => 'homepage'
-		];
-		$result      = api_format_items_profiles($profile_row);
-		$this->assertEquals(
-			[
-				'profile_id'       => 'profile_id',
-				'profile_name'     => 'profile_name',
-				'is_default'       => true,
-				'hide_friends'     => true,
-				'profile_photo'    => 'profile_photo',
-				'profile_thumb'    => 'profile_thumb',
-				'publish'          => true,
-				'net_publish'      => true,
-				'description'      => 'description',
-				'date_of_birth'    => 'date_of_birth',
-				'address'          => 'address',
-				'city'             => 'city',
-				'region'           => 'region',
-				'postal_code'      => 'postal_code',
-				'country'          => 'country',
-				'hometown'         => 'hometown',
-				'gender'           => 'gender',
-				'marital'          => 'marital',
-				'marital_with'     => 'marital_with',
-				'marital_since'    => 'marital_since',
-				'sexual'           => 'sexual',
-				'politic'          => 'politic',
-				'religion'         => 'religion',
-				'public_keywords'  => 'public_keywords',
-				'private_keywords' => 'private_keywords',
-
-				'likes'           => 'likes',
-				'dislikes'        => 'dislikes',
-				'about'           => 'about',
-				'music'           => 'music',
-				'book'            => 'book',
-				'tv'              => 'tv',
-				'film'            => 'film',
-				'interest'        => 'interest',
-				'romance'         => 'romance',
-				'work'            => 'work',
-				'education'       => 'education',
-				'social_networks' => 'social_networks',
-				'homepage'        => 'homepage',
-				'users'           => null
-			],
-			$result
-		);
 	}
 
 	/**
@@ -2895,7 +2827,7 @@ class ApiTest extends DatabaseTest
 		$result = api_statusnet_config('json');
 		$this->assertEquals('localhost', $result['config']['site']['server']);
 		$this->assertEquals('default', $result['config']['site']['theme']);
-		$this->assertEquals(System::baseUrl() . '/images/friendica-64.png', $result['config']['site']['logo']);
+		$this->assertEquals(DI::baseUrl() . '/images/friendica-64.png', $result['config']['site']['logo']);
 		$this->assertTrue($result['config']['site']['fancy']);
 		$this->assertEquals('en', $result['config']['site']['language']);
 		$this->assertEquals('UTC', $result['config']['site']['timezone']);
@@ -3279,7 +3211,7 @@ class ApiTest extends DatabaseTest
 	 */
 	public function testApiOauthRequestToken()
 	{
-		$this->markTestIncomplete('killme() kills phpunit as well');
+		$this->markTestIncomplete('exit() kills phpunit as well');
 	}
 
 	/**
@@ -3289,7 +3221,7 @@ class ApiTest extends DatabaseTest
 	 */
 	public function testApiOauthAccessToken()
 	{
-		$this->markTestIncomplete('killme() kills phpunit as well');
+		$this->markTestIncomplete('exit() kills phpunit as well');
 	}
 
 	/**
@@ -3890,14 +3822,15 @@ class ApiTest extends DatabaseTest
 	}
 
 	/**
-	 * Test the api_friendica_notification() function with an argument count.
+	 * Test the api_friendica_notification() function with empty result
 	 *
 	 * @return void
 	 */
-	public function testApiFriendicaNotificationWithArgumentCount()
+	public function testApiFriendicaNotificationWithEmptyResult()
 	{
 		$this->app->argv = ['api', 'friendica', 'notification'];
 		$this->app->argc = count($this->app->argv);
+		$_SESSION['uid'] = 41;
 		$result          = api_friendica_notification('json');
 		$this->assertEquals(['note' => false], $result);
 	}
@@ -3912,7 +3845,27 @@ class ApiTest extends DatabaseTest
 		$this->app->argv = ['api', 'friendica', 'notification'];
 		$this->app->argc = count($this->app->argv);
 		$result          = api_friendica_notification('xml');
-		$this->assertXml($result, 'notes');
+		$dateRel = Temporal::getRelativeDate('2020-01-01 12:12:02');
+		$assertXml=<<<XML
+<?xml version="1.0"?>
+<notes>
+  <note id="1" hash="" type="8" name="Reply to" url="http://localhost/display/1" photo="http://localhost/" date="2020-01-01 12:12:02" msg="A test reply from an item" uid="42" link="http://localhost/notification/1" iid="4" parent="0" seen="0" verb="" otype="item" name_cache="" msg_cache="A test reply from an item" timestamp="1577880722" date_rel="{$dateRel}" msg_html="A test reply from an item" msg_plain="A test reply from an item"/>
+</notes>
+XML;
+		$this->assertXmlStringEqualsXmlString($assertXml, $result);
+	}
+
+	/**
+	 * Test the api_friendica_notification() function with an JSON result.
+	 *
+	 * @return void
+	 */
+	public function testApiFriendicaNotificationWithJsonResult()
+	{
+		$this->app->argv = ['api', 'friendica', 'notification'];
+		$this->app->argc = count($this->app->argv);
+		$result          = json_encode(api_friendica_notification('json'));
+		$this->assertJson($result);
 	}
 
 	/**
@@ -3943,58 +3896,6 @@ class ApiTest extends DatabaseTest
 	public function testApiFriendicaDirectMessagesSearch()
 	{
 		$this->markTestIncomplete();
-	}
-
-	/**
-	 * Test the api_friendica_profile_show() function.
-	 *
-	 * @return void
-	 */
-	public function testApiFriendicaProfileShow()
-	{
-		$result = api_friendica_profile_show('json');
-		// We can't use assertSelfUser() here because the user object is missing some properties.
-		$this->assertEquals($this->selfUser['id'], $result['$result']['friendica_owner']['cid']);
-		$this->assertEquals('DFRN', $result['$result']['friendica_owner']['location']);
-		$this->assertEquals($this->selfUser['name'], $result['$result']['friendica_owner']['name']);
-		$this->assertEquals($this->selfUser['nick'], $result['$result']['friendica_owner']['screen_name']);
-		$this->assertEquals('dfrn', $result['$result']['friendica_owner']['network']);
-		$this->assertTrue($result['$result']['friendica_owner']['verified']);
-		$this->assertFalse($result['$result']['multi_profiles']);
-	}
-
-	/**
-	 * Test the api_friendica_profile_show() function with a profile ID.
-	 *
-	 * @return void
-	 */
-	public function testApiFriendicaProfileShowWithProfileId()
-	{
-		$this->markTestIncomplete('We need to add a dataset for this.');
-	}
-
-	/**
-	 * Test the api_friendica_profile_show() function with a wrong profile ID.
-	 *
-	 * @return void
-	 * @expectedException Friendica\Network\HTTPException\BadRequestException
-	 */
-	public function testApiFriendicaProfileShowWithWrongProfileId()
-	{
-		$_REQUEST['profile_id'] = 666;
-		api_friendica_profile_show('json');
-	}
-
-	/**
-	 * Test the api_friendica_profile_show() function without an authenticated user.
-	 *
-	 * @return void
-	 * @expectedException Friendica\Network\HTTPException\ForbiddenException
-	 */
-	public function testApiFriendicaProfileShowWithoutAuthenticatedUser()
-	{
-		$_SESSION['authenticated'] = false;
-		api_friendica_profile_show('json');
 	}
 
 	/**

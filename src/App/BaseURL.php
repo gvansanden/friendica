@@ -1,10 +1,31 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\App;
 
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\System;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
+use Friendica\Network\HTTPException;
 
 /**
  * A class which checks and contains the basic
@@ -35,7 +56,7 @@ class BaseURL
 	/**
 	 * The Friendica Config
 	 *
-	 * @var Configuration
+	 * @var IConfig
 	 */
 	private $config;
 
@@ -251,10 +272,10 @@ class BaseURL
 	}
 
 	/**
-	 * @param Configuration $config The Friendica configuration
-	 * @param array         $server The $_SERVER array
+	 * @param IConfig $config The Friendica IConfiguration
+	 * @param array   $server The $_SERVER array
 	 */
-	public function __construct(Configuration $config, array $server)
+	public function __construct(IConfig $config, array $server)
 	{
 		$this->config = $config;
 		$this->server = $server;
@@ -353,7 +374,7 @@ class BaseURL
 		if (!empty($relative_script_path)) {
 			// Module
 			if (!empty($this->server['QUERY_STRING'])) {
-				$this->urlPath = trim(rdirname($relative_script_path, substr_count(trim($this->server['QUERY_STRING'], '/'), '/') + 1), '/');
+				$this->urlPath = trim(dirname($relative_script_path, substr_count(trim($this->server['QUERY_STRING'], '/'), '/') + 1), '/');
 			} else {
 				// Root page
 				$this->urlPath = trim($relative_script_path, '/');
@@ -413,5 +434,32 @@ class BaseURL
 		} else {
 			return $url;
 		}
+	}
+
+	/**
+	 * Redirects to another module relative to the current Friendica base URL.
+	 * If you want to redirect to a external URL, use System::externalRedirectTo()
+	 *
+	 * @param string $toUrl The destination URL (Default is empty, which is the default page of the Friendica node)
+	 * @param bool   $ssl   if true, base URL will try to get called with https:// (works just for relative paths)
+	 *
+	 * @throws HTTPException\InternalServerErrorException In Case the given URL is not relative to the Friendica node
+	 */
+	public function redirect($toUrl = '', $ssl = false)
+	{
+		if (!empty(parse_url($toUrl, PHP_URL_SCHEME))) {
+			throw new HTTPException\InternalServerErrorException("'$toUrl is not a relative path, please use System::externalRedirectTo");
+		}
+
+		$redirectTo = $this->get($ssl) . '/' . ltrim($toUrl, '/');
+		System::externalRedirect($redirectTo);
+	}
+
+	/**
+	 * Returns the base url as string
+	 */
+	public function __toString()
+	{
+		return $this->get();
 	}
 }

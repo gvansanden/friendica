@@ -1,23 +1,38 @@
 <?php
-
 /**
- * @file src/Model/APContact.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Model;
 
-use Friendica\BaseObject;
 use Friendica\Content\Text\HTML;
 use Friendica\Core\Logger;
-use Friendica\Core\Config;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Protocol\ActivityPub;
+use Friendica\Util\Crypto;
 use Friendica\Util\Network;
 use Friendica\Util\JsonLD;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Strings;
 
-class APContact extends BaseObject
+class APContact
 {
 	/**
 	 * Resolves the profile url from the address by using webfinger
@@ -34,7 +49,7 @@ class APContact extends BaseObject
 			return false;
 		}
 
-		$xrd_timeout = Config::get('system', 'xrd_timeout');
+		$xrd_timeout = DI::config()->get('system', 'xrd_timeout');
 
 		$webfinger = 'https://' . $addr_parts[1] . '/.well-known/webfinger?resource=acct:' . urlencode($addr);
 
@@ -192,8 +207,12 @@ class APContact extends BaseObject
 			$apcontact['addr'] = '';
 		}
 
+		$apcontact['pubkey'] = null;
 		if (!empty($compacted['w3id:publicKey'])) {
 			$apcontact['pubkey'] = trim(JsonLD::fetchElement($compacted['w3id:publicKey'], 'w3id:publicKeyPem', '@value'));
+			if (strstr($apcontact['pubkey'], 'RSA ')) {
+				$apcontact['pubkey'] = Crypto::rsaToPem($apcontact['pubkey']);
+			}
 		}
 
 		$apcontact['manually-approve'] = (int)JsonLD::fetchElement($compacted, 'as:manuallyApprovesFollowers');
@@ -240,6 +259,22 @@ class APContact extends BaseObject
 
 		// Unhandled from Kroeg
 		// kroeg:blocks, updated
+
+		// When the photo is too large, try to shorten it by removing parts
+		if (strlen($apcontact['photo']) > 255) {
+			$parts = parse_url($apcontact['photo']);
+			unset($parts['fragment']);
+			$apcontact['photo'] = Network::unparseURL($parts);
+
+			if (strlen($apcontact['photo']) > 255) {
+				unset($parts['query']);
+				$apcontact['photo'] = Network::unparseURL($parts);
+			}
+
+			if (strlen($apcontact['photo']) > 255) {
+				$apcontact['photo'] = substr($apcontact['photo'], 0, 255);
+			}
+		}
 
 		$parts = parse_url($apcontact['url']);
 		unset($parts['path']);

@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Util;
 
@@ -12,22 +31,49 @@ final class ACLFormatter
 	/**
 	 * Turn user/group ACLs stored as angle bracketed text into arrays
 	 *
-	 * @param string|null $ids A angle-bracketed list of IDs
+	 * @param string|null $acl_string A angle-bracketed list of IDs
 	 *
 	 * @return array The array based on the IDs (empty in case there is no list)
 	 */
-	public function expand(string $ids = null)
+	public function expand(string $acl_string = null)
 	{
 		// In case there is no ID list, return empty array (=> no ACL set)
-		if (!isset($ids)) {
+		if (!isset($acl_string)) {
 			return [];
 		}
 
 		// turn string array of angle-bracketed elements into numeric array
 		// e.g. "<1><2><3>" => array(1,2,3);
-		preg_match_all('/<(' . Group::FOLLOWERS . '|'. Group::MUTUALS . '|[0-9]+)>/', $ids, $matches, PREG_PATTERN_ORDER);
+		preg_match_all('/<(' . Group::FOLLOWERS . '|'. Group::MUTUALS . '|[0-9]+)>/', $acl_string, $matches, PREG_PATTERN_ORDER);
 
 		return $matches[1];
+	}
+
+	/**
+	 * Takes an arbitrary ACL string and sanitizes it for storage
+	 *
+	 * @param string|null $acl_string
+	 * @return string
+	 */
+	public function sanitize(string $acl_string = null)
+	{
+		if (empty($acl_string)) {
+			return '';
+		}
+
+		$cleaned_list = trim($acl_string, '<>');
+
+		if (empty($cleaned_list)) {
+			return '';
+		}
+
+		$elements = explode('><', $cleaned_list);
+
+		sort($elements);
+
+		array_walk($elements, [$this, 'sanitizeItem']);
+
+		return implode('', $elements);
 	}
 
 	/**
@@ -35,7 +81,7 @@ final class ACLFormatter
 	 *
 	 * @param string $item The item to sanitise
 	 */
-	private function sanitize(string &$item) {
+	private function sanitizeItem(string &$item) {
 		// The item is an ACL int value
 		if (intval($item)) {
 			$item = '<' . intval(Strings::escapeTags(trim($item))) . '>';
@@ -70,7 +116,7 @@ final class ACLFormatter
 		}
 
 		if (is_array($item)) {
-			array_walk($item, [$this, 'sanitize']);
+			array_walk($item, [$this, 'sanitizeItem']);
 			$return = implode('', $item);
 		}
 		return $return;

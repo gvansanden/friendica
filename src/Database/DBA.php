@@ -1,8 +1,27 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Database;
 
-use Friendica\BaseObject;
+use Friendica\DI;
 use mysqli;
 use mysqli_result;
 use mysqli_stmt;
@@ -10,11 +29,9 @@ use PDO;
 use PDOStatement;
 
 /**
- * @class MySQL database class
- *
  * This class is for the low level database stuff that does driver specific things.
  */
-class DBA extends BaseObject
+class DBA
 {
 	/**
 	 * Lowest possible date value
@@ -27,7 +44,7 @@ class DBA extends BaseObject
 
 	public static function connect()
 	{
-		return self::getClass(Database::class)->connect();
+		return DI::dba()->connect();
 	}
 
 	/**
@@ -35,7 +52,7 @@ class DBA extends BaseObject
 	 */
 	public static function disconnect()
 	{
-		self::getClass(Database::class)->disconnect();
+		DI::dba()->disconnect();
 	}
 
 	/**
@@ -43,7 +60,7 @@ class DBA extends BaseObject
 	 */
 	public static function reconnect()
 	{
-		return self::getClass(Database::class)->reconnect();
+		return DI::dba()->reconnect();
 	}
 
 	/**
@@ -52,11 +69,11 @@ class DBA extends BaseObject
 	 */
 	public static function getConnection()
 	{
-		return self::getClass(Database::class)->getConnection();
+		return DI::dba()->getConnection();
 	}
 
 	/**
-	 * @brief Returns the MySQL server version string
+	 * Returns the MySQL server version string
 	 *
 	 * This function discriminate between the deprecated mysql API and the current
 	 * object-oriented mysqli API. Example of returned string: 5.5.46-0+deb8u1
@@ -65,33 +82,44 @@ class DBA extends BaseObject
 	 */
 	public static function serverInfo()
 	{
-		return self::getClass(Database::class)->serverInfo();
+		return DI::dba()->serverInfo();
 	}
 
 	/**
-	 * @brief Returns the selected database name
+	 * Returns the selected database name
 	 *
 	 * @return string
 	 * @throws \Exception
 	 */
 	public static function databaseName()
 	{
-		return self::getClass(Database::class)->databaseName();
-	}
-
-	public static function escape($str)
-	{
-		return self::getClass(Database::class)->escape($str);
-	}
-
-	public static function connected()
-	{
-		return self::getClass(Database::class)->connected();
+		return DI::dba()->databaseName();
 	}
 
 	/**
-	 * @brief Replaces ANY_VALUE() function by MIN() function,
-	 *  if the database server does not support ANY_VALUE().
+	 * Escape all SQL unsafe data
+	 *
+	 * @param string $str
+	 * @return string escaped string
+	 */
+	public static function escape($str)
+	{
+		return DI::dba()->escape($str);
+	}
+
+	/**
+	 * Checks if the database is connected
+	 *
+	 * @return boolean is the database connected?
+	 */
+	public static function connected()
+	{
+		return DI::dba()->connected();
+	}
+
+	/**
+	 * Replaces ANY_VALUE() function by MIN() function,
+	 * if the database server does not support ANY_VALUE().
 	 *
 	 * Considerations for Standard SQL, or MySQL with ONLY_FULL_GROUP_BY (default since 5.7.5).
 	 * ANY_VALUE() is available from MySQL 5.7.5 https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html
@@ -102,11 +130,11 @@ class DBA extends BaseObject
 	 */
 	public static function anyValueFallback($sql)
 	{
-		return self::getClass(Database::class)->anyValueFallback($sql);
+		return DI::dba()->anyValueFallback($sql);
 	}
 
 	/**
-	 * @brief beautifies the query - useful for "SHOW PROCESSLIST"
+	 * beautifies the query - useful for "SHOW PROCESSLIST"
 	 *
 	 * This is safe when we bind the parameters later.
 	 * The parameter values aren't part of the SQL.
@@ -127,7 +155,7 @@ class DBA extends BaseObject
 	}
 
 	/**
-	 * @brief Convert parameter array to an universal form
+	 * Convert parameter array to an universal form
 	 * @param array $args Parameter array
 	 * @return array universalized parameter array
 	 */
@@ -144,8 +172,8 @@ class DBA extends BaseObject
 	}
 
 	/**
-	 * @brief Executes a prepared statement that returns data
-	 * @usage Example: $r = p("SELECT * FROM `item` WHERE `guid` = ?", $guid);
+	 * Executes a prepared statement that returns data
+	 * Example: $r = p("SELECT * FROM `item` WHERE `guid` = ?", $guid);
 	 *
 	 * Please only use it with complicated queries.
 	 * For all regular queries please use DBA::select or DBA::exists
@@ -158,11 +186,11 @@ class DBA extends BaseObject
 	{
 		$params = self::getParam(func_get_args());
 
-		return self::getClass(Database::class)->p($sql, $params);
+		return DI::dba()->p($sql, $params);
 	}
 
 	/**
-	 * @brief Executes a prepared statement like UPDATE or INSERT that doesn't return data
+	 * Executes a prepared statement like UPDATE or INSERT that doesn't return data
 	 *
 	 * Please use DBA::delete, DBA::insert, DBA::update, ... instead
 	 *
@@ -174,11 +202,11 @@ class DBA extends BaseObject
 
 		$params = self::getParam(func_get_args());
 
-		return self::getClass(Database::class)->e($sql, $params);
+		return DI::dba()->e($sql, $params);
 	}
 
 	/**
-	 * @brief Check if data exists
+	 * Check if data exists
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $condition array of fields for condition
@@ -188,7 +216,7 @@ class DBA extends BaseObject
 	 */
 	public static function exists($table, $condition)
 	{
-		return self::getClass(Database::class)->exists($table, $condition);
+		return DI::dba()->exists($table, $condition);
 	}
 
 	/**
@@ -196,7 +224,6 @@ class DBA extends BaseObject
 	 *
 	 * Please use DBA::selectFirst or DBA::exists whenever this is possible.
 	 *
-	 * @brief Fetches the first row
 	 * @param string $sql SQL statement
 	 * @return array first row of query
 	 * @throws \Exception
@@ -205,53 +232,53 @@ class DBA extends BaseObject
 	{
 		$params = self::getParam(func_get_args());
 
-		return self::getClass(Database::class)->fetchFirst($sql, $params);
+		return DI::dba()->fetchFirst($sql, $params);
 	}
 
 	/**
-	 * @brief Returns the number of affected rows of the last statement
+	 * Returns the number of affected rows of the last statement
 	 *
 	 * @return int Number of rows
 	 */
 	public static function affectedRows()
 	{
-		return self::getClass(Database::class)->affectedRows();
+		return DI::dba()->affectedRows();
 	}
 
 	/**
-	 * @brief Returns the number of columns of a statement
+	 * Returns the number of columns of a statement
 	 *
 	 * @param object Statement object
 	 * @return int Number of columns
 	 */
 	public static function columnCount($stmt)
 	{
-		return self::getClass(Database::class)->columnCount($stmt);
+		return DI::dba()->columnCount($stmt);
 	}
 	/**
-	 * @brief Returns the number of rows of a statement
+	 * Returns the number of rows of a statement
 	 *
 	 * @param PDOStatement|mysqli_result|mysqli_stmt Statement object
 	 * @return int Number of rows
 	 */
 	public static function numRows($stmt)
 	{
-		return self::getClass(Database::class)->numRows($stmt);
+		return DI::dba()->numRows($stmt);
 	}
 
 	/**
-	 * @brief Fetch a single row
+	 * Fetch a single row
 	 *
 	 * @param mixed $stmt statement object
 	 * @return array current row
 	 */
 	public static function fetch($stmt)
 	{
-		return self::getClass(Database::class)->fetch($stmt);
+		return DI::dba()->fetch($stmt);
 	}
 
 	/**
-	 * @brief Insert a row into a table
+	 * Insert a row into a table
 	 *
 	 * @param string|array $table               Table name or array [schema => table]
 	 * @param array        $param               parameter array
@@ -262,21 +289,21 @@ class DBA extends BaseObject
 	 */
 	public static function insert($table, $param, $on_duplicate_update = false)
 	{
-		return self::getClass(Database::class)->insert($table, $param, $on_duplicate_update);
+		return DI::dba()->insert($table, $param, $on_duplicate_update);
 	}
 
 	/**
-	 * @brief Fetch the id of the last insert command
+	 * Fetch the id of the last insert command
 	 *
 	 * @return integer Last inserted id
 	 */
 	public static function lastInsertId()
 	{
-		return self::getClass(Database::class)->lastInsertId();
+		return DI::dba()->lastInsertId();
 	}
 
 	/**
-	 * @brief Locks a table for exclusive write access
+	 * Locks a table for exclusive write access
 	 *
 	 * This function can be extended in the future to accept a table array as well.
 	 *
@@ -287,52 +314,52 @@ class DBA extends BaseObject
 	 */
 	public static function lock($table)
 	{
-		return self::getClass(Database::class)->lock($table);
+		return DI::dba()->lock($table);
 	}
 
 	/**
-	 * @brief Unlocks all locked tables
+	 * Unlocks all locked tables
 	 *
 	 * @return boolean was the unlock successful?
 	 * @throws \Exception
 	 */
 	public static function unlock()
 	{
-		return self::getClass(Database::class)->unlock();
+		return DI::dba()->unlock();
 	}
 
 	/**
-	 * @brief Starts a transaction
+	 * Starts a transaction
 	 *
 	 * @return boolean Was the command executed successfully?
 	 */
 	public static function transaction()
 	{
-		return self::getClass(Database::class)->transaction();
+		return DI::dba()->transaction();
 	}
 
 	/**
-	 * @brief Does a commit
+	 * Does a commit
 	 *
 	 * @return boolean Was the command executed successfully?
 	 */
 	public static function commit()
 	{
-		return self::getClass(Database::class)->commit();
+		return DI::dba()->commit();
 	}
 
 	/**
-	 * @brief Does a rollback
+	 * Does a rollback
 	 *
 	 * @return boolean Was the command executed successfully?
 	 */
 	public static function rollback()
 	{
-		return self::getClass(Database::class)->rollback();
+		return DI::dba()->rollback();
 	}
 
 	/**
-	 * @brief Delete a row from a table
+	 * Delete a row from a table
 	 *
 	 * @param string|array $table      Table name
 	 * @param array        $conditions Field condition(s)
@@ -345,13 +372,13 @@ class DBA extends BaseObject
 	 */
 	public static function delete($table, array $conditions, array $options = [])
 	{
-		return self::getClass(Database::class)->delete($table, $conditions, $options);
+		return DI::dba()->delete($table, $conditions, $options);
 	}
 
 	/**
-	 * @brief Updates rows
+	 * Updates rows in the database.
 	 *
-	 * Updates rows in the database. When $old_fields is set to an array,
+	 * When $old_fields is set to an array,
 	 * the system will only do an update if the fields in that array changed.
 	 *
 	 * Attention:
@@ -379,13 +406,12 @@ class DBA extends BaseObject
 	 */
 	public static function update($table, $fields, $condition, $old_fields = [])
 	{
-		return self::getClass(Database::class)->update($table, $fields, $condition, $old_fields);
+		return DI::dba()->update($table, $fields, $condition, $old_fields);
 	}
 
 	/**
 	 * Retrieve a single record from a table and returns it in an associative array
 	 *
-	 * @brief Retrieve a single record from a table
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $fields
 	 * @param array        $condition
@@ -396,11 +422,11 @@ class DBA extends BaseObject
 	 */
 	public static function selectFirst($table, array $fields = [], array $condition = [], $params = [])
 	{
-		return self::getClass(Database::class)->selectFirst($table, $fields, $condition, $params);
+		return DI::dba()->selectFirst($table, $fields, $condition, $params);
 	}
 
 	/**
-	 * @brief Select rows from a table and fills an array with the data
+	 * Select rows from a table and fills an array with the data
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $fields    Array of selected fields, empty for all
@@ -413,11 +439,11 @@ class DBA extends BaseObject
 	 */
 	public static function selectToArray($table, array $fields = [], array $condition = [], array $params = [])
 	{
-		return self::getClass(Database::class)->selectToArray($table, $fields, $condition, $params);
+		return DI::dba()->selectToArray($table, $fields, $condition, $params);
 	}
 
 	/**
-	 * @brief Select rows from a table
+	 * Select rows from a table
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $fields    Array of selected fields, empty for all
@@ -441,11 +467,11 @@ class DBA extends BaseObject
 	 */
 	public static function select($table, array $fields = [], array $condition = [], array $params = [])
 	{
-		return self::getClass(Database::class)->select($table, $fields, $condition, $params);
+		return DI::dba()->select($table, $fields, $condition, $params);
 	}
 
 	/**
-	 * @brief Counts the rows from a table satisfying the provided condition
+	 * Counts the rows from a table satisfying the provided condition
 	 *
 	 * @param string|array $table     Table name or array [schema => table]
 	 * @param array        $condition array of fields for condition
@@ -465,7 +491,7 @@ class DBA extends BaseObject
 	 */
 	public static function count($table, array $condition = [], array $params = [])
 	{
-		return self::getClass(Database::class)->count($table, $condition, $params);
+		return DI::dba()->count($table, $condition, $params);
 	}
 
 	/**
@@ -510,7 +536,7 @@ class DBA extends BaseObject
 	}
 
 	/**
-	 * @brief Returns the SQL condition string built from the provided condition array
+	 * Returns the SQL condition string built from the provided condition array
 	 *
 	 * This function operates with two modes.
 	 * - Supplied with a filed/value associative array, it builds simple strict
@@ -529,64 +555,98 @@ class DBA extends BaseObject
 	 */
 	public static function buildCondition(array &$condition = [])
 	{
+		$condition = self::collapseCondition($condition);
+		
 		$condition_string = '';
 		if (count($condition) > 0) {
-			reset($condition);
-			$first_key = key($condition);
-			if (is_int($first_key)) {
-				$condition_string = " WHERE (" . array_shift($condition) . ")";
-			} else {
-				$new_values = [];
-				$condition_string = "";
-				foreach ($condition as $field => $value) {
-					if ($condition_string != "") {
-						$condition_string .= " AND ";
-					}
-					if (is_array($value)) {
-						/* Workaround for MySQL Bug #64791.
-						 * Never mix data types inside any IN() condition.
-						 * In case of mixed types, cast all as string.
-						 * Logic needs to be consistent with DBA::p() data types.
-						 */
-						$is_int = false;
-						$is_alpha = false;
-						foreach ($value as $single_value) {
-							if (is_int($single_value)) {
-								$is_int = true;
-							} else {
-								$is_alpha = true;
-							}
-						}
-
-						if ($is_int && $is_alpha) {
-							foreach ($value as &$ref) {
-								if (is_int($ref)) {
-									$ref = (string)$ref;
-								}
-							}
-							unset($ref); //Prevent accidental re-use.
-						}
-
-						$new_values = array_merge($new_values, array_values($value));
-						$placeholders = substr(str_repeat("?, ", count($value)), 0, -2);
-						$condition_string .= self::quoteIdentifier($field) . " IN (" . $placeholders . ")";
-					} elseif (is_null($value)) {
-						$condition_string .= self::quoteIdentifier($field) . " IS NULL";
-					} else {
-						$new_values[$field] = $value;
-						$condition_string .= self::quoteIdentifier($field) . " = ?";
-					}
-				}
-				$condition_string = " WHERE (" . $condition_string . ")";
-				$condition = $new_values;
-			}
+			$condition_string = " WHERE (" . array_shift($condition) . ")";
 		}
 
 		return $condition_string;
 	}
 
 	/**
-	 * @brief Returns the SQL parameter string built from the provided parameter array
+	 * Collapse an associative array condition into a SQL string + parameters condition array.
+	 *
+	 * ['uid' => 1, 'network' => ['dspr', 'apub']]
+	 *
+	 * gets transformed into
+	 *
+	 * ["`uid` = ? AND `network` IN (?, ?)", 1, 'dspr', 'apub']
+	 *
+	 * @param array $condition
+	 * @return array
+	 */
+	public static function collapseCondition(array $condition)
+	{
+		// Ensures an always true condition is returned
+		if (count($condition) < 1) {
+			return ['1'];
+		}
+
+		reset($condition);
+		$first_key = key($condition);
+
+		if (is_int($first_key)) {
+			// Already collapsed
+			return $condition;
+		}
+
+		$values = [];
+		$condition_string = "";
+		foreach ($condition as $field => $value) {
+			if ($condition_string != "") {
+				$condition_string .= " AND ";
+			}
+
+			if (is_array($value)) {
+				if (count($value)) {
+					/* Workaround for MySQL Bug #64791.
+					 * Never mix data types inside any IN() condition.
+					 * In case of mixed types, cast all as string.
+					 * Logic needs to be consistent with DBA::p() data types.
+					 */
+					$is_int = false;
+					$is_alpha = false;
+					foreach ($value as $single_value) {
+						if (is_int($single_value)) {
+							$is_int = true;
+						} else {
+							$is_alpha = true;
+						}
+					}
+
+					if ($is_int && $is_alpha) {
+						foreach ($value as &$ref) {
+							if (is_int($ref)) {
+								$ref = (string)$ref;
+							}
+						}
+						unset($ref); //Prevent accidental re-use.
+					}
+
+					$values = array_merge($values, array_values($value));
+					$placeholders = substr(str_repeat("?, ", count($value)), 0, -2);
+					$condition_string .= self::quoteIdentifier($field) . " IN (" . $placeholders . ")";
+				} else {
+					// Empty value array isn't supported by IN and is logically equivalent to no match
+					$condition_string .= "FALSE";
+				}
+			} elseif (is_null($value)) {
+				$condition_string .= self::quoteIdentifier($field) . " IS NULL";
+			} else {
+				$values[$field] = $value;
+				$condition_string .= self::quoteIdentifier($field) . " = ?";
+			}
+		}
+
+		$condition = array_merge([$condition_string], array_values($values));
+
+		return $condition;
+	}
+
+	/**
+	 * Returns the SQL parameter string built from the provided parameter array
 	 *
 	 * @param array $params
 	 * @return string
@@ -626,7 +686,7 @@ class DBA extends BaseObject
 	}
 
 	/**
-	 * @brief Fills an array with data from a query
+	 * Fills an array with data from a query
 	 *
 	 * @param object $stmt statement object
 	 * @param bool   $do_close
@@ -634,42 +694,42 @@ class DBA extends BaseObject
 	 */
 	public static function toArray($stmt, $do_close = true)
 	{
-		return self::getClass(Database::class)->toArray($stmt, $do_close);
+		return DI::dba()->toArray($stmt, $do_close);
 	}
 
 	/**
-	 * @brief Returns the error number of the last query
+	 * Returns the error number of the last query
 	 *
 	 * @return string Error number (0 if no error)
 	 */
 	public static function errorNo()
 	{
-		return self::getClass(Database::class)->errorNo();
+		return DI::dba()->errorNo();
 	}
 
 	/**
-	 * @brief Returns the error message of the last query
+	 * Returns the error message of the last query
 	 *
 	 * @return string Error message ('' if no error)
 	 */
 	public static function errorMessage()
 	{
-		return self::getClass(Database::class)->errorMessage();
+		return DI::dba()->errorMessage();
 	}
 
 	/**
-	 * @brief Closes the current statement
+	 * Closes the current statement
 	 *
 	 * @param object $stmt statement object
 	 * @return boolean was the close successful?
 	 */
 	public static function close($stmt)
 	{
-		return self::getClass(Database::class)->close($stmt);
+		return DI::dba()->close($stmt);
 	}
 
 	/**
-	 * @brief Return a list of database processes
+	 * Return a list of database processes
 	 *
 	 * @return array
 	 *      'list' => List of processes, separated in their different states
@@ -678,7 +738,7 @@ class DBA extends BaseObject
 	 */
 	public static function processlist()
 	{
-		return self::getClass(Database::class)->processlist();
+		return DI::dba()->processlist();
 	}
 
 	/**
@@ -690,11 +750,11 @@ class DBA extends BaseObject
 	 */
 	public static function isResult($array)
 	{
-		return self::getClass(Database::class)->isResult($array);
+		return DI::dba()->isResult($array);
 	}
 
 	/**
-	 * @brief Escapes a whole array
+	 * Escapes a whole array
 	 *
 	 * @param mixed   $arr           Array with values to be escaped
 	 * @param boolean $add_quotation add quotation marks for string values
@@ -702,6 +762,6 @@ class DBA extends BaseObject
 	 */
 	public static function escapeArray(&$arr, $add_quotation = false)
 	{
-		return self::getClass(Database::class)->escapeArray($arr, $add_quotation);
+		DI::dba()->escapeArray($arr, $add_quotation);
 	}
 }

@@ -1,105 +1,71 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Admin;
 
 use Friendica\Content\Pager;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Register;
 use Friendica\Model\User;
-use Friendica\Module\BaseAdminModule;
-use Friendica\Util\Strings;
+use Friendica\Module\BaseAdmin;
 use Friendica\Util\Temporal;
 
-class Users extends BaseAdminModule
+class Users extends BaseAdmin
 {
 	public static function post(array $parameters = [])
 	{
 		parent::post($parameters);
-
-		$a = self::getApp();
 
 		$pending     = $_POST['pending']           ?? [];
 		$users       = $_POST['user']              ?? [];
 		$nu_name     = $_POST['new_user_name']     ?? '';
 		$nu_nickname = $_POST['new_user_nickname'] ?? '';
 		$nu_email    = $_POST['new_user_email']    ?? '';
-		$nu_language = Config::get('system', 'language');
+		$nu_language = DI::config()->get('system', 'language');
 
 		parent::checkFormSecurityTokenRedirectOnError('/admin/users', 'admin_users');
 
 		if ($nu_name !== '' && $nu_email !== '' && $nu_nickname !== '') {
 			try {
-				$result = User::create([
-					'username' => $nu_name,
-					'email' => $nu_email,
-					'nickname' => $nu_nickname,
-					'verified' => 1,
-					'language' => $nu_language
-				]);
+				User::createMinimal($nu_name, $nu_email, $nu_nickname, $nu_language);
 			} catch (\Exception $ex) {
 				notice($ex->getMessage());
 				return;
 			}
-
-			$user = $result['user'];
-			$preamble = Strings::deindent(L10n::t('
-			Dear %1$s,
-				the administrator of %2$s has set up an account for you.'));
-			$body = Strings::deindent(L10n::t('
-			The login details are as follows:
-
-			Site Location:	%1$s
-			Login Name:		%2$s
-			Password:		%3$s
-
-			You may change your password from your account "Settings" page after logging
-			in.
-
-			Please take a few moments to review the other account settings on that page.
-
-			You may also wish to add some basic information to your default profile
-			(on the "Profiles" page) so that other people can easily find you.
-
-			We recommend setting your full name, adding a profile photo,
-			adding some profile "keywords" (very useful in making new friends) - and
-			perhaps what country you live in; if you do not wish to be more specific
-			than that.
-
-			We fully respect your right to privacy, and none of these items are necessary.
-			If you are new and do not know anybody here, they may help
-			you to make some new and interesting friends.
-
-			If you ever want to delete your account, you can do so at %1$s/removeme
-
-			Thank you and welcome to %4$s.'));
-
-			$preamble = sprintf($preamble, $user['username'], Config::get('config', 'sitename'));
-			$body = sprintf($body, $a->getBaseURL(), $user['nickname'], $result['password'], Config::get('config', 'sitename'));
-
-			notification([
-				'type'     => SYSTEM_EMAIL,
-				'language' => $user['language'],
-				'to_name'  => $user['username'],
-				'to_email' => $user['email'],
-				'uid'      => $user['uid'],
-				'subject'  => L10n::t('Registration details for %s', Config::get('config', 'sitename')),
-				'preamble' => $preamble,
-				'body'     => $body]);
 		}
 
 		if (!empty($_POST['page_users_block'])) {
-			// @TODO Move this to Model\User:block($users);
-			DBA::update('user', ['blocked' => 1], ['uid' => $users]);
-			notice(L10n::tt('%s user blocked', '%s users blocked', count($users)));
+			foreach ($users as $uid) {
+				User::block($uid);
+			}
+			notice(DI::l10n()->tt('%s user blocked', '%s users blocked', count($users)));
 		}
 
 		if (!empty($_POST['page_users_unblock'])) {
-			// @TODO Move this to Model\User:unblock($users);
-			DBA::update('user', ['blocked' => 0], ['uid' => $users]);
-			notice(L10n::tt('%s user unblocked', '%s users unblocked', count($users)));
+			foreach ($users as $uid) {
+				User::block($uid, false);
+			}
+			notice(DI::l10n()->tt('%s user unblocked', '%s users unblocked', count($users)));
 		}
 
 		if (!empty($_POST['page_users_delete'])) {
@@ -107,35 +73,35 @@ class Users extends BaseAdminModule
 				if (local_user() != $uid) {
 					User::remove($uid);
 				} else {
-					notice(L10n::t('You can\'t remove yourself'));
+					notice(DI::l10n()->t('You can\'t remove yourself'));
 				}
 			}
 
-			notice(L10n::tt('%s user deleted', '%s users deleted', count($users)));
+			notice(DI::l10n()->tt('%s user deleted', '%s users deleted', count($users)));
 		}
 
 		if (!empty($_POST['page_users_approve'])) {
-			require_once 'mod/regmod.php';
 			foreach ($pending as $hash) {
-				user_allow($hash);
+				User::allow($hash);
 			}
+			notice(DI::l10n()->tt('%s user approved', '%s users approved', count($pending)));
 		}
 
 		if (!empty($_POST['page_users_deny'])) {
-			require_once 'mod/regmod.php';
 			foreach ($pending as $hash) {
-				user_deny($hash);
+				User::deny($hash);
 			}
+			notice(DI::l10n()->tt('%s registration revoked', '%s registrations revoked', count($pending)));
 		}
 
-		$a->internalRedirect('admin/users');
+		DI::baseUrl()->redirect('admin/users');
 	}
 
 	public static function content(array $parameters = [])
 	{
 		parent::content($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		if ($a->argc > 3) {
 			// @TODO: Replace with parameter from router
@@ -144,7 +110,7 @@ class Users extends BaseAdminModule
 			$user = User::getById($uid, ['username', 'blocked']);
 			if (!DBA::isResult($user)) {
 				notice('User not found' . EOL);
-				$a->internalRedirect('admin/users');
+				DI::baseUrl()->redirect('admin/users');
 				return ''; // NOTREACHED
 			}
 
@@ -155,34 +121,41 @@ class Users extends BaseAdminModule
 						// delete user
 						User::remove($uid);
 
-						notice(L10n::t('User "%s" deleted', $user['username']));
+						notice(DI::l10n()->t('User "%s" deleted', $user['username']));
 					} else {
-						notice(L10n::t('You can\'t remove yourself'));
+						notice(DI::l10n()->t('You can\'t remove yourself'));
 					}
 					break;
 				case 'block':
 					parent::checkFormSecurityTokenRedirectOnError('/admin/users', 'admin_users', 't');
-					// @TODO Move this to Model\User:block([$uid]);
-					DBA::update('user', ['blocked' => 1], ['uid' => $uid]);
-					notice(L10n::t('User "%s" blocked', $user['username']));
+					User::block($uid);
+					notice(DI::l10n()->t('User "%s" blocked', $user['username']));
 					break;
 				case 'unblock':
 					parent::checkFormSecurityTokenRedirectOnError('/admin/users', 'admin_users', 't');
-					// @TODO Move this to Model\User:unblock([$uid]);
-					DBA::update('user', ['blocked' => 0], ['uid' => $uid]);
-					notice(L10n::t('User "%s" unblocked', $user['username']));
+					User::block($uid, false);
+					notice(DI::l10n()->t('User "%s" unblocked', $user['username']));
+					break;
+				case 'allow':
+					parent::checkFormSecurityTokenRedirectOnError('/admin/users', 'admin_users', 't');
+					User::allow(Register::getPendingForUser($uid)['hash'] ?? '');
+					notice(DI::l10n()->t('Account approved.'));
+					break;
+				case 'deny':
+					parent::checkFormSecurityTokenRedirectOnError('/admin/users', 'admin_users', 't');
+					User::deny(Register::getPendingForUser($uid)['hash'] ?? '');
+					notice(DI::l10n()->t('Registration revoked'));
 					break;
 			}
 
-			$a->internalRedirect('admin/users');
+			DI::baseUrl()->redirect('admin/users');
 		}
 
 		/* get pending */
 		$pending = Register::getPending();
 
-		$pager = new Pager($a->query_string, 100);
+		$pager = new Pager(DI::l10n(), DI::args()->getQueryString(), 100);
 
-		// @TODO Move below block to Model\User::getUsers($start, $count, $order = 'contact.name', $order_direction = '+')
 		$valid_orders = [
 			'contact.name',
 			'user.email',
@@ -205,32 +178,24 @@ class Users extends BaseAdminModule
 				$order = $new_order;
 			}
 		}
-		$sql_order = '`' . str_replace('.', '`.`', $order) . '`';
-		$sql_order_direction = ($order_direction === '+') ? 'ASC' : 'DESC';
 
-		$usersStmt = DBA::p("SELECT `user`.*, `contact`.`name`, `contact`.`url`, `contact`.`micro`, `user`.`account_expired`, `contact`.`last-item` AS `lastitem_date`
-				FROM `user`
-				INNER JOIN `contact` ON `contact`.`uid` = `user`.`uid` AND `contact`.`self`
-				WHERE `user`.`verified`
-				ORDER BY $sql_order $sql_order_direction LIMIT ?, ?", $pager->getStart(), $pager->getItemsPerPage()
-		);
-		$users = DBA::toArray($usersStmt);
+		$users = User::getList($pager->getStart(), $pager->getItemsPerPage(), 'all', $order, $order_direction);
 
-		$adminlist = explode(',', str_replace(' ', '', Config::get('config', 'admin_email')));
+		$adminlist = explode(',', str_replace(' ', '', DI::config()->get('config', 'admin_email')));
 		$_setup_users = function ($e) use ($adminlist) {
 			$page_types = [
-				User::PAGE_FLAGS_NORMAL    => L10n::t('Normal Account Page'),
-				User::PAGE_FLAGS_SOAPBOX   => L10n::t('Soapbox Page'),
-				User::PAGE_FLAGS_COMMUNITY => L10n::t('Public Forum'),
-				User::PAGE_FLAGS_FREELOVE  => L10n::t('Automatic Friend Page'),
-				User::PAGE_FLAGS_PRVGROUP  => L10n::t('Private Forum')
+				User::PAGE_FLAGS_NORMAL    => DI::l10n()->t('Normal Account Page'),
+				User::PAGE_FLAGS_SOAPBOX   => DI::l10n()->t('Soapbox Page'),
+				User::PAGE_FLAGS_COMMUNITY => DI::l10n()->t('Public Forum'),
+				User::PAGE_FLAGS_FREELOVE  => DI::l10n()->t('Automatic Friend Page'),
+				User::PAGE_FLAGS_PRVGROUP  => DI::l10n()->t('Private Forum')
 			];
 			$account_types = [
-				User::ACCOUNT_TYPE_PERSON       => L10n::t('Personal Page'),
-				User::ACCOUNT_TYPE_ORGANISATION => L10n::t('Organisation Page'),
-				User::ACCOUNT_TYPE_NEWS         => L10n::t('News Page'),
-				User::ACCOUNT_TYPE_COMMUNITY    => L10n::t('Community Forum'),
-				User::ACCOUNT_TYPE_RELAY        => L10n::t('Relay'),
+				User::ACCOUNT_TYPE_PERSON       => DI::l10n()->t('Personal Page'),
+				User::ACCOUNT_TYPE_ORGANISATION => DI::l10n()->t('Organisation Page'),
+				User::ACCOUNT_TYPE_NEWS         => DI::l10n()->t('News Page'),
+				User::ACCOUNT_TYPE_COMMUNITY    => DI::l10n()->t('Community Forum'),
+				User::ACCOUNT_TYPE_RELAY        => DI::l10n()->t('Relay'),
 			];
 
 			$e['page_flags_raw'] = $e['page-flags'];
@@ -269,50 +234,50 @@ class Users extends BaseAdminModule
 			}
 		}
 
-		$th_users = array_map(null, [L10n::t('Name'), L10n::t('Email'), L10n::t('Register date'), L10n::t('Last login'), L10n::t('Last item'), L10n::t('Type')], $valid_orders);
+		$th_users = array_map(null, [DI::l10n()->t('Name'), DI::l10n()->t('Email'), DI::l10n()->t('Register date'), DI::l10n()->t('Last login'), DI::l10n()->t('Last public item'), DI::l10n()->t('Type')], $valid_orders);
 
 		$t = Renderer::getMarkupTemplate('admin/users.tpl');
 		$o = Renderer::replaceMacros($t, [
 			// strings //
-			'$title' => L10n::t('Administration'),
-			'$page' => L10n::t('Users'),
-			'$submit' => L10n::t('Add User'),
-			'$select_all' => L10n::t('select all'),
-			'$h_pending' => L10n::t('User registrations waiting for confirm'),
-			'$h_deleted' => L10n::t('User waiting for permanent deletion'),
-			'$th_pending' => [L10n::t('Request date'), L10n::t('Name'), L10n::t('Email')],
-			'$no_pending' => L10n::t('No registrations.'),
-			'$pendingnotetext' => L10n::t('Note from the user'),
-			'$approve' => L10n::t('Approve'),
-			'$deny' => L10n::t('Deny'),
-			'$delete' => L10n::t('Delete'),
-			'$block' => L10n::t('Block'),
-			'$blocked' => L10n::t('User blocked'),
-			'$unblock' => L10n::t('Unblock'),
-			'$siteadmin' => L10n::t('Site admin'),
-			'$accountexpired' => L10n::t('Account expired'),
+			'$title' => DI::l10n()->t('Administration'),
+			'$page' => DI::l10n()->t('Users'),
+			'$submit' => DI::l10n()->t('Add User'),
+			'$select_all' => DI::l10n()->t('select all'),
+			'$h_pending' => DI::l10n()->t('User registrations waiting for confirm'),
+			'$h_deleted' => DI::l10n()->t('User waiting for permanent deletion'),
+			'$th_pending' => [DI::l10n()->t('Request date'), DI::l10n()->t('Name'), DI::l10n()->t('Email')],
+			'$no_pending' => DI::l10n()->t('No registrations.'),
+			'$pendingnotetext' => DI::l10n()->t('Note from the user'),
+			'$approve' => DI::l10n()->t('Approve'),
+			'$deny' => DI::l10n()->t('Deny'),
+			'$delete' => DI::l10n()->t('Delete'),
+			'$block' => DI::l10n()->t('Block'),
+			'$blocked' => DI::l10n()->t('User blocked'),
+			'$unblock' => DI::l10n()->t('Unblock'),
+			'$siteadmin' => DI::l10n()->t('Site admin'),
+			'$accountexpired' => DI::l10n()->t('Account expired'),
 
-			'$h_users' => L10n::t('Users'),
-			'$h_newuser' => L10n::t('New User'),
-			'$th_deleted' => [L10n::t('Name'), L10n::t('Email'), L10n::t('Register date'), L10n::t('Last login'), L10n::t('Last item'), L10n::t('Permanent deletion')],
+			'$h_users' => DI::l10n()->t('Users'),
+			'$h_newuser' => DI::l10n()->t('New User'),
+			'$th_deleted' => [DI::l10n()->t('Name'), DI::l10n()->t('Email'), DI::l10n()->t('Register date'), DI::l10n()->t('Last login'), DI::l10n()->t('Last public item'), DI::l10n()->t('Permanent deletion')],
 			'$th_users' => $th_users,
 			'$order_users' => $order,
 			'$order_direction_users' => $order_direction,
 
-			'$confirm_delete_multi' => L10n::t('Selected users will be deleted!\n\nEverything these users had posted on this site will be permanently deleted!\n\nAre you sure?'),
-			'$confirm_delete' => L10n::t('The user {0} will be deleted!\n\nEverything this user has posted on this site will be permanently deleted!\n\nAre you sure?'),
+			'$confirm_delete_multi' => DI::l10n()->t('Selected users will be deleted!\n\nEverything these users had posted on this site will be permanently deleted!\n\nAre you sure?'),
+			'$confirm_delete' => DI::l10n()->t('The user {0} will be deleted!\n\nEverything this user has posted on this site will be permanently deleted!\n\nAre you sure?'),
 
 			'$form_security_token' => parent::getFormSecurityToken('admin_users'),
 
 			// values //
-			'$baseurl' => $a->getBaseURL(true),
+			'$baseurl' => DI::baseUrl()->get(true),
 
 			'$pending' => $pending,
 			'deleted' => $deleted,
 			'$users' => $users,
-			'$newusername' => ['new_user_name', L10n::t('Name'), '', L10n::t('Name of the new user.')],
-			'$newusernickname' => ['new_user_nickname', L10n::t('Nickname'), '', L10n::t('Nickname of the new user.')],
-			'$newuseremail' => ['new_user_email', L10n::t('Email'), '', L10n::t('Email address of the new user.'), '', '', 'email'],
+			'$newusername' => ['new_user_name', DI::l10n()->t('Name'), '', DI::l10n()->t('Name of the new user.')],
+			'$newusernickname' => ['new_user_nickname', DI::l10n()->t('Nickname'), '', DI::l10n()->t('Nickname of the new user.')],
+			'$newuseremail' => ['new_user_email', DI::l10n()->t('Email'), '', DI::l10n()->t('Email address of the new user.'), '', '', 'email'],
 		]);
 
 		$o .= $pager->renderFull(DBA::count('user'));

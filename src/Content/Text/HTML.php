@@ -1,6 +1,22 @@
 <?php
 /**
- * @file src/Content/Text/HTML.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Content\Text;
@@ -9,9 +25,8 @@ use DOMDocument;
 use DOMXPath;
 use Friendica\Content\Widget\ContactBlock;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
-use Friendica\Core\Config;
 use Friendica\Core\Renderer;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Util\Network;
 use Friendica\Util\Proxy as ProxyUtils;
@@ -136,11 +151,12 @@ class HTML
 	}
 
 	/**
+	 * Converter for HTML to BBCode
+	 *
 	 * Made by: ike@piratenpartei.de
 	 * Originally made for the syncom project: http://wiki.piratenpartei.de/Syncom
 	 *                    https://github.com/annando/Syncom
 	 *
-	 * @brief Converter for HTML to BBCode
 	 * @param string $message
 	 * @param string $basepath
 	 * @return string
@@ -290,19 +306,10 @@ class HTML
 
 		self::tagToBBCode($doc, 'hr', [], "[hr]", "");
 
-		self::tagToBBCode($doc, 'table', [], "", "");
-		self::tagToBBCode($doc, 'tr', [], "\n", "");
-		self::tagToBBCode($doc, 'td', [], "\t", "");
-		//self::node2BBCode($doc, 'table', array(), "[table]", "[/table]");
-		//self::node2BBCode($doc, 'th', array(), "[th]", "[/th]");
-		//self::node2BBCode($doc, 'tr', array(), "[tr]", "[/tr]");
-		//self::node2BBCode($doc, 'td', array(), "[td]", "[/td]");
-		//self::node2BBCode($doc, 'h1', array(), "\n\n[size=xx-large][b]", "[/b][/size]\n");
-		//self::node2BBCode($doc, 'h2', array(), "\n\n[size=x-large][b]", "[/b][/size]\n");
-		//self::node2BBCode($doc, 'h3', array(), "\n\n[size=large][b]", "[/b][/size]\n");
-		//self::node2BBCode($doc, 'h4', array(), "\n\n[size=medium][b]", "[/b][/size]\n");
-		//self::node2BBCode($doc, 'h5', array(), "\n\n[size=small][b]", "[/b][/size]\n");
-		//self::node2BBCode($doc, 'h6', array(), "\n\n[size=x-small][b]", "[/b][/size]\n");
+		self::tagToBBCode($doc, 'table', [], "[table]", "[/table]");
+		self::tagToBBCode($doc, 'th', [], "[th]", "[/th]");
+		self::tagToBBCode($doc, 'tr', [], "[tr]", "[/tr]");
+		self::tagToBBCode($doc, 'td', [], "[td]", "[/td]");
 
 		self::tagToBBCode($doc, 'h1', [], "[h1]", "[/h1]");
 		self::tagToBBCode($doc, 'h2', [], "[h2]", "[/h2]");
@@ -343,8 +350,6 @@ class HTML
 		$message = strip_tags($message);
 
 		$message = html_entity_decode($message, ENT_QUOTES, 'UTF-8');
-
-		$message = str_replace(["<"], ["&lt;"], $message);
 
 		// remove quotes if they don't make sense
 		$message = preg_replace('=\[/quote\][\s]*\[quote\]=i', "\n", $message);
@@ -421,7 +426,7 @@ class HTML
 	}
 
 	/**
-	 * @brief Sub function to complete incomplete URL
+	 * Sub function to complete incomplete URL
 	 *
 	 * @param array  $matches  Result of preg_replace_callback
 	 * @param string $basepath Basepath that is used to complete the URL
@@ -448,7 +453,7 @@ class HTML
 	}
 
 	/**
-	 * @brief Complete incomplete URLs in BBCode
+	 * Complete incomplete URLs in BBCode
 	 *
 	 * @param string $body     Body with URLs
 	 * @param string $basepath Base path that is used to complete the URL
@@ -519,7 +524,7 @@ class HTML
 
 		$newlines[] = $line;
 
-		return implode($newlines, "\n");
+		return implode("\n", $newlines);
 	}
 
 	private static function quoteLevel($message, $wraplength = 75)
@@ -555,7 +560,7 @@ class HTML
 			}
 		}
 
-		return implode($newlines, "\n");
+		return implode("\n", $newlines);
 	}
 
 	private static function collectURLs($message)
@@ -720,7 +725,7 @@ class HTML
 	}
 
 	/**
-	 * @brief Convert video HTML to BBCode tags
+	 * Convert video HTML to BBCode tags
 	 *
 	 * @param string $s
 	 * @return string
@@ -808,8 +813,8 @@ class HTML
 	{
 		$tpl = Renderer::getMarkupTemplate("scroll_loader.tpl");
 		return Renderer::replaceMacros($tpl, [
-			'wait' => L10n::t('Loading more entries...'),
-			'end' => L10n::t('The end')
+			'wait' => DI::l10n()->t('Loading more entries...'),
+			'end' => DI::l10n()->t('The end')
 		]);
 	}
 
@@ -824,13 +829,13 @@ class HTML
 	 */
 	public static function contactBlock()
 	{
-		$a = \get_app();
+		$a = DI::app();
 
 		return ContactBlock::getHTML($a->profile);
 	}
 
 	/**
-	 * @brief Format contacts as picture links or as text links
+	 * Format contacts as picture links or as text links
 	 *
 	 * @param array   $contact  Array with contacts which contains an array with
 	 *                          int 'id' => The ID of the contact
@@ -902,28 +907,28 @@ class HTML
 		if (strpos($s, '#') === 0) {
 			$mode = 'tag';
 		}
-		$save_label = $mode === 'text' ? L10n::t('Save') : L10n::t('Follow');
+		$save_label = $mode === 'text' ? DI::l10n()->t('Save') : DI::l10n()->t('Follow');
 
 		$values = [
 			'$s'            => $s,
 			'$q'            => urlencode($s),
 			'$id'           => $id,
-			'$search_label' => L10n::t('Search'),
+			'$search_label' => DI::l10n()->t('Search'),
 			'$save_label'   => $save_label,
-			'$search_hint'  => L10n::t('@name, !forum, #tags, content'),
+			'$search_hint'  => DI::l10n()->t('@name, !forum, #tags, content'),
 			'$mode'         => $mode,
 			'$return_url'   => urlencode('search?q=' . urlencode($s)),
 		];
 
 		if (!$aside) {
 			$values['$search_options'] = [
-				'fulltext' => L10n::t('Full Text'),
-				'tags'     => L10n::t('Tags'),
-				'contacts' => L10n::t('Contacts')
+				'fulltext' => DI::l10n()->t('Full Text'),
+				'tags'     => DI::l10n()->t('Tags'),
+				'contacts' => DI::l10n()->t('Contacts')
 			];
 
-			if (Config::get('system', 'poco_local_search')) {
-				$values['$searchoption']['forums'] = L10n::t('Forums');
+			if (DI::config()->get('system', 'poco_local_search')) {
+				$values['$searchoption']['forums'] = DI::l10n()->t('Forums');
 			}
 		}
 
@@ -938,7 +943,7 @@ class HTML
 	 */
 	public static function toLink($s)
 	{
-		$s = preg_replace("/(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\'\%\$\!\+]*)/", ' <a href="$1" target="_blank">$1</a>', $s);
+		$s = preg_replace("/(https?\:\/\/[a-zA-Z0-9\:\/\-\?\&\;\.\=\_\~\#\'\%\$\!\+]*)/", ' <a href="$1" target="_blank" rel="noopener noreferrer">$1</a>', $s);
 		$s = preg_replace("/\<(.*?)(src|href)=(.*?)\&amp\;(.*?)\>/ism", '<$1$2=$3&$4>', $s);
 		return $s;
 	}
@@ -960,7 +965,7 @@ class HTML
 			$html = Renderer::replaceMacros($tpl, [
 				'$reasons'   => $reasons,
 				'$rnd'       => Strings::getRandomHex(8),
-				'$openclose' => L10n::t('Click to open/close'),
+				'$openclose' => DI::l10n()->t('Click to open/close'),
 				'$html'      => $html
 			]);
 		}

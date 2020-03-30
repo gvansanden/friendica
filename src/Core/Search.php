@@ -1,9 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core;
 
-use Friendica\BaseObject;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
 use Friendica\Network\HTTPException;
@@ -20,7 +39,7 @@ use Friendica\Util\Strings;
  * - Search in the local directory
  * - Search in the global directory
  */
-class Search extends BaseObject
+class Search
 {
 	const DEFAULT_DIRECTORY = 'https://dir.friendica.social';
 
@@ -92,8 +111,7 @@ class Search extends BaseObject
 	 */
 	public static function getContactsFromGlobalDirectory($search, $type = self::TYPE_ALL, $page = 1)
 	{
-		$config = self::getApp()->getConfig();
-		$server = $config->get('system', 'directory', self::DEFAULT_DIRECTORY);
+		$server = DI::config()->get('system', 'directory', self::DEFAULT_DIRECTORY);
 
 		$searchUrl = $server . '/search';
 
@@ -158,7 +176,7 @@ class Search extends BaseObject
 	 */
 	public static function getContactsFromLocalDirectory($search, $type = self::TYPE_ALL, $start = 0, $itemPage = 80)
 	{
-		$config = self::getApp()->getConfig();
+		$config = DI::config();
 
 		$diaspora = $config->get('system', 'diaspora_enabled') ? Protocol::DIASPORA : Protocol::DFRN;
 		$ostatus  = !$config->get('system', 'ostatus_disabled') ? Protocol::OSTATUS : Protocol::DFRN;
@@ -206,10 +224,6 @@ class Search extends BaseObject
 		}
 
 		while ($row = DBA::fetch($data)) {
-			if (PortableContact::alternateOStatusUrl($row["nurl"])) {
-				continue;
-			}
-
 			$urlParts = parse_url($row["nurl"]);
 
 			// Ignore results that look strange.
@@ -242,7 +256,7 @@ class Search extends BaseObject
 		DBA::close($data);
 
 		// Add found profiles from the global directory to the local directory
-		Worker::add(PRIORITY_LOW, 'DiscoverPoCo', "dirsearch", urlencode($search));
+		Worker::add(PRIORITY_LOW, 'SearchDirectory', $search);
 
 		return $resultList;
 	}
@@ -250,7 +264,6 @@ class Search extends BaseObject
 	/**
 	 * Searching for global contacts for autocompletion
 	 *
-	 * @brief Searching for global contacts for autocompletion
 	 * @param string $search Name or part of a name or nick
 	 * @param string $mode   Search mode (e.g. "community")
 	 * @param int    $page   Page number (starts at 1)
@@ -259,7 +272,7 @@ class Search extends BaseObject
 	 */
 	public static function searchGlobalContact($search, $mode, int $page = 1)
 	{
-		if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
+		if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
 			return [];
 		}
 
@@ -273,11 +286,11 @@ class Search extends BaseObject
 		}
 
 		// check if searching in the local global contact table is enabled
-		if (Config::get('system', 'poco_local_search')) {
+		if (DI::config()->get('system', 'poco_local_search')) {
 			$return = GContact::searchByName($search, $mode);
 		} else {
 			$p = $page > 1 ? 'p=' . $page : '';
-			$curlResult = Network::curl(get_server() . '/search/people?' . $p . '&q=' . urlencode($search), false, ['accept_content' => 'application/json']);
+			$curlResult = Network::curl(self::getGlobalDirectory() . '/search/people?' . $p . '&q=' . urlencode($search), false, ['accept_content' => 'application/json']);
 			if ($curlResult->isSuccess()) {
 				$searchResult = json_decode($curlResult->getBody(), true);
 				if (!empty($searchResult['profiles'])) {
@@ -287,5 +300,15 @@ class Search extends BaseObject
 		}
 
 		return $return ?? [];
+	}
+
+	/**
+	 * Returns the global directory name, used in this node
+	 *
+	 * @return string
+	 */
+	public static function getGlobalDirectory()
+	{
+		return DI::config()->get('system', 'directory', self::DEFAULT_DIRECTORY);
 	}
 }

@@ -1,10 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 use Friendica\App;
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\PushSubscriber;
 use Friendica\Util\Network;
 use Friendica\Util\Strings;
@@ -16,7 +34,7 @@ function post_var($name) {
 function pubsubhubbub_init(App $a) {
 	// PuSH subscription must be considered "public" so just block it
 	// if public access isn't enabled.
-	if (Config::get('system', 'block_public')) {
+	if (DI::config()->get('system', 'block_public')) {
 		throw new \Friendica\Network\HTTPException\ForbiddenException();
 	}
 
@@ -66,16 +84,10 @@ function pubsubhubbub_init(App $a) {
 
 		// fetch user from database given the nickname
 		$condition = ['nickname' => $nick, 'account_expired' => false, 'account_removed' => false];
-		$owner = DBA::selectFirst('user', ['uid', 'hidewall', 'nickname'], $condition);
+		$owner = DBA::selectFirst('user', ['uid', 'nickname'], $condition);
 		if (!DBA::isResult($owner)) {
 			Logger::log('Local account not found: ' . $nick . ' - topic: ' . $hub_topic . ' - callback: ' . $hub_callback);
 			throw new \Friendica\Network\HTTPException\NotFoundException();
-		}
-
-		// abort if user's wall is supposed to be private
-		if ($owner['hidewall']) {
-			Logger::log('Local user ' . $nick . 'has chosen to hide wall, ignoring.');
-			throw new \Friendica\Network\HTTPException\ForbiddenException();
 		}
 
 		// get corresponding row from contact table
@@ -89,7 +101,7 @@ function pubsubhubbub_init(App $a) {
 
 		// sanity check that topic URLs are the same
 		$hub_topic2 = str_replace('/feed/', '/dfrn_poll/', $hub_topic);
-		$self = System::baseUrl() . '/api/statuses/user_timeline/' . $owner['nickname'] . '.atom';
+		$self = DI::baseUrl() . '/api/statuses/user_timeline/' . $owner['nickname'] . '.atom';
 
 		if (!Strings::compareLink($hub_topic, $contact['poll']) && !Strings::compareLink($hub_topic2, $contact['poll']) && !Strings::compareLink($hub_topic, $self)) {
 			Logger::log('Hub topic ' . $hub_topic . ' != ' . $contact['poll']);

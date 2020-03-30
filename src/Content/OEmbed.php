@@ -1,8 +1,24 @@
 <?php
-
 /**
- * @file src/Content/OEmbed.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Content;
 
 use DOMDocument;
@@ -10,13 +26,11 @@ use DOMNode;
 use DOMText;
 use DOMXPath;
 use Exception;
-use Friendica\Core\Cache;
-use Friendica\Core\Config;
+use Friendica\Core\Cache\Duration;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 use Friendica\Util\ParseUrl;
@@ -30,8 +44,6 @@ use Friendica\Util\Strings;
  * third party sites
  *
  * @see https://oembed.com
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class OEmbed
 {
@@ -45,7 +57,7 @@ class OEmbed
 	}
 
 	/**
-	 * @brief Get data from an URL to embed its content.
+	 * Get data from an URL to embed its content.
 	 *
 	 * @param string $embedurl     The URL from which the data should be fetched.
 	 * @param bool   $no_rich_type If set to true rich type content won't be fetched.
@@ -57,7 +69,7 @@ class OEmbed
 	{
 		$embedurl = trim($embedurl, '\'"');
 
-		$a = \get_app();
+		$a = DI::app();
 
 		$cache_key = 'oembed:' . $a->videowidth . ':' . $embedurl;
 
@@ -66,7 +78,7 @@ class OEmbed
 		if (DBA::isResult($oembed_record)) {
 			$json_string = $oembed_record['content'];
 		} else {
-			$json_string = Cache::get($cache_key);
+			$json_string = DI::cache()->get($cache_key);
 		}
 
 		// These media files should now be caught in bbcode.php
@@ -120,12 +132,12 @@ class OEmbed
 					'content' => $json_string,
 					'created' => DateTimeFormat::utcNow()
 				], true);
-				$cache_ttl = Cache::DAY;
+				$cache_ttl = Duration::DAY;
 			} else {
-				$cache_ttl = Cache::FIVE_MINUTES;
+				$cache_ttl = Duration::FIVE_MINUTES;
 			}
 
-			Cache::set($cache_key, $json_string, $cache_ttl);
+			DI::cache()->set($cache_key, $json_string, $cache_ttl);
 		}
 
 		if ($oembed->type == 'error') {
@@ -249,9 +261,9 @@ class OEmbed
 
 	public static function BBCode2HTML($text)
 	{
-		$stopoembed = Config::get("system", "no_oembed");
+		$stopoembed = DI::config()->get("system", "no_oembed");
 		if ($stopoembed == true) {
-			return preg_replace("/\[embed\](.+?)\[\/embed\]/is", "<!-- oembed $1 --><i>" . L10n::t('Embedding disabled') . " : $1</i><!-- /oembed $1 -->", $text);
+			return preg_replace("/\[embed\](.+?)\[\/embed\]/is", "<!-- oembed $1 --><i>" . DI::l10n()->t('Embedding disabled') . " : $1</i><!-- /oembed $1 -->", $text);
 		}
 		return preg_replace_callback("/\[embed\](.+?)\[\/embed\]/is", ['self', 'replaceCallback'], $text);
 	}
@@ -297,14 +309,13 @@ class OEmbed
 	/**
 	 * Determines if rich content OEmbed is allowed for the provided URL
 	 *
-	 * @brief Determines if rich content OEmbed is allowed for the provided URL
 	 * @param string $url
 	 * @return boolean
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function isAllowedURL($url)
 	{
-		if (!Config::get('system', 'no_oembed_rich_content')) {
+		if (!DI::config()->get('system', 'no_oembed_rich_content')) {
 			return true;
 		}
 
@@ -313,7 +324,7 @@ class OEmbed
 			return false;
 		}
 
-		$str_allowed = Config::get('system', 'allowed_oembed', '');
+		$str_allowed = DI::config()->get('system', 'allowed_oembed', '');
 		if (empty($str_allowed)) {
 			return false;
 		}
@@ -345,7 +356,7 @@ class OEmbed
 	}
 
 	/**
-	 * @brief Generates the iframe HTML for an oembed attachment.
+	 * Generates the iframe HTML for an oembed attachment.
 	 *
 	 * Width and height are given by the remote, and are regularly too small for
 	 * the generated iframe.
@@ -373,15 +384,15 @@ class OEmbed
 		}
 		$width = '100%';
 
-		$src = System::baseUrl() . '/oembed/' . Strings::base64UrlEncode($src);
-		return '<iframe onload="resizeIframe(this);" class="embed_rich" height="' . $height . '" width="' . $width . '" src="' . $src . '" allowfullscreen scrolling="no" frameborder="no">' . L10n::t('Embedded content') . '</iframe>';
+		$src = DI::baseUrl() . '/oembed/' . Strings::base64UrlEncode($src);
+		return '<iframe onload="resizeIframe(this);" class="embed_rich" height="' . $height . '" width="' . $width . '" src="' . $src . '" allowfullscreen scrolling="no" frameborder="no">' . DI::l10n()->t('Embedded content') . '</iframe>';
 	}
 
 	/**
+	 * Generates attribute search XPath string
+	 *
 	 * Generates an XPath query to select elements whose provided attribute contains
 	 * the provided value in a space-separated list.
-	 *
-	 * @brief Generates attribute search XPath string
 	 *
 	 * @param string $attr Name of the attribute to seach
 	 * @param string $value Value to search in a space-separated list
@@ -395,8 +406,6 @@ class OEmbed
 
 	/**
 	 * Returns the inner XML string of a provided DOMNode
-	 *
-	 * @brief Returns the inner XML string of a provided DOMNode
 	 *
 	 * @param DOMNode $node
 	 * @return string

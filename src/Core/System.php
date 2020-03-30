@@ -1,53 +1,38 @@
 <?php
 /**
- * @file src/Core/System.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Core;
 
-use Friendica\App\BaseURL;
-use Friendica\BaseObject;
+use Friendica\DI;
 use Friendica\Network\HTTPException\InternalServerErrorException;
 use Friendica\Util\XML;
 
 /**
- * @file include/Core/System.php
- *
- * @brief Contains the class with system relevant stuff
+ * Contains the class with system relevant stuff
  */
-
-
-/**
- * @brief System methods
- */
-class System extends BaseObject
+class System
 {
 	/**
-	 * @brief Retrieves the Friendica instance base URL
+	 * Returns a string with a callstack. Can be used for logging.
 	 *
-	 * @param bool $ssl Whether to append http or https under BaseURL::SSL_POLICY_SELFSIGN
-	 * @return string Friendica server base URL
-	 * @throws InternalServerErrorException
-	 */
-	public static function baseUrl($ssl = false)
-	{
-		return self::getClass(BaseURL::class)->get($ssl);
-	}
-
-	/**
-	 * @brief Removes the baseurl from an url. This avoids some mixed content problems.
-	 *
-	 * @param string $orig_url The url to be cleaned
-	 *
-	 * @return string The cleaned url
-	 * @throws \Exception
-	 */
-	public static function removedBaseUrl(string $orig_url)
-	{
-		return self::getApp()->removeBaseURL($orig_url);
-	}
-
-	/**
-	 * @brief Returns a string with a callstack. Can be used for logging.
 	 * @param integer $depth optional, default 4
 	 * @return string
 	 */
@@ -119,7 +104,7 @@ class System extends BaseObject
 	}
 
 	/**
-	 * @brief Send HTTP status header and exit.
+	 * Send HTTP status header and exit.
 	 *
 	 * @param integer $val     HTTP status result value
 	 * @param string  $message Error message. Optional.
@@ -143,7 +128,7 @@ class System extends BaseObject
 	}
 
 	/**
-	 * @brief Encodes content to json.
+	 * Encodes content to json.
 	 *
 	 * This function encodes an array to json format
 	 * and adds an application/json HTTP header to the output.
@@ -184,7 +169,7 @@ class System extends BaseObject
 		if (is_bool($prefix) && !$prefix) {
 			$prefix = '';
 		} elseif (empty($prefix)) {
-			$prefix = hash('crc32', self::getApp()->getHostName());
+			$prefix = hash('crc32', DI::baseUrl()->getHostname());
 		}
 
 		while (strlen($prefix) < ($size - 13)) {
@@ -253,7 +238,7 @@ class System extends BaseObject
 	}
 
 	/**
-	 * @brief Returns the system user that is executing the script
+	 * Returns the system user that is executing the script
 	 *
 	 * This mostly returns something like "www-data".
 	 *
@@ -270,7 +255,7 @@ class System extends BaseObject
 	}
 
 	/**
-	 * @brief Checks if a given directory is usable for the system
+	 * Checks if a given directory is usable for the system
 	 *
 	 * @param      $directory
 	 * @param bool $check_writable
@@ -307,16 +292,32 @@ class System extends BaseObject
 		return true;
 	}
 
+	/**
+	 * Exit method used by asynchronous update modules
+	 *
+	 * @param string $o
+	 */
+	public static function htmlUpdateExit($o)
+	{
+		header("Content-type: text/html");
+		echo "<!DOCTYPE html><html><body>\r\n";
+		// We can remove this hack once Internet Explorer recognises HTML5 natively
+		echo "<section>";
+		// reportedly some versions of MSIE don't handle tabs in XMLHttpRequest documents very well
+		echo str_replace("\t", "       ", $o);
+		echo "</section>";
+		echo "</body></html>\r\n";
+		exit();
+	}
+
 	/// @todo Move the following functions from boot.php
 	/*
-	function killme()
 	function local_user()
 	function public_contact()
 	function remote_user()
 	function notice($s)
 	function info($s)
 	function is_site_admin()
-	function get_server()
 	function get_temppath()
 	function get_cachefile($file, $writemode = true)
 	function get_itemcachepath()

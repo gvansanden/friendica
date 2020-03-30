@@ -1,11 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 use Friendica\App;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Util\Network;
@@ -29,8 +48,8 @@ function redir_init(App $a) {
 		$fields = ['id', 'uid', 'nurl', 'url', 'addr', 'name', 'network', 'poll', 'issued-id', 'dfrn-id', 'duplex', 'pending'];
 		$contact = DBA::selectFirst('contact', $fields, ['id' => $cid, 'uid' => [0, local_user()]]);
 		if (!DBA::isResult($contact)) {
-			notice(L10n::t('Contact not found.'));
-			$a->internalRedirect();
+			notice(DI::l10n()->t('Contact not found.'));
+			DI::baseUrl()->redirect();
 		}
 
 		$contact_url = $contact['url'];
@@ -59,7 +78,7 @@ function redir_init(App $a) {
 		}
 
 		if (remote_user()) {
-			$host = substr($a->getBaseURL() . ($a->getURLPath() ? '/' . $a->getURLPath() : ''), strpos($a->getBaseURL(), '://') + 3);
+			$host = substr(DI::baseUrl()->getUrlPath() . (DI::baseUrl()->getUrlPath() ? '/' . DI::baseUrl()->getUrlPath() : ''), strpos(DI::baseUrl()->getUrlPath(), '://') + 3);
 			$remotehost = substr($contact['addr'], strpos($contact['addr'], '@') + 1);
 
 			// On a local instance we have to check if the local user has already authenticated
@@ -119,8 +138,8 @@ function redir_init(App $a) {
 		$a->redirect($url);
 	}
 
-	notice(L10n::t('Contact not found.'));
-	$a->internalRedirect();
+	notice(DI::l10n()->t('Contact not found.'));
+	DI::baseUrl()->redirect();
 }
 
 function redir_magic($a, $cid, $url)
@@ -134,11 +153,11 @@ function redir_magic($a, $cid, $url)
 	if (!DBA::isResult($contact)) {
 		Logger::info('Contact not found', ['id' => $cid]);
 		// Shouldn't happen under normal conditions
-		notice(L10n::t('Contact not found.'));
+		notice(DI::l10n()->t('Contact not found.'));
 		if (!empty($url)) {
-			$a->redirect($url);
+			System::externalRedirect($url);
 		} else {
-			$a->internalRedirect();
+			DI::baseUrl()->redirect();
 		}
 	} else {
 		$contact_url = $contact['url'];
@@ -148,9 +167,9 @@ function redir_magic($a, $cid, $url)
 	$basepath = Contact::getBasepath($contact_url);
 
 	// We don't use magic auth when there is no visitor, we are on the same system or we visit our own stuff
-	if (empty($visitor) || Strings::compareLink($basepath, System::baseUrl()) || Strings::compareLink($contact_url, $visitor)) {
+	if (empty($visitor) || Strings::compareLink($basepath, DI::baseUrl()) || Strings::compareLink($contact_url, $visitor)) {
 		Logger::info('Redirecting without magic', ['target' => $target_url, 'visitor' => $visitor, 'contact' => $contact_url]);
-		$a->redirect($target_url);
+		DI::app()->redirect($target_url);
 	}
 
 	// Test for magic auth on the target system
@@ -160,7 +179,7 @@ function redir_magic($a, $cid, $url)
 		$target_url .= $separator . 'zrl=' . urlencode($visitor) . '&addr=' . urlencode($contact_url);
 
 		Logger::info('Redirecting with magic', ['target' => $target_url, 'visitor' => $visitor, 'contact' => $contact_url]);
-		$a->redirect($target_url);
+		System::externalRedirect($target_url);
 	} else {
 		Logger::info('No magic for contact', ['contact' => $contact_url]);
 	}

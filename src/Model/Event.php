@@ -1,19 +1,33 @@
 <?php
 /**
- * @file src/Model/Event.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Model;
 
-use Friendica\BaseObject;
 use Friendica\Content\Text\BBCode;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Protocol\Activity;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Map;
@@ -21,9 +35,9 @@ use Friendica\Util\Strings;
 use Friendica\Util\XML;
 
 /**
- * @brief functions for interacting with the event database table
+ * functions for interacting with the event database table
  */
-class Event extends BaseObject
+class Event
 {
 
 	public static function getHTML(array $event, $simple = false)
@@ -32,15 +46,15 @@ class Event extends BaseObject
 			return '';
 		}
 
-		$bd_format = L10n::t('l F d, Y \@ g:i A'); // Friday January 18, 2011 @ 8 AM.
+		$bd_format = DI::l10n()->t('l F d, Y \@ g:i A'); // Friday January 18, 2011 @ 8 AM.
 
-		$event_start = L10n::getDay(
+		$event_start = DI::l10n()->getDay(
 			!empty($event['adjust']) ?
 			DateTimeFormat::local($event['start'], $bd_format) : DateTimeFormat::utc($event['start'], $bd_format)
 		);
 
 		if (!empty($event['finish'])) {
-			$event_end = L10n::getDay(
+			$event_end = DI::l10n()->getDay(
 				!empty($event['adjust']) ?
 				DateTimeFormat::local($event['finish'], $bd_format) : DateTimeFormat::utc($event['finish'], $bd_format)
 			);
@@ -59,14 +73,14 @@ class Event extends BaseObject
 				$o .= "<div>" . BBCode::convert(Strings::escapeHtml($event['desc']), false, $simple) . "</div>";
 			}
 
-			$o .= "<h4>" . L10n::t('Starts:') . "</h4><p>" . $event_start . "</p>";
+			$o .= "<h4>" . DI::l10n()->t('Starts:') . "</h4><p>" . $event_start . "</p>";
 
 			if (!$event['nofinish']) {
-				$o .= "<h4>" . L10n::t('Finishes:') . "</h4><p>" . $event_end . "</p>";
+				$o .= "<h4>" . DI::l10n()->t('Finishes:') . "</h4><p>" . $event_end . "</p>";
 			}
 
 			if (!empty($event['location'])) {
-				$o .= "<h4>" . L10n::t('Location:') . "</h4><p>" . BBCode::convert(Strings::escapeHtml($event['location']), false, $simple) . "</p>";
+				$o .= "<h4>" . DI::l10n()->t('Location:') . "</h4><p>" . BBCode::convert(Strings::escapeHtml($event['location']), false, $simple) . "</p>";
 			}
 
 			return $o;
@@ -76,13 +90,13 @@ class Event extends BaseObject
 
 		$o .= '<div class="summary event-summary">' . BBCode::convert(Strings::escapeHtml($event['summary']), false, $simple) . '</div>' . "\r\n";
 
-		$o .= '<div class="event-start"><span class="event-label">' . L10n::t('Starts:') . '</span>&nbsp;<span class="dtstart" title="'
+		$o .= '<div class="event-start"><span class="event-label">' . DI::l10n()->t('Starts:') . '</span>&nbsp;<span class="dtstart" title="'
 			. DateTimeFormat::utc($event['start'], (!empty($event['adjust']) ? DateTimeFormat::ATOM : 'Y-m-d\TH:i:s'))
 			. '" >' . $event_start
 			. '</span></div>' . "\r\n";
 
 		if (!$event['nofinish']) {
-			$o .= '<div class="event-end" ><span class="event-label">' . L10n::t('Finishes:') . '</span>&nbsp;<span class="dtend" title="'
+			$o .= '<div class="event-end" ><span class="event-label">' . DI::l10n()->t('Finishes:') . '</span>&nbsp;<span class="dtend" title="'
 				. DateTimeFormat::utc($event['finish'], (!empty($event['adjust']) ? DateTimeFormat::ATOM : 'Y-m-d\TH:i:s'))
 				. '" >' . $event_end
 				. '</span></div>' . "\r\n";
@@ -93,7 +107,7 @@ class Event extends BaseObject
 		}
 
 		if (!empty($event['location'])) {
-			$o .= '<div class="event-location"><span class="event-label">' . L10n::t('Location:') . '</span>&nbsp;<span class="location">'
+			$o .= '<div class="event-location"><span class="event-label">' . DI::l10n()->t('Location:') . '</span>&nbsp;<span class="location">'
 				. BBCode::convert(Strings::escapeHtml($event['location']), false, $simple)
 				. '</span></div>' . "\r\n";
 
@@ -111,7 +125,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Convert an array with event data to bbcode.
+	 * Convert an array with event data to bbcode.
 	 *
 	 * @param array $event Array which contains the event data.
 	 * @return string The event as a bbcode formatted string.
@@ -148,7 +162,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Extract bbcode formatted event data from a string.
+	 * Extract bbcode formatted event data from a string.
 	 *
 	 * @params: string $s The string which should be parsed for event data.
 	 * @param $text
@@ -212,7 +226,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Delete an event from the event table.
+	 * Delete an event from the event table.
 	 *
 	 * Note: This function does only delete the event from the event table not its
 	 * related entry in the item table.
@@ -232,7 +246,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Store the event.
+	 * Store the event.
 	 *
 	 * Store the event in the event table and create an event item in the item table.
 	 *
@@ -371,7 +385,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Create an array with translation strings used for events.
+	 * Create an array with translation strings used for events.
 	 *
 	 * @return array Array with translations strings.
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -379,70 +393,70 @@ class Event extends BaseObject
 	public static function getStrings()
 	{
 		// First day of the week (0 = Sunday).
-		$firstDay = PConfig::get(local_user(), 'system', 'first_day_of_week', 0);
+		$firstDay = DI::pConfig()->get(local_user(), 'system', 'first_day_of_week', 0);
 
 		$i18n = [
 			"firstDay" => $firstDay,
-			"allday"   => L10n::t("all-day"),
+			"allday"   => DI::l10n()->t("all-day"),
 
-			"Sun" => L10n::t("Sun"),
-			"Mon" => L10n::t("Mon"),
-			"Tue" => L10n::t("Tue"),
-			"Wed" => L10n::t("Wed"),
-			"Thu" => L10n::t("Thu"),
-			"Fri" => L10n::t("Fri"),
-			"Sat" => L10n::t("Sat"),
+			"Sun" => DI::l10n()->t("Sun"),
+			"Mon" => DI::l10n()->t("Mon"),
+			"Tue" => DI::l10n()->t("Tue"),
+			"Wed" => DI::l10n()->t("Wed"),
+			"Thu" => DI::l10n()->t("Thu"),
+			"Fri" => DI::l10n()->t("Fri"),
+			"Sat" => DI::l10n()->t("Sat"),
 
-			"Sunday"    => L10n::t("Sunday"),
-			"Monday"    => L10n::t("Monday"),
-			"Tuesday"   => L10n::t("Tuesday"),
-			"Wednesday" => L10n::t("Wednesday"),
-			"Thursday"  => L10n::t("Thursday"),
-			"Friday"    => L10n::t("Friday"),
-			"Saturday"  => L10n::t("Saturday"),
+			"Sunday"    => DI::l10n()->t("Sunday"),
+			"Monday"    => DI::l10n()->t("Monday"),
+			"Tuesday"   => DI::l10n()->t("Tuesday"),
+			"Wednesday" => DI::l10n()->t("Wednesday"),
+			"Thursday"  => DI::l10n()->t("Thursday"),
+			"Friday"    => DI::l10n()->t("Friday"),
+			"Saturday"  => DI::l10n()->t("Saturday"),
 
-			"Jan" => L10n::t("Jan"),
-			"Feb" => L10n::t("Feb"),
-			"Mar" => L10n::t("Mar"),
-			"Apr" => L10n::t("Apr"),
-			"May" => L10n::t("May"),
-			"Jun" => L10n::t("Jun"),
-			"Jul" => L10n::t("Jul"),
-			"Aug" => L10n::t("Aug"),
-			"Sep" => L10n::t("Sept"),
-			"Oct" => L10n::t("Oct"),
-			"Nov" => L10n::t("Nov"),
-			"Dec" => L10n::t("Dec"),
+			"Jan" => DI::l10n()->t("Jan"),
+			"Feb" => DI::l10n()->t("Feb"),
+			"Mar" => DI::l10n()->t("Mar"),
+			"Apr" => DI::l10n()->t("Apr"),
+			"May" => DI::l10n()->t("May"),
+			"Jun" => DI::l10n()->t("Jun"),
+			"Jul" => DI::l10n()->t("Jul"),
+			"Aug" => DI::l10n()->t("Aug"),
+			"Sep" => DI::l10n()->t("Sept"),
+			"Oct" => DI::l10n()->t("Oct"),
+			"Nov" => DI::l10n()->t("Nov"),
+			"Dec" => DI::l10n()->t("Dec"),
 
-			"January"   => L10n::t("January"),
-			"February"  => L10n::t("February"),
-			"March"     => L10n::t("March"),
-			"April"     => L10n::t("April"),
-			"June"      => L10n::t("June"),
-			"July"      => L10n::t("July"),
-			"August"    => L10n::t("August"),
-			"September" => L10n::t("September"),
-			"October"   => L10n::t("October"),
-			"November"  => L10n::t("November"),
-			"December"  => L10n::t("December"),
+			"January"   => DI::l10n()->t("January"),
+			"February"  => DI::l10n()->t("February"),
+			"March"     => DI::l10n()->t("March"),
+			"April"     => DI::l10n()->t("April"),
+			"June"      => DI::l10n()->t("June"),
+			"July"      => DI::l10n()->t("July"),
+			"August"    => DI::l10n()->t("August"),
+			"September" => DI::l10n()->t("September"),
+			"October"   => DI::l10n()->t("October"),
+			"November"  => DI::l10n()->t("November"),
+			"December"  => DI::l10n()->t("December"),
 
-			"today" => L10n::t("today"),
-			"month" => L10n::t("month"),
-			"week"  => L10n::t("week"),
-			"day"   => L10n::t("day"),
+			"today" => DI::l10n()->t("today"),
+			"month" => DI::l10n()->t("month"),
+			"week"  => DI::l10n()->t("week"),
+			"day"   => DI::l10n()->t("day"),
 
-			"noevent" => L10n::t("No events to display"),
+			"noevent" => DI::l10n()->t("No events to display"),
 
-			"dtstart_label"  => L10n::t("Starts:"),
-			"dtend_label"    => L10n::t("Finishes:"),
-			"location_label" => L10n::t("Location:")
+			"dtstart_label"  => DI::l10n()->t("Starts:"),
+			"dtend_label"    => DI::l10n()->t("Finishes:"),
+			"location_label" => DI::l10n()->t("Location:")
 		];
 
 		return $i18n;
 	}
 
 	/**
-	 * @brief Removes duplicated birthday events.
+	 * Removes duplicated birthday events.
 	 *
 	 * @param array $dates Array of possibly duplicated events.
 	 * @return array Cleaned events.
@@ -464,7 +478,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Get an event by its event ID.
+	 * Get an event by its event ID.
 	 *
 	 * @param int    $owner_uid The User ID of the owner of the event
 	 * @param int    $event_id  The ID of the event in the event table
@@ -497,7 +511,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Get all events in a specific time frame.
+	 * Get all events in a specific time frame.
 	 *
 	 * @param int    $owner_uid    The User ID of the owner of the events.
 	 * @param array  $event_params An associative array with
@@ -547,7 +561,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Convert an array query results in an array which could be used by the events template.
+	 * Convert an array query results in an array which could be used by the events template.
 	 *
 	 * @param array $event_result Event query array.
 	 * @return array Event array for the template.
@@ -559,7 +573,7 @@ class Event extends BaseObject
 		$event_list = [];
 
 		$last_date = '';
-		$fmt = L10n::t('l, F j');
+		$fmt = DI::l10n()->t('l, F j');
 		foreach ($event_result as $event) {
 			$item = Item::selectFirst(['plink', 'author-name', 'author-avatar', 'author-link'], ['id' => $event['itemid']]);
 			if (!DBA::isResult($item)) {
@@ -572,7 +586,7 @@ class Event extends BaseObject
 			$start = $event['adjust'] ? DateTimeFormat::local($event['start'], 'c')  : DateTimeFormat::utc($event['start'], 'c');
 			$j     = $event['adjust'] ? DateTimeFormat::local($event['start'], 'j')  : DateTimeFormat::utc($event['start'], 'j');
 			$day   = $event['adjust'] ? DateTimeFormat::local($event['start'], $fmt) : DateTimeFormat::utc($event['start'], $fmt);
-			$day   = L10n::getDay($day);
+			$day   = DI::l10n()->getDay($day);
 
 			if ($event['nofinish']) {
 				$end = null;
@@ -590,9 +604,9 @@ class Event extends BaseObject
 			$copy = null;
 			$drop = null;
 			if (local_user() && local_user() == $event['uid'] && $event['type'] == 'event') {
-				$edit = !$event['cid'] ? [System::baseUrl() . '/events/event/' . $event['id'], L10n::t('Edit event')     , '', ''] : null;
-				$copy = !$event['cid'] ? [System::baseUrl() . '/events/copy/' . $event['id'] , L10n::t('Duplicate event'), '', ''] : null;
-				$drop =                  [System::baseUrl() . '/events/drop/' . $event['id'] , L10n::t('Delete event')   , '', ''];
+				$edit = !$event['cid'] ? [DI::baseUrl() . '/events/event/' . $event['id'], DI::l10n()->t('Edit event')     , '', ''] : null;
+				$copy = !$event['cid'] ? [DI::baseUrl() . '/events/copy/' . $event['id'] , DI::l10n()->t('Duplicate event'), '', ''] : null;
+				$drop =                  [DI::baseUrl() . '/events/drop/' . $event['id'] , DI::l10n()->t('Delete event')   , '', ''];
 			}
 
 			$title = BBCode::convert(Strings::escapeHtml($event['summary']));
@@ -624,7 +638,7 @@ class Event extends BaseObject
 				'is_first' => $is_first,
 				'item'     => $event,
 				'html'     => $html,
-				'plink'    => [$event['plink'], L10n::t('link to source'), '', ''],
+				'plink'    => [$event['plink'], DI::l10n()->t('link to source'), '', ''],
 			];
 		}
 
@@ -632,7 +646,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Format event to export format (ical/csv).
+	 * Format event to export format (ical/csv).
 	 *
 	 * @param array  $events Query result for events.
 	 * @param string $format The output format (ical/csv).
@@ -739,7 +753,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Get all events for a user ID.
+	 * Get all events for a user ID.
 	 *
 	 *    The query for events is done permission sensitive.
 	 *    If the user is the owner of the calendar they
@@ -833,7 +847,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Format an item array with event data to HTML.
+	 * Format an item array with event data to HTML.
 	 *
 	 * @param array $item Array with item and event data.
 	 * @return string HTML output.
@@ -845,19 +859,19 @@ class Event extends BaseObject
 		$finish    = false;
 
 		// Set the different time formats.
-		$dformat       = L10n::t('l F d, Y \@ g:i A'); // Friday January 18, 2011 @ 8:01 AM.
-		$dformat_short = L10n::t('D g:i A'); // Fri 8:01 AM.
-		$tformat       = L10n::t('g:i A'); // 8:01 AM.
+		$dformat       = DI::l10n()->t('l F d, Y \@ g:i A'); // Friday January 18, 2011 @ 8:01 AM.
+		$dformat_short = DI::l10n()->t('D g:i A'); // Fri 8:01 AM.
+		$tformat       = DI::l10n()->t('g:i A'); // 8:01 AM.
 
 		// Convert the time to different formats.
-		$dtstart_dt = L10n::getDay(
+		$dtstart_dt = DI::l10n()->getDay(
 			$item['event-adjust'] ?
 				DateTimeFormat::local($item['event-start'], $dformat)
 				: DateTimeFormat::utc($item['event-start'], $dformat)
 		);
 		$dtstart_title = DateTimeFormat::utc($item['event-start'], $item['event-adjust'] ? DateTimeFormat::ATOM : 'Y-m-d\TH:i:s');
 		// Format: Jan till Dec.
-		$month_short = L10n::getDayShort(
+		$month_short = DI::l10n()->getDayShort(
 			$item['event-adjust'] ?
 				DateTimeFormat::local($item['event-start'], 'M')
 				: DateTimeFormat::utc($item['event-start'], 'M')
@@ -869,7 +883,7 @@ class Event extends BaseObject
 		$start_time = $item['event-adjust'] ?
 			DateTimeFormat::local($item['event-start'], $tformat)
 			: DateTimeFormat::utc($item['event-start'], $tformat);
-		$start_short = L10n::getDayShort(
+		$start_short = DI::l10n()->getDayShort(
 			$item['event-adjust'] ?
 				DateTimeFormat::local($item['event-start'], $dformat_short)
 				: DateTimeFormat::utc($item['event-start'], $dformat_short)
@@ -878,13 +892,13 @@ class Event extends BaseObject
 		// If the option 'nofinisch' isn't set, we need to format the finish date/time.
 		if (!$item['event-nofinish']) {
 			$finish = true;
-			$dtend_dt  = L10n::getDay(
+			$dtend_dt  = DI::l10n()->getDay(
 				$item['event-adjust'] ?
 					DateTimeFormat::local($item['event-finish'], $dformat)
 					: DateTimeFormat::utc($item['event-finish'], $dformat)
 			);
 			$dtend_title = DateTimeFormat::utc($item['event-finish'], $item['event-adjust'] ? DateTimeFormat::ATOM : 'Y-m-d\TH:i:s');
-			$end_short = L10n::getDayShort(
+			$end_short = DI::l10n()->getDayShort(
 				$item['event-adjust'] ?
 					DateTimeFormat::local($item['event-finish'], $dformat_short)
 					: DateTimeFormat::utc($item['event-finish'], $dformat_short)
@@ -913,11 +927,11 @@ class Event extends BaseObject
 		$return = Renderer::replaceMacros($tpl, [
 			'$id'             => $item['event-id'],
 			'$title'          => BBCode::convert($item['event-summary']),
-			'$dtstart_label'  => L10n::t('Starts:'),
+			'$dtstart_label'  => DI::l10n()->t('Starts:'),
 			'$dtstart_title'  => $dtstart_title,
 			'$dtstart_dt'     => $dtstart_dt,
 			'$finish'         => $finish,
-			'$dtend_label'    => L10n::t('Finishes:'),
+			'$dtend_label'    => DI::l10n()->t('Finishes:'),
 			'$dtend_title'    => $dtend_title,
 			'$dtend_dt'       => $dtend_dt,
 			'$month_short'    => $month_short,
@@ -931,10 +945,10 @@ class Event extends BaseObject
 			'$author_link'    => $profile_link,
 			'$author_avatar'  => $item['author-avatar'],
 			'$description'    => BBCode::convert($item['event-desc']),
-			'$location_label' => L10n::t('Location:'),
-			'$show_map_label' => L10n::t('Show map'),
-			'$hide_map_label' => L10n::t('Hide map'),
-			'$map_btn_label'  => L10n::t('Show map'),
+			'$location_label' => DI::l10n()->t('Location:'),
+			'$show_map_label' => DI::l10n()->t('Show map'),
+			'$hide_map_label' => DI::l10n()->t('Hide map'),
+			'$map_btn_label'  => DI::l10n()->t('Show map'),
 			'$location'       => $location
 		]);
 
@@ -942,7 +956,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Format a string with map bbcode to an array with location data.
+	 * Format a string with map bbcode to an array with location data.
 	 *
 	 * Note: The string must only contain location data. A string with no bbcode will be
 	 * handled as location name.
@@ -993,7 +1007,7 @@ class Event extends BaseObject
 	}
 
 	/**
-	 * @brief Add new birthday event for this person
+	 * Add new birthday event for this person
 	 *
 	 * @param array  $contact  Contact array, expects: id, uid, url, name
 	 * @param string $birthday Birthday of the contact
@@ -1025,8 +1039,8 @@ class Event extends BaseObject
 			'cid'     => $contact['id'],
 			'start'   => DateTimeFormat::utc($birthday),
 			'finish'  => DateTimeFormat::utc($birthday . ' + 1 day '),
-			'summary' => L10n::t('%s\'s birthday', $contact['name']),
-			'desc'    => L10n::t('Happy Birthday %s', ' [url=' . $contact['url'] . ']' . $contact['name'] . '[/url]'),
+			'summary' => DI::l10n()->t('%s\'s birthday', $contact['name']),
+			'desc'    => DI::l10n()->t('Happy Birthday %s', ' [url=' . $contact['url'] . ']' . $contact['name'] . '[/url]'),
 			'type'    => 'birthday',
 			'adjust'  => 0
 		];

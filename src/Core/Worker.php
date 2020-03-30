@@ -1,24 +1,35 @@
 <?php
 /**
- * @file src/Core/Worker.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Core;
 
-use Friendica\BaseObject;
 use Friendica\Core;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Process;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 
 /**
- * @file src/Core/Worker.php
- *
- * @brief Contains the class for the worker background job processing
- */
-
-/**
- * @brief Worker methods
+ * Contains the class for the worker background job processing
  */
 class Worker
 {
@@ -40,7 +51,7 @@ class Worker
 	private static $state;
 
 	/**
-	 * @brief Processes the tasks that are in the workerqueue table
+	 * Processes the tasks that are in the workerqueue table
 	 *
 	 * @param boolean $run_cron Should the cron processes be executed?
 	 * @return void
@@ -48,15 +59,13 @@ class Worker
 	 */
 	public static function processQueue($run_cron = true)
 	{
-		$a = \get_app();
-
 		// Ensure that all "strtotime" operations do run timezone independent
 		date_default_timezone_set('UTC');
 
 		self::$up_start = microtime(true);
 
 		// At first check the maximum load. We shouldn't continue with a high load
-		if ($a->isMaxLoadReached()) {
+		if (DI::process()->isMaxLoadReached()) {
 			Logger::log('Pre check: maximum load reached, quitting.', Logger::DEBUG);
 			return;
 		}
@@ -65,9 +74,9 @@ class Worker
 		self::startProcess();
 
 		// Kill stale processes every 5 minutes
-		$last_cleanup = Config::get('system', 'worker_last_cleaned', 0);
+		$last_cleanup = DI::config()->get('system', 'worker_last_cleaned', 0);
 		if (time() > ($last_cleanup + 300)) {
-			Config::set('system', 'worker_last_cleaned', time());
+			DI::config()->set('system', 'worker_last_cleaned', time());
 			self::killStaleWorkers();
 		}
 
@@ -78,7 +87,7 @@ class Worker
 		}
 
 		// Do we have too few memory?
-		if ($a->isMinMemoryReached()) {
+		if (DI::process()->isMinMemoryReached()) {
 			Logger::log('Pre check: Memory limit reached, quitting.', Logger::DEBUG);
 			return;
 		}
@@ -90,7 +99,7 @@ class Worker
 		}
 
 		// Possibly there are too much database processes that block the system
-		if ($a->isMaxProcessesReached()) {
+		if (DI::process()->isMaxProcessesReached()) {
 			Logger::log('Pre check: maximum processes reached, quitting.', Logger::DEBUG);
 			return;
 		}
@@ -117,9 +126,9 @@ class Worker
 				}
 
 				// Trying to fetch new processes - but only once when successful
-				if (!$refetched && Lock::acquire('worker_process', 0)) {
+				if (!$refetched && DI::lock()->acquire('worker_process', 0)) {
 					self::findWorkerProcesses();
-					Lock::release('worker_process');
+					DI::lock()->release('worker_process');
 					self::$state = self::STATE_REFETCH;
 					$refetched = true;
 				} else {
@@ -131,26 +140,26 @@ class Worker
 			if (!self::getWaitingJobForPID()) {
 				self::$state = self::STATE_LONG_LOOP;
 
-				if (Lock::acquire('worker', 0)) {
+				if (DI::lock()->acquire('worker', 0)) {
 				// Count active workers and compare them with a maximum value that depends on the load
 					if (self::tooMuchWorkers()) {
 						Logger::log('Active worker limit reached, quitting.', Logger::DEBUG);
-						Lock::release('worker');
+						DI::lock()->release('worker');
 						return;
 					}
 
 					// Check free memory
-					if ($a->isMinMemoryReached()) {
+					if (DI::process()->isMinMemoryReached()) {
 						Logger::log('Memory limit reached, quitting.', Logger::DEBUG);
-						Lock::release('worker');
+						DI::lock()->release('worker');
 						return;
 					}
-					Lock::release('worker');
+					DI::lock()->release('worker');
 				}
 			}
 
 			// Quit the worker once every cron interval
-			if (time() > ($starttime + (Config::get('system', 'cron_interval') * 60))) {
+			if (time() > ($starttime + (DI::config()->get('system', 'cron_interval') * 60))) {
 				Logger::info('Process lifetime reached, respawning.');
 				self::spawnWorker();
 				return;
@@ -158,14 +167,14 @@ class Worker
 		}
 
 		// Cleaning up. Possibly not needed, but it doesn't harm anything.
-		if (Config::get('system', 'worker_daemon_mode', false)) {
+		if (DI::config()->get('system', 'worker_daemon_mode', false)) {
 			self::IPCSetJobState(false);
 		}
 		Logger::log("Couldn't select a workerqueue entry, quitting process " . getmypid() . ".", Logger::DEBUG);
 	}
 
 	/**
-	 * @brief Check if non executed tasks do exist in the worker queue
+	 * Check if non executed tasks do exist in the worker queue
 	 *
 	 * @return boolean Returns "true" if tasks are existing
 	 * @throws \Exception
@@ -179,7 +188,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the number of deferred entries in the worker queue
+	 * Returns the number of deferred entries in the worker queue
 	 *
 	 * @return integer Number of deferred entries in the worker queue
 	 * @throws \Exception
@@ -194,7 +203,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the number of non executed entries in the worker queue
+	 * Returns the number of non executed entries in the worker queue
 	 *
 	 * @return integer Number of non executed entries in the worker queue
 	 * @throws \Exception
@@ -209,7 +218,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the highest priority in the worker queue that isn't executed
+	 * Returns the highest priority in the worker queue that isn't executed
 	 *
 	 * @return integer Number of active worker processes
 	 * @throws \Exception
@@ -228,7 +237,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns if a process with the given priority is running
+	 * Returns if a process with the given priority is running
 	 *
 	 * @param integer $priority The priority that should be checked
 	 *
@@ -242,7 +251,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Execute a worker entry
+	 * Execute a worker entry
 	 *
 	 * @param array $queue Workerqueue entry
 	 *
@@ -251,18 +260,16 @@ class Worker
 	 */
 	public static function execute($queue)
 	{
-		$a = \get_app();
-
 		$mypid = getmypid();
 
 		// Quit when in maintenance
-		if (Config::get('system', 'maintenance', false, true)) {
+		if (DI::config()->get('system', 'maintenance', false, true)) {
 			Logger::log("Maintenance mode - quit process ".$mypid, Logger::DEBUG);
 			return false;
 		}
 
 		// Constantly check the number of parallel database processes
-		if ($a->isMaxProcessesReached()) {
+		if (DI::process()->isMaxProcessesReached()) {
 			Logger::log("Max processes reached for process ".$mypid, Logger::DEBUG);
 			return false;
 		}
@@ -301,7 +308,7 @@ class Worker
 			$stamp = (float)microtime(true);
 			$condition = ["`id` = ? AND `next_try` < ?", $queue['id'], DateTimeFormat::utcNow()];
 			if (DBA::update('workerqueue', ['done' => true], $condition)) {
-				Config::set('system', 'last_worker_execution', DateTimeFormat::utcNow());
+				DI::config()->set('system', 'last_worker_execution', DateTimeFormat::utcNow());
 			}
 			self::$db_duration = (microtime(true) - $stamp);
 			self::$db_duration_write += (microtime(true) - $stamp);
@@ -347,7 +354,7 @@ class Worker
 
 			$stamp = (float)microtime(true);
 			if (DBA::update('workerqueue', ['done' => true], ['id' => $queue["id"]])) {
-				Config::set('system', 'last_worker_execution', DateTimeFormat::utcNow());
+				DI::config()->set('system', 'last_worker_execution', DateTimeFormat::utcNow());
 			}
 			self::$db_duration = (microtime(true) - $stamp);
 			self::$db_duration_write += (microtime(true) - $stamp);
@@ -363,7 +370,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Execute a function from the queue
+	 * Execute a function from the queue
 	 *
 	 * @param array   $queue       Workerqueue entry
 	 * @param string  $funcname    name of the function
@@ -374,7 +381,7 @@ class Worker
 	 */
 	private static function execFunction($queue, $funcname, $argv, $method_call)
 	{
-		$a = \get_app();
+		$a = DI::app();
 
 		$argc = count($argv);
 
@@ -386,7 +393,7 @@ class Worker
 
 		// We use the callstack here to analyze the performance of executed worker entries.
 		// For this reason the variables have to be initialized.
-		$a->getProfiler()->reset();
+		DI::profiler()->reset();
 
 		$a->queue = $queue;
 
@@ -443,9 +450,9 @@ class Worker
 
 		Logger::info('Process done.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'duration' => round($duration, 3)]);
 
-		$a->getProfiler()->saveLog($a->getLogger(), "ID " . $queue["id"] . ": " . $funcname);
+		DI::profiler()->saveLog(DI::logger(), "ID " . $queue["id"] . ": " . $funcname);
 
-		$cooldown = Config::get("system", "worker_cooldown", 0);
+		$cooldown = DI::config()->get("system", "worker_cooldown", 0);
 
 		if ($cooldown > 0) {
 			Logger::info('Cooldown.', ['priority' => $queue["priority"], 'id' => $queue["id"], 'cooldown' => $cooldown]);
@@ -454,7 +461,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Checks if the number of database connections has reached a critical limit.
+	 * Checks if the number of database connections has reached a critical limit.
 	 *
 	 * @return bool Are more than 3/4 of the maximum connections used?
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -462,10 +469,10 @@ class Worker
 	private static function maxConnectionsReached()
 	{
 		// Fetch the max value from the config. This is needed when the system cannot detect the correct value by itself.
-		$max = Config::get("system", "max_connections");
+		$max = DI::config()->get("system", "max_connections");
 
 		// Fetch the percentage level where the worker will get active
-		$maxlevel = Config::get("system", "max_connections_level", 75);
+		$maxlevel = DI::config()->get("system", "max_connections_level", 75);
 
 		if ($max == 0) {
 			// the maximum number of possible user connections can be a system variable
@@ -537,7 +544,8 @@ class Worker
 	}
 
 	/**
-	 * @brief fix the queue entry if the worker process died
+	 * fix the queue entry if the worker process died
+	 *
 	 * @return void
 	 * @throws \Exception
 	 */
@@ -609,14 +617,14 @@ class Worker
 	}
 
 	/**
-	 * @brief Checks if the number of active workers exceeds the given limits
+	 * Checks if the number of active workers exceeds the given limits
 	 *
 	 * @return bool Are there too much workers running?
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	private static function tooMuchWorkers()
 	{
-		$queues = Config::get("system", "worker_queues", 10);
+		$queues = DI::config()->get("system", "worker_queues", 10);
 
 		$maxqueues = $queues;
 
@@ -625,21 +633,21 @@ class Worker
 		// Decrease the number of workers at higher load
 		$load = System::currentLoad();
 		if ($load) {
-			$maxsysload = intval(Config::get("system", "maxloadavg", 20));
+			$maxsysload = intval(DI::config()->get("system", "maxloadavg", 20));
 
 			/* Default exponent 3 causes queues to rapidly decrease as load increases.
 			 * If you have 20 max queues at idle, then you get only 5 queues at 37.1% of $maxsysload.
 			 * For some environments, this rapid decrease is not needed.
 			 * With exponent 1, you could have 20 max queues at idle and 13 at 37% of $maxsysload.
 			 */
-			$exponent = intval(Config::get('system', 'worker_load_exponent', 3));
+			$exponent = intval(DI::config()->get('system', 'worker_load_exponent', 3));
 			$slope = pow(max(0, $maxsysload - $load) / $maxsysload, $exponent);
 			$queues = intval(ceil($slope * $maxqueues));
 
 			$processlist = '';
 
-			if (Config::get('system', 'worker_jpm')) {
-				$intervals = explode(',', Config::get('system', 'worker_jpm_range'));
+			if (DI::config()->get('system', 'worker_jpm')) {
+				$intervals = explode(',', DI::config()->get('system', 'worker_jpm_range'));
 				$jobs_per_minute = [];
 				foreach ($intervals as $interval) {
 					if ($interval == 0) {
@@ -667,7 +675,7 @@ class Worker
 
 			$deferred = self::deferredEntries();
 
-			if (Config::get('system', 'worker_debug')) {
+			if (DI::config()->get('system', 'worker_debug')) {
 				$waiting_processes = 0;
 				// Now adding all processes with workerqueue entries
 				$stamp = (float)microtime(true);
@@ -707,7 +715,7 @@ class Worker
 
 			$processlist .= ' ('.implode(', ', $listitem).')';
 
-			if (Config::get("system", "worker_fastlane", false) && ($queues > 0) && ($active >= $queues) && self::entriesExists()) {
+			if (DI::config()->get("system", "worker_fastlane", false) && ($queues > 0) && ($active >= $queues) && self::entriesExists()) {
 				$top_priority = self::highestPriority();
 				$high_running = self::processWithPriorityActive($top_priority);
 
@@ -720,9 +728,9 @@ class Worker
 			Logger::log("Load: " . $load ."/" . $maxsysload . " - processes: " . $deferred . "/" . $active . "/" . $waiting_processes . $processlist . " - maximum: " . $queues . "/" . $maxqueues, Logger::DEBUG);
 
 			// Are there fewer workers running as possible? Then fork a new one.
-			if (!Config::get("system", "worker_dont_fork", false) && ($queues > ($active + 1)) && self::entriesExists()) {
+			if (!DI::config()->get("system", "worker_dont_fork", false) && ($queues > ($active + 1)) && self::entriesExists()) {
 				Logger::log("Active workers: ".$active."/".$queues." Fork a new worker.", Logger::DEBUG);
-				if (Config::get('system', 'worker_daemon_mode', false)) {
+				if (DI::config()->get('system', 'worker_daemon_mode', false)) {
 					self::IPCSetJobState(true);
 				} else {
 					self::spawnWorker();
@@ -731,7 +739,7 @@ class Worker
 		}
 
 		// if there are too much worker, we don't spawn a new one.
-		if (Config::get('system', 'worker_daemon_mode', false) && ($active > $queues)) {
+		if (DI::config()->get('system', 'worker_daemon_mode', false) && ($active > $queues)) {
 			self::IPCSetJobState(false);
 		}
 
@@ -739,7 +747,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the number of active worker processes
+	 * Returns the number of active worker processes
 	 *
 	 * @return integer Number of active worker processes
 	 * @throws \Exception
@@ -753,7 +761,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns waiting jobs for the current process id
+	 * Returns waiting jobs for the current process id
 	 *
 	 * @return array waiting workerqueue jobs
 	 * @throws \Exception
@@ -772,7 +780,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the next jobs that should be executed
+	 * Returns the next jobs that should be executed
 	 *
 	 * @return array array with next jobs
 	 * @throws \Exception
@@ -785,7 +793,7 @@ class Worker
 			return [];
 		}
 
-		$limit = Config::get('system', 'worker_fetch_limit', 1);
+		$limit = DI::config()->get('system', 'worker_fetch_limit', 1);
 
 		$ids = [];
 		$stamp = (float)microtime(true);
@@ -807,7 +815,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the priority of the next workerqueue job
+	 * Returns the priority of the next workerqueue job
 	 *
 	 * @return string priority
 	 * @throws \Exception
@@ -880,7 +888,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Find and claim the next worker process for us
+	 * Find and claim the next worker process for us
 	 *
 	 * @return boolean Have we found something?
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -893,7 +901,7 @@ class Worker
 
 		// If there is no result we check without priority limit
 		if (empty($ids)) {
-			$limit = Config::get('system', 'worker_fetch_limit', 1);
+			$limit = DI::config()->get('system', 'worker_fetch_limit', 1);
 
 			$stamp = (float)microtime(true);
 			$condition = ["`pid` = 0 AND NOT `done` AND `next_try` < ?", DateTimeFormat::utcNow()];
@@ -923,7 +931,7 @@ class Worker
 	}
 
 	/**
-	 * @brief Returns the next worker process
+	 * Returns the next worker process
 	 *
 	 * @return string SQL statement
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -937,14 +945,14 @@ class Worker
 		}
 
 		$stamp = (float)microtime(true);
-		if (!Lock::acquire('worker_process')) {
+		if (!DI::lock()->acquire('worker_process')) {
 			return false;
 		}
 		self::$lock_duration += (microtime(true) - $stamp);
 
 		$found = self::findWorkerProcesses();
 
-		Lock::release('worker_process');
+		DI::lock()->release('worker_process');
 
 		if ($found) {
 			$stamp = (float)microtime(true);
@@ -956,7 +964,8 @@ class Worker
 	}
 
 	/**
-	 * @brief Removes a workerqueue entry from the current process
+	 * Removes a workerqueue entry from the current process
+	 *
 	 * @return void
 	 * @throws \Exception
 	 */
@@ -971,28 +980,30 @@ class Worker
 	}
 
 	/**
-	 * @brief Call the front end worker
+	 * Call the front end worker
+	 *
 	 * @return void
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function callWorker()
 	{
-		if (!Config::get("system", "frontend_worker")) {
+		if (!DI::config()->get("system", "frontend_worker")) {
 			return;
 		}
 
-		$url = System::baseUrl()."/worker";
+		$url = DI::baseUrl() . '/worker';
 		Network::fetchUrl($url, false, 1);
 	}
 
 	/**
-	 * @brief Call the front end worker if there aren't any active
+	 * Call the front end worker if there aren't any active
+	 *
 	 * @return void
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function executeIfIdle()
 	{
-		if (!Config::get("system", "frontend_worker")) {
+		if (!DI::config()->get("system", "frontend_worker")) {
 			return;
 		}
 
@@ -1000,11 +1011,11 @@ class Worker
 		if (function_exists("proc_open")) {
 			// When was the last time that we called the worker?
 			// Less than one minute? Then we quit
-			if ((time() - Config::get("system", "worker_started")) < 60) {
+			if ((time() - DI::config()->get("system", "worker_started")) < 60) {
 				return;
 			}
 
-			Config::set("system", "worker_started", time());
+			DI::config()->set("system", "worker_started", time());
 
 			// Do we have enough running workers? Then we quit here.
 			if (self::tooMuchWorkers()) {
@@ -1037,13 +1048,14 @@ class Worker
 	}
 
 	/**
-	 * @brief Removes long running worker processes
+	 * Removes long running worker processes
+	 *
 	 * @return void
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function clearProcesses()
 	{
-		$timeout = Config::get("system", "frontend_worker_timeout", 10);
+		$timeout = DI::config()->get("system", "frontend_worker_timeout", 10);
 
 		/// @todo We should clean up the corresponding workerqueue entries as well
 		$stamp = (float)microtime(true);
@@ -1055,7 +1067,8 @@ class Worker
 	}
 
 	/**
-	 * @brief Runs the cron processes
+	 * Runs the cron processes
+	 *
 	 * @return void
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
@@ -1074,7 +1087,8 @@ class Worker
 	}
 
 	/**
-	 * @brief Spawns a new worker
+	 * Spawns a new worker
+	 *
 	 * @param bool $do_cron
 	 * @return void
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -1085,18 +1099,18 @@ class Worker
 
 		$args = ['no_cron' => !$do_cron];
 
-		$a = get_app();
-		$process = new Core\Process($a->getLogger(), $a->getMode(), $a->getConfig(), $a->getBasePath());
+		$a = DI::app();
+		$process = new Core\Process(DI::logger(), DI::mode(), DI::config(), $a->getBasePath());
 		$process->run($command, $args);
 
 		// after spawning we have to remove the flag.
-		if (Config::get('system', 'worker_daemon_mode', false)) {
+		if (DI::config()->get('system', 'worker_daemon_mode', false)) {
 			self::IPCSetJobState(false);
 		}
 	}
 
 	/**
-	 * @brief Adds tasks to the worker queue
+	 * Adds tasks to the worker queue
 	 *
 	 * @param (integer|array) priority or parameter array, strings are deprecated and are ignored
 	 *
@@ -1129,7 +1143,7 @@ class Worker
 
 		$priority = PRIORITY_MEDIUM;
 		// Don't fork from frontend tasks by default
-		$dont_fork = Config::get("system", "worker_dont_fork", false) || !\get_app()->getMode()->isBackend();
+		$dont_fork = DI::config()->get("system", "worker_dont_fork", false) || !DI::mode()->isBackend();
 		$created = DateTimeFormat::utcNow();
 		$force_priority = false;
 
@@ -1176,20 +1190,20 @@ class Worker
 		}
 
 		// If there is a lock then we don't have to check for too much worker
-		if (!Lock::acquire('worker', 0)) {
+		if (!DI::lock()->acquire('worker', 0)) {
 			return $added;
 		}
 
 		// If there are already enough workers running, don't fork another one
 		$quit = self::tooMuchWorkers();
-		Lock::release('worker');
+		DI::lock()->release('worker');
 
 		if ($quit) {
 			return $added;
 		}
 
 		// We tell the daemon that a new job entry exists
-		if (Config::get('system', 'worker_daemon_mode', false)) {
+		if (DI::config()->get('system', 'worker_daemon_mode', false)) {
 			// We don't have to set the IPC flag - this is done in "tooMuchWorkers"
 			return $added;
 		}
@@ -1228,21 +1242,22 @@ class Worker
 
 	/**
 	 * Defers the current worker entry
+	 *
 	 * @return boolean had the entry been deferred?
 	 */
 	public static function defer()
 	{
-		if (empty(BaseObject::getApp()->queue)) {
+		if (empty(DI::app()->queue)) {
 			return false;
 		}
 
-		$queue = BaseObject::getApp()->queue;
+		$queue = DI::app()->queue;
 
 		$retrial = $queue['retrial'];
 		$id = $queue['id'];
 		$priority = $queue['priority'];
 
-		$max_level = Config::get('system', 'worker_defer_limit');
+		$max_level = DI::config()->get('system', 'worker_defer_limit');
 
 		$new_retrial = self::getNextRetrial($queue, $max_level);
 
@@ -1276,8 +1291,6 @@ class Worker
 
 	/**
 	 * Log active processes into the "process" table
-	 *
-	 * @brief Log active processes into the "process" table
 	 */
 	public static function startProcess()
 	{
@@ -1293,7 +1306,6 @@ class Worker
 	/**
 	 * Remove the active process from the "process" table
 	 *
-	 * @brief Remove the active process from the "process" table
 	 * @return bool
 	 * @throws \Exception
 	 */
@@ -1305,7 +1317,6 @@ class Worker
 	/**
 	 * Set the flag if some job is waiting
 	 *
-	 * @brief Set the flag if some job is waiting
 	 * @param boolean $jobs Is there a waiting job?
 	 * @throws \Exception
 	 */
@@ -1320,7 +1331,6 @@ class Worker
 	/**
 	 * Checks if some worker job waits to be executed
 	 *
-	 * @brief Checks if some worker job waits to be executed
 	 * @return bool
 	 * @throws \Exception
 	 */

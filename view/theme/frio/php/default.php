@@ -1,15 +1,30 @@
 <?php
 /**
- * @file view/theme/frio/php/modes/default.php
- * @brief The default site template
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * The default site template
  */
+
 ?>
 <!DOCTYPE html >
 <?php
 
-use Friendica\Core\Config;
-use Friendica\Core\PConfig;
-use Friendica\Core\System;
+use Friendica\DI;
 use Friendica\Model\Profile;
 
 require_once 'view/theme/frio/php/frio_boot.php';
@@ -19,17 +34,17 @@ if (!isset($minimal)) {
 	$minimal = false;
 }
 
-$basepath = $a->getURLPath() ? "/" . $a->getURLPath() . "/" : "/";
+$basepath = DI::baseUrl()->getUrlPath() ? "/" . DI::baseUrl()->getUrlPath() . "/" : "/";
 $frio = "view/theme/frio";
-$view_mode_class = ($a->is_mobile || $a->is_tablet) ? 'mobile-view' : 'desktop-view';
-$is_singleuser = Config::get('system', 'singleuser');
+$view_mode_class = (DI::mode()->isMobile() || DI::mode()->isMobile()) ? 'mobile-view' : 'desktop-view';
+$is_singleuser = DI::config()->get('system', 'singleuser');
 $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 ?>
 <html>
 	<head>
 		<title><?php if (!empty($page['title'])) echo $page['title'] ?></title>
 		<meta request="<?php echo htmlspecialchars($_REQUEST['pagename'] ?? '') ?>">
-		<script  type="text/javascript">var baseurl = "<?php echo System::baseUrl(); ?>";</script>
+		<script  type="text/javascript">var baseurl = "<?php echo DI::baseUrl(); ?>";</script>
 		<script type="text/javascript">var frio = "<?php echo 'view/theme/frio'; ?>";</script>
 <?php
 		// Because we use minimal for modals the header and the included js stuff should be only loaded
@@ -43,18 +58,18 @@ $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 		// Add the theme color meta
 		// It makes mobile Chrome UI match Frio's top bar color.
 		$uid = Profile::getThemeUid($a);
-		$scheme = PConfig::get($uid, 'frio', 'scheme', PConfig::get($uid, 'frio', 'schema'));
+		$scheme = DI::pConfig()->get($uid, 'frio', 'scheme', DI::pConfig()->get($uid, 'frio', 'schema'));
 		if ($scheme && is_string($scheme) && $scheme != '---') {
 			if (file_exists('view/theme/frio/scheme/' . $scheme . '.php')) {
 				$schemefile = 'view/theme/frio/scheme/' . $scheme . '.php';
 				require_once $schemefile;
 			}
 		} else {
-			$nav_bg = PConfig::get($uid, 'frio', 'nav_bg');
+			$nav_bg = DI::pConfig()->get($uid, 'frio', 'nav_bg');
 		}
 
 		if (empty($nav_bg)) {
-			$nav_bg = Config::get('frio', 'nav_bg');
+			$nav_bg = DI::config()->get('frio', 'nav_bg');
 		}
 
 		if (empty($nav_bg) || !is_string($nav_bg)) {
@@ -65,16 +80,16 @@ $is_singleuser_class = $is_singleuser ? "is-singleuser" : "is-not-singleuser";
 ?>
 	</head>
 
-	<body id="top" class="mod-<?php echo $a->module . " " . $is_singleuser_class . " " . $view_mode_class;?>">
-		<a href="#content" class="sr-only sr-only-focusable">Skip to main content</a>
+	<body id="top" class="mod-<?php echo DI::module()->getName() . " " . $is_singleuser_class . " " . $view_mode_class;?>">
+		<a href="#content" class="sr-only sr-only-focusable"><?php echo DI::l10n()->t('Skip to main content'); ?></a>
 <?php
 	if (!empty($page['nav']) && !$minimal) {
 		echo str_replace(
 			"~config.sitename~",
-			Config::get('config', 'sitename'),
+			DI::config()->get('config', 'sitename'),
 			str_replace(
 				"~system.banner~",
-				Config::get('system', 'banner'),
+				DI::config()->get('system', 'banner'),
 				$page['nav']
 			)
 		);

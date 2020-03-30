@@ -1,26 +1,44 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Core\Addon;
-use Friendica\Core\System;
+use Friendica\DI;
+use Friendica\Network\HTTPException\NotFoundException;
 
 class Statistics extends BaseModule
 {
 	public static function init(array $parameters = [])
 	{
-		$config = self::getApp()->getConfig();
-
-		if (!$config->get("system", "nodeinfo")) {
-			throw new \Friendica\Network\HTTPException\NotFoundException();
+		if (!DI::config()->get("system", "nodeinfo")) {
+			throw new NotFoundException();
 		}
 	}
 
 	public static function rawContent(array $parameters = [])
 	{
-		$config = self::getApp()->getConfig();
-		$logger = self::getApp()->getLogger();
+		$config = DI::config();
+		$logger = DI::logger();
 
 		$registration_open =
 			intval($config->get('config', 'register_policy')) !== Register::CLOSED

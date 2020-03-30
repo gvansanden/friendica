@@ -1,15 +1,32 @@
 <?php
 /**
- * @file src/Util/Network.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Util;
 
 use DOMDocument;
 use DomXPath;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
+use Friendica\DI;
 use Friendica\Network\CurlResult;
 
 class Network
@@ -21,7 +38,6 @@ class Network
 	 * Set the cookiejar argument to a string (e.g. "/tmp/friendica-cookies.txt")
 	 * to preserve cookies from one request to the next.
 	 *
-	 * @brief Curl wrapper
 	 * @param string  $url            URL to fetch
 	 * @param bool    $binary         default false
 	 *                                TRUE if asked to return binary results (file download)
@@ -46,7 +62,6 @@ class Network
 	 * Inner workings and parameters are the same as @ref fetchUrl but returns an array with
 	 * all the information collected during the fetch.
 	 *
-	 * @brief Curl wrapper with array of return values.
 	 * @param string  $url            URL to fetch
 	 * @param bool    $binary         default false
 	 *                                TRUE if asked to return binary results (file download)
@@ -73,7 +88,7 @@ class Network
 	}
 
 	/**
-	 * @brief fetches an URL.
+	 * fetches an URL.
 	 *
 	 * @param string  $url       URL to fetch
 	 * @param bool    $binary    default false
@@ -95,7 +110,7 @@ class Network
 	{
 		$stamp1 = microtime(true);
 
-		$a = \get_app();
+		$a = DI::app();
 
 		if (strlen($url) > 1000) {
 			Logger::log('URL is longer than 1000 characters. Callstack: ' . System::callstack(20), Logger::DEBUG);
@@ -152,7 +167,7 @@ class Network
 		@curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 		@curl_setopt($ch, CURLOPT_USERAGENT, $a->getUserAgent());
 
-		$range = intval(Config::get('system', 'curl_range_bytes', 0));
+		$range = intval(DI::config()->get('system', 'curl_range_bytes', 0));
 
 		if ($range > 0) {
 			@curl_setopt($ch, CURLOPT_RANGE, '0-' . $range);
@@ -174,33 +189,33 @@ class Network
 		if (!empty($opts['timeout'])) {
 			@curl_setopt($ch, CURLOPT_TIMEOUT, $opts['timeout']);
 		} else {
-			$curl_time = Config::get('system', 'curl_timeout', 60);
+			$curl_time = DI::config()->get('system', 'curl_timeout', 60);
 			@curl_setopt($ch, CURLOPT_TIMEOUT, intval($curl_time));
 		}
 
 		// by default we will allow self-signed certs
 		// but you can override this
 
-		$check_cert = Config::get('system', 'verifyssl');
+		$check_cert = DI::config()->get('system', 'verifyssl');
 		@curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, (($check_cert) ? true : false));
 
 		if ($check_cert) {
 			@curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 		}
 
-		$proxy = Config::get('system', 'proxy');
+		$proxy = DI::config()->get('system', 'proxy');
 
 		if (strlen($proxy)) {
 			@curl_setopt($ch, CURLOPT_HTTPPROXYTUNNEL, 1);
 			@curl_setopt($ch, CURLOPT_PROXY, $proxy);
-			$proxyuser = @Config::get('system', 'proxyuser');
+			$proxyuser = @DI::config()->get('system', 'proxyuser');
 
 			if (strlen($proxyuser)) {
 				@curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxyuser);
 			}
 		}
 
-		if (Config::get('system', 'ipv4_resolve', false)) {
+		if (DI::config()->get('system', 'ipv4_resolve', false)) {
 			curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 		}
 
@@ -233,13 +248,13 @@ class Network
 
 		@curl_close($ch);
 
-		$a->getProfiler()->saveTimestamp($stamp1, 'network', System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, 'network', System::callstack());
 
 		return $curlResponse;
 	}
 
 	/**
-	 * @brief Send POST request to $url
+	 * Send POST request to $url
 	 *
 	 * @param string  $url       URL to post
 	 * @param mixed   $params    array of POST variables
@@ -259,7 +274,7 @@ class Network
 			return CurlResult::createErrorCurl($url);
 		}
 
-		$a = \get_app();
+		$a = DI::app();
 		$ch = curl_init($url);
 
 		if (($redirects > 8) || (!$ch)) {
@@ -274,14 +289,14 @@ class Network
 		curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
 		curl_setopt($ch, CURLOPT_USERAGENT, $a->getUserAgent());
 
-		if (Config::get('system', 'ipv4_resolve', false)) {
+		if (DI::config()->get('system', 'ipv4_resolve', false)) {
 			curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 		}
 
 		if (intval($timeout)) {
 			curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
 		} else {
-			$curl_time = Config::get('system', 'curl_timeout', 60);
+			$curl_time = DI::config()->get('system', 'curl_timeout', 60);
 			curl_setopt($ch, CURLOPT_TIMEOUT, intval($curl_time));
 		}
 
@@ -289,19 +304,19 @@ class Network
 			curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 		}
 
-		$check_cert = Config::get('system', 'verifyssl');
+		$check_cert = DI::config()->get('system', 'verifyssl');
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, (($check_cert) ? true : false));
 
 		if ($check_cert) {
 			@curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 		}
 
-		$proxy = Config::get('system', 'proxy');
+		$proxy = DI::config()->get('system', 'proxy');
 
 		if (strlen($proxy)) {
 			curl_setopt($ch, CURLOPT_HTTPPROXYTUNNEL, 1);
 			curl_setopt($ch, CURLOPT_PROXY, $proxy);
-			$proxyuser = Config::get('system', 'proxyuser');
+			$proxyuser = DI::config()->get('system', 'proxyuser');
 			if (strlen($proxyuser)) {
 				curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxyuser);
 			}
@@ -325,7 +340,7 @@ class Network
 
 		curl_close($ch);
 
-		$a->getProfiler()->saveTimestamp($stamp1, 'network', System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, 'network', System::callstack());
 
 		// Very old versions of Lighttpd don't like the "Expect" header, so we remove it when needed
 		if ($curlResponse->getReturnCode() == 417) {
@@ -358,7 +373,7 @@ class Network
 	}
 
 	/**
-	 * @brief Check URL to see if it's real
+	 * Check URL to see if it's real
 	 *
 	 * Take a URL from the wild, prepend http:// if necessary
 	 * and check DNS to see if it's real (or check if is a valid IP address)
@@ -369,7 +384,7 @@ class Network
 	 */
 	public static function isUrlValid(string $url)
 	{
-		if (Config::get('system', 'disable_url_validation')) {
+		if (DI::config()->get('system', 'disable_url_validation')) {
 			return $url;
 		}
 
@@ -393,14 +408,14 @@ class Network
 	}
 
 	/**
-	 * @brief Checks that email is an actual resolvable internet address
+	 * Checks that email is an actual resolvable internet address
 	 *
 	 * @param string $addr The email address
 	 * @return boolean True if it's a valid email address, false if it's not
 	 */
 	public static function isEmailDomainValid(string $addr)
 	{
-		if (Config::get('system', 'disable_email_validation')) {
+		if (DI::config()->get('system', 'disable_email_validation')) {
 			return true;
 		}
 
@@ -421,7 +436,7 @@ class Network
 	}
 
 	/**
-	 * @brief Check if URL is allowed
+	 * Check if URL is allowed
 	 *
 	 * Check $url against our list of allowed sites,
 	 * wildcards allowed. If allowed_sites is unset return true;
@@ -437,7 +452,7 @@ class Network
 			return false;
 		}
 
-		$str_allowed = Config::get('system', 'allowed_sites');
+		$str_allowed = DI::config()->get('system', 'allowed_sites');
 		if (! $str_allowed) {
 			return true;
 		}
@@ -481,7 +496,7 @@ class Network
 			return false;
 		}
 
-		$domain_blocklist = Config::get('system', 'blocklist', []);
+		$domain_blocklist = DI::config()->get('system', 'blocklist', []);
 		if (!$domain_blocklist) {
 			return false;
 		}
@@ -496,7 +511,7 @@ class Network
 	}
 
 	/**
-	 * @brief Check if email address is allowed to register here.
+	 * Check if email address is allowed to register here.
 	 *
 	 * Compare against our list (wildcards allowed).
 	 *
@@ -512,7 +527,7 @@ class Network
 			return false;
 		}
 
-		$str_allowed = Config::get('system', 'allowed_email', '');
+		$str_allowed = DI::config()->get('system', 'allowed_email', '');
 		if (empty($str_allowed)) {
 			return true;
 		}
@@ -525,7 +540,6 @@ class Network
 	/**
 	 * Checks for the existence of a domain in a domain list
 	 *
-	 * @brief Checks for the existence of a domain in a domain list
 	 * @param string $domain
 	 * @param array  $domain_list
 	 * @return boolean
@@ -555,7 +569,7 @@ class Network
 		Hook::callAll('avatar_lookup', $avatar);
 
 		if (! $avatar['success']) {
-			$avatar['url'] = System::baseUrl() . '/images/person-300.jpg';
+			$avatar['url'] = DI::baseUrl() . '/images/person-300.jpg';
 		}
 
 		Logger::log('Avatar: ' . $avatar['email'] . ' ' . $avatar['url'], Logger::DEBUG);
@@ -563,7 +577,7 @@ class Network
 	}
 
 	/**
-	 * @brief Remove Google Analytics and other tracking platforms params from URL
+	 * Remove Google Analytics and other tracking platforms params from URL
 	 *
 	 * @param string $url Any user-submitted URL that may contain tracking params
 	 * @return string The same URL stripped of tracking parameters
@@ -612,7 +626,7 @@ class Network
 	}
 
 	/**
-	 * @brief Returns the original URL of the provided URL
+	 * Returns the original URL of the provided URL
 	 *
 	 * This function strips tracking query params and follows redirections, either
 	 * through HTTP code or meta refresh tags. Stops after 10 redirections.
@@ -629,7 +643,7 @@ class Network
 	 */
 	public static function finalUrl(string $url, int $depth = 1, bool $fetchbody = false)
 	{
-		$a = \get_app();
+		$a = DI::app();
 
 		$url = self::stripTrackingQueryParams($url);
 
@@ -654,7 +668,7 @@ class Network
 		$http_code = $curl_info['http_code'];
 		curl_close($ch);
 
-		$a->getProfiler()->saveTimestamp($stamp1, "network", System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, "network", System::callstack());
 
 		if ($http_code == 0) {
 			return $url;
@@ -696,7 +710,7 @@ class Network
 		$body = curl_exec($ch);
 		curl_close($ch);
 
-		$a->getProfiler()->saveTimestamp($stamp1, "network", System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, "network", System::callstack());
 
 		if (trim($body) == "") {
 			return $url;
@@ -732,7 +746,7 @@ class Network
 	}
 
 	/**
-	 * @brief Find the matching part between two url
+	 * Find the matching part between two url
 	 *
 	 * @param string $url1
 	 * @param string $url2
@@ -820,7 +834,7 @@ class Network
 	}
 
 	/**
-	 * @brief Glue url parts together
+	 * Glue url parts together
 	 *
 	 * @param array $parsed URL parts
 	 *
@@ -872,5 +886,28 @@ class Network
 		}
 
 		return $url;
+	}
+
+	/**
+	 * Adds query string parameters to the provided URI. Replace the value of existing keys.
+	 *
+	 * @param string $path
+	 * @param array  $additionalParams Associative array of parameters
+	 * @return string
+	 */
+	public static function appendQueryParam(string $path, array $additionalParams)
+	{
+		$parsed = parse_url($path);
+
+		$params = [];
+		if (!empty($parsed['query'])) {
+			parse_str($parsed['query'], $params);
+		}
+
+		$params = array_merge($params, $additionalParams);
+
+		$parsed['query'] = http_build_query($params);
+
+		return self::unparseURL($parsed);
 	}
 }

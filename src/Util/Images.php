@@ -1,11 +1,29 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Util;
 
-use Friendica\BaseObject;
-use Friendica\Core\Cache;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
+use Friendica\DI;
 use Imagick;
 
 /**
@@ -125,12 +143,12 @@ class Images
 			return $data;
 		}
 
-		$data = Cache::get($url);
+		$data = DI::cache()->get($url);
 
 		if (empty($data) || !is_array($data)) {
 			$data = self::getInfoFromURL($url);
 
-			Cache::set($url, $data);
+			DI::cache()->set($url, $data);
 		}
 
 		return $data;
@@ -165,7 +183,7 @@ class Images
 
 				$stamp1 = microtime(true);
 				file_put_contents($tempfile, $img_str);
-				BaseObject::getApp()->getProfiler()->saveTimestamp($stamp1, "file", System::callstack());
+				DI::profiler()->saveTimestamp($stamp1, "file", System::callstack());
 
 				$data = getimagesize($tempfile);
 				unlink($tempfile);

@@ -33,6 +33,41 @@ function _resizeIframe(obj, desth) {
 	setTimeout(_resizeIframe, 100, obj, ch);
 }
 
+function initWidget(inflated, deflated) {
+	var elInf = document.getElementById(inflated);
+	var elDef = document.getElementById(deflated);
+
+	if (!elInf || !elDef) {
+		return;
+	}
+	if (localStorage.getItem(window.location.pathname.split("/")[1] + ":" + inflated) != "none") {
+		elInf.style.display = "block";
+		elDef.style.display = "none";
+	} else {
+		elInf.style.display = "none";
+		elDef.style.display = "block";
+	}
+}
+
+function openCloseWidget(inflated, deflated) {
+	var elInf = document.getElementById(inflated);
+	var elDef = document.getElementById(deflated);
+
+	if (!elInf || !elDef) {
+		return;
+	}
+
+	if (window.getComputedStyle(elInf).display === "none") {
+		elInf.style.display = "block";
+		elDef.style.display = "none";
+		localStorage.setItem(window.location.pathname.split("/")[1] + ":" + inflated, "block");
+	} else {
+		elInf.style.display = "none";
+		elDef.style.display = "block";
+		localStorage.setItem(window.location.pathname.split("/")[1] + ":" + inflated, "none");
+	}
+}
+
 function openClose(theID) {
 	var el = document.getElementById(theID);
 	if (el) {
@@ -68,6 +103,20 @@ function decodeHtml(html) {
 	txt.innerHTML = html;
 	return txt.value;
 }
+
+/**
+ * Retrieves a single named query string parameter
+ *
+ * @param {string} name
+ * @returns {string}
+ * @see https://davidwalsh.name/query-string-javascript
+ */
+function getUrlParameter(name) {
+	name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+	var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+	var results = regex.exec(location.search);
+	return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+};
 
 var src = null;
 var prev = null;
@@ -123,23 +172,6 @@ $(function() {
 		var end = textarea.selectionEnd;
 		textarea.value = textarea.value.substring(0, start) + bbcode + textarea.value.substring(end, textarea.value.length);
 		$(textarea).trigger('change');
-	});
-
-	/* setup onoff widgets */
-	$(".onoff input").each(function() {
-		val = $(this).val();
-		id = $(this).attr("id");
-		$("#"+id+"_onoff ." + (val == 0 ? "on":"off")).addClass("hidden");
-	});
-
-	$(".onoff > a").click(function(event) {
-		event.preventDefault();
-		var input = $(this).siblings("input");
-		var val = 1-input.val();
-		var id = input.attr("id");
-		$("#"+id+"_onoff ." + (val == 0 ? "on":"off")).addClass("hidden");
-		$("#"+id+"_onoff ." + (val == 1 ? "on":"off")).removeClass("hidden");
-		input.val(val);
 	});
 
 	/* popup menus */
@@ -210,7 +242,7 @@ $(function() {
 			window.location.href=window.location.href
 		}
 
-		['net', 'home', 'intro', 'mail', 'events', 'birthdays', 'notify'].forEach(function(type) {
+		['net', 'home', 'intro', 'mail', 'events', 'birthdays', 'notification'].forEach(function(type) {
 			var number = data[type];
 			if (number == 0) {
 				number = '';
@@ -264,19 +296,19 @@ $(function() {
 			var notification_id = 0;
 
 			// Insert notifs into the notifications-menu
-			$(data.notifications).each(function(key, notif) {
-				var text = notif.message.format('<span class="contactname">' + notif.name + '</span>');
-				var contact = ('<a href="' + notif.url + '"><span class="contactname">' + notif.name + '</span></a>');
-				var seenclass = (notif.seen == 1) ? "notify-seen" : "notify-unseen";
+			$(data.notifications).each(function(key, notification) {
+				var text = notification.message.format('<span class="contactname">' + notification.name + '</span>');
+				var contact = ('<a href="' + notification.url + '"><span class="contactname">' + notification.name + '</span></a>');
+				var seenclass = (notification.seen == 1) ? "notification-seen" : "notification-unseen";
 				var html = notifications_tpl.format(
-					notif.href,                     // {0}  // link to the source
-					notif.photo,                    // {1}  // photo of the contact
+					notification.href,                     // {0}  // link to the source
+					notification.photo,                    // {1}  // photo of the contact
 					text,                           // {2}  // preformatted text (autor + text)
-					notif.date,                     // {3}  // date of notification (time ago)
+					notification.date,                     // {3}  // date of notification (time ago)
 					seenclass,                      // {4}  // visited status of the notification
-					new Date(notif.timestamp*1000), // {5}  // date of notification
-					notif.url,                      // {6}  // profile url of the contact
-					notif.message.format(contact),  // {7}  // preformatted html (text including author profile url)
+					new Date(notification.timestamp*1000), // {5}  // date of notification
+					notification.url,                      // {6}  // profile url of the contact
+					notification.message.format(contact),  // {7}  // preformatted html (text including author profile url)
 					''                              // {8}  // Deprecated
 				);
 				nnm.append(html);
@@ -314,7 +346,7 @@ $(function() {
 			});
 		}
 
-		var notif = data['notify'];
+		var notif = data['notification'];
 		if (notif > 0) {
 			$("#nav-notifications-linkmenu").addClass("on");
 		} else {
@@ -463,7 +495,7 @@ function insertBBCodeInTextarea(BBCode, textarea) {
 
 function NavUpdate() {
 	if (!stopped) {
-		var pingCmd = 'ping?format=json' + ((localUser != 0) ? '&f=&uid=' + localUser : '');
+		var pingCmd = 'ping?format=json' + ((localUser != 0) ? '&uid=' + localUser : '');
 		$.get(pingCmd, function(data) {
 			if (data.result) {
 				// send nav-update event
@@ -493,7 +525,13 @@ function updateConvItems(data) {
 		var ident = $(this).attr('id');
 
 		// Add new top-level item.
-		if ($('#' + ident).length == 0 && profile_page == 1) {
+		if ($('#' + ident).length === 0
+			&& (!getUrlParameter('page')
+				&& !getUrlParameter('max_id')
+				&& !getUrlParameter('since_id')
+				|| getUrlParameter('page') === '1'
+			)
+		) {
 			$('#' + prev).after($(this));
 
 		// Replace already existing thread.
@@ -555,7 +593,18 @@ function liveUpdate(src) {
 	var orgHeight = $("section").height();
 
 	var udargs = ((netargs.length) ? '/' + netargs : '');
-	var update_url = 'update_' + src + udargs + '&p=' + profile_uid + '&page=' + profile_page + '&force=' + ((force_update) ? 1 : 0) + '&item=' + update_item;
+
+	var update_url = 'update_' + src + udargs + '&p=' + profile_uid + '&force=' + ((force_update) ? 1 : 0) + '&item=' + update_item;
+
+	if (getUrlParameter('page')) {
+		update_url += '&page=' + getUrlParameter('page');
+	}
+	if (getUrlParameter('since_id')) {
+		update_url += '&since_id=' + getUrlParameter('since_id');
+	}
+	if (getUrlParameter('max_id')) {
+		update_url += '&max_id=' + getUrlParameter('max_id');
+	}
 
 	$.get(update_url,function(data) {
 		in_progress = false;
@@ -913,8 +962,8 @@ function checkboxhighlight(box) {
 	}
 }
 
-function notifyMarkAll() {
-	$.get('notify/mark/all', function(data) {
+function notificationMarkAll() {
+	$.get('notification/mark/all', function(data) {
 		if (timer) {
 			clearTimeout(timer);
 		}
@@ -945,7 +994,7 @@ Array.prototype.remove = function(item) {
 
 function previewTheme(elm) {
 	theme = $(elm).val();
-	$.getJSON('pretheme?f=&theme=' + theme,function(data) {
+	$.getJSON('pretheme?theme=' + theme,function(data) {
 			$('#theme-preview').html('<div id="theme-desc">' + data.desc + '</div><div id="theme-version">' + data.version + '</div><div id="theme-credits">' + data.credits + '</div><a href="' + data.img + '"><img src="' + data.img + '" width="320" height="240" alt="' + theme + '" /></a>');
 	});
 

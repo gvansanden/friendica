@@ -195,14 +195,14 @@ Eine komplette Liste aller Hook-Callbacks mit den zugehörigen Dateien (am 01-Ap
 
     Hook::callAll('init_1');
     Hook::callAll('app_menu', $arr);
-    Hook::callAll('page_content_top', $a->page['content']);
+    Hook::callAll('page_content_top', DI::page()['content']);
     Hook::callAll($a->module.'_mod_init', $placeholder);
     Hook::callAll($a->module.'_mod_init', $placeholder);
     Hook::callAll($a->module.'_mod_post', $_POST);
     Hook::callAll($a->module.'_mod_afterpost', $placeholder);
     Hook::callAll($a->module.'_mod_content', $arr);
     Hook::callAll($a->module.'_mod_aftercontent', $arr);
-    Hook::callAll('page_end', $a->page['content']);
+    Hook::callAll('page_end', DI::page()['content']);
 
 ### include/api.php
 
@@ -408,9 +408,6 @@ Eine komplette Liste aller Hook-Callbacks mit den zugehörigen Dateien (am 01-Ap
 ### src/Content/ContactSelector.php
 
     Hook::callAll('network_to_name', $nets);
-    Hook::callAll('gender_selector', $select);
-    Hook::callAll('sexpref_selector', $select);
-    Hook::callAll('marital_selector', $select);
 
 ### src/Content/OEmbed.php
 
@@ -418,12 +415,16 @@ Eine komplette Liste aller Hook-Callbacks mit den zugehörigen Dateien (am 01-Ap
 
 ### src/Content/Nav.php
 
-    Hook::callAll('page_header', $a->page['nav']);
+    Hook::callAll('page_header', DI::page()['nav']);
     Hook::callAll('nav_info', $nav);
 
 ### src/Core/Authentication.php
 
     Hook::callAll('logged_in', $a->user);
+    
+### src/Core/StorageManager
+
+    Hook::callAll('storage_instance', $data);
 
 ### src/Worker/Directory.php
 
@@ -474,7 +475,7 @@ Eine komplette Liste aller Hook-Callbacks mit den zugehörigen Dateien (am 01-Ap
 
 ### src/Util/Emailer.php
 
-    Hook::callAll('emailer_send_prepare', $params);
+    Hook::callAll('emailer_send_prepare', $email);
     Hook::callAll("emailer_send", $hookdata);
 
 ### src/Util/Map.php

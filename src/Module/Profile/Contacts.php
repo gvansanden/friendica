@@ -1,30 +1,48 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Profile;
 
-use Friendica\BaseModule;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Nav;
 use Friendica\Content\Pager;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
+use Friendica\Module\BaseProfile;
 use Friendica\Util\Proxy as ProxyUtils;
 
-class Contacts extends BaseModule
+class Contacts extends BaseProfile
 {
 	public static function content(array $parameters = [])
 	{
-		if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
-			throw new \Friendica\Network\HTTPException\NotFoundException(L10n::t('User not found.'));
+		if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
+			throw new \Friendica\Network\HTTPException\NotFoundException(DI::l10n()->t('User not found.'));
 		}
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		//@TODO: Get value from router parameters
 		$nickname = $a->argv[1];
@@ -34,20 +52,19 @@ class Contacts extends BaseModule
 
 		$user = DBA::selectFirst('user', [], ['nickname' => $nickname, 'blocked' => false]);
 		if (!DBA::isResult($user)) {
-			throw new \Friendica\Network\HTTPException\NotFoundException(L10n::t('User not found.'));
+			throw new \Friendica\Network\HTTPException\NotFoundException(DI::l10n()->t('User not found.'));
 		}
 
 		$a->profile_uid  = $user['uid'];
 
 		Profile::load($a, $nickname);
 
-		$is_owner = $a->profile['profile_uid'] == local_user();
+		$is_owner = $a->profile['uid'] == local_user();
 
-		// tabs
-		$o = Profile::getTabs($a, 'contacts', $is_owner, $nickname);
+		$o = self::getTabsHTML($a, 'contacts', $is_owner, $nickname);
 
 		if (!count($a->profile) || $a->profile['hide-friends']) {
-			notice(L10n::t('Permission denied.') . EOL);
+			notice(DI::l10n()->t('Permission denied.') . EOL);
 			return $o;
 		}
 
@@ -68,14 +85,14 @@ class Contacts extends BaseModule
 
 		$total = DBA::count('contact', $condition);
 
-		$pager = new Pager($a->query_string);
+		$pager = new Pager(DI::l10n(), DI::args()->getQueryString());
 
 		$params = ['order' => ['name' => false], 'limit' => [$pager->getStart(), $pager->getItemsPerPage()]];
 
 		$contacts_stmt = DBA::select('contact', [], $condition, $params);
 
 		if (!DBA::isResult($contacts_stmt)) {
-			info(L10n::t('No contacts.') . EOL);
+			info(DI::l10n()->t('No contacts.') . EOL);
 			return $o;
 		}
 
@@ -90,7 +107,7 @@ class Contacts extends BaseModule
 
 			$contacts[] = [
 				'id'           => $contact['id'],
-				'img_hover'    => L10n::t('Visit %s\'s profile [%s]', $contact_details['name'], $contact['url']),
+				'img_hover'    => DI::l10n()->t('Visit %s\'s profile [%s]', $contact_details['name'], $contact['url']),
 				'photo_menu'   => Contact::photoMenu($contact),
 				'thumb'        => ProxyUtils::proxifyUrl($contact_details['thumb'], false, ProxyUtils::SIZE_THUMB),
 				'name'         => substr($contact_details['name'], 0, 20),
@@ -102,18 +119,18 @@ class Contacts extends BaseModule
 				'url'          => Contact::magicLink($contact['url']),
 				'sparkle'      => '',
 				'itemurl'      => $contact_details['addr'] ? : $contact['url'],
-				'network'      => ContactSelector::networkToName($contact['network'], $contact['url']),
+				'network'      => ContactSelector::networkToName($contact['network'], $contact['url'], $contact['protocol']),
 			];
 		}
 
 		DBA::close($contacts_stmt);
 
 		switch ($type) {
-			case 'followers':    $title = L10n::tt('Follower (%s)', 'Followers (%s)', $total); break;
-			case 'following':    $title = L10n::tt('Following (%s)', 'Following (%s)', $total); break;
-			case 'mutuals':      $title = L10n::tt('Mutual friend (%s)', 'Mutual friends (%s)', $total); break;
+			case 'followers':    $title = DI::l10n()->tt('Follower (%s)', 'Followers (%s)', $total); break;
+			case 'following':    $title = DI::l10n()->tt('Following (%s)', 'Following (%s)', $total); break;
+			case 'mutuals':      $title = DI::l10n()->tt('Mutual friend (%s)', 'Mutual friends (%s)', $total); break;
 
-			case 'all': default: $title = L10n::tt('Contact (%s)', 'Contacts (%s)', $total); break;
+			case 'all': default: $title = DI::l10n()->tt('Contact (%s)', 'Contacts (%s)', $total); break;
 		}
 
 		$tpl = Renderer::getMarkupTemplate('profile/contacts.tpl');
@@ -122,10 +139,10 @@ class Contacts extends BaseModule
 			'$nickname' => $nickname,
 			'$type'     => $type,
 
-			'$all_label' => L10n::t('All contacts'),
-			'$followers_label' => L10n::t('Followers'),
-			'$following_label' => L10n::t('Following'),
-			'$mutuals_label' => L10n::t('Mutual friends'),
+			'$all_label' => DI::l10n()->t('All contacts'),
+			'$followers_label' => DI::l10n()->t('Followers'),
+			'$following_label' => DI::l10n()->t('Following'),
+			'$mutuals_label' => DI::l10n()->t('Mutual friends'),
 
 			'$contacts' => $contacts,
 			'$paginate' => $pager->renderFull($total),

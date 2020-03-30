@@ -1,13 +1,35 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Model;
 
 use Friendica\BaseModel;
 use Friendica\Core\Protocol;
+use Friendica\Database\Database;
 use Friendica\Network\HTTPException;
 use Friendica\Protocol\ActivityPub;
 use Friendica\Protocol\Diaspora;
+use Friendica\Repository;
 use Friendica\Util\DateTimeFormat;
+use Psr\Log\LoggerInterface;
 
 /**
  * @property int    uid
@@ -19,22 +41,29 @@ use Friendica\Util\DateTimeFormat;
  * @property string hash
  * @property string datetime
  * @property bool   blocked
- * @property bool   ignored
- *
- * @package Friendica\Model
+ * @property bool   ignore
  */
-final class Introduction extends BaseModel
+class Introduction extends BaseModel
 {
-	static $table_name = 'intro';
+	/** @var Repository\Introduction */
+	protected $intro;
+
+	public function __construct(Database $dba, LoggerInterface $logger, Repository\Introduction $intro, array $data = [])
+	{
+		parent::__construct($dba, $logger, $data);
+
+		$this->intro = $intro;
+	}
 
 	/**
-	 * Confirms a follow request and sends a notic to the remote contact.
+	 * Confirms a follow request and sends a notice to the remote contact.
 	 *
-	 * @param bool      $duplex Is it a follow back?
-	 * @param bool|null $hidden Should this contact be hidden? null = no change
+	 * @param bool               $duplex       Is it a follow back?
+	 * @param bool|null          $hidden       Should this contact be hidden? null = no change
+	 * @return bool
 	 * @throws HTTPException\InternalServerErrorException
-	 * @throws \ImagickException
 	 * @throws HTTPException\NotFoundException
+	 * @throws \ImagickException
 	 */
 	public function confirm(bool $duplex = false, bool $hidden = null)
 	{
@@ -46,7 +75,7 @@ final class Introduction extends BaseModel
 			throw new HTTPException\NotFoundException('Contact record not found.');
 		}
 
-		$new_relation = $contact['rel'];
+		$newRelation = $contact['rel'];
 		$writable = $contact['writable'];
 
 		if (!empty($contact['protocol'])) {
@@ -61,12 +90,12 @@ final class Introduction extends BaseModel
 
 		if (in_array($protocol, [Protocol::DIASPORA, Protocol::ACTIVITYPUB])) {
 			if ($duplex) {
-				$new_relation = Contact::FRIEND;
+				$newRelation = Contact::FRIEND;
 			} else {
-				$new_relation = Contact::FOLLOWER;
+				$newRelation = Contact::FOLLOWER;
 			}
 
-			if ($new_relation != Contact::FOLLOWER) {
+			if ($newRelation != Contact::FOLLOWER) {
 				$writable = 1;
 			}
 		}
@@ -79,13 +108,13 @@ final class Introduction extends BaseModel
 			'protocol'  => $protocol,
 			'writable'  => $writable,
 			'hidden'    => $hidden ?? $contact['hidden'],
-			'rel'       => $new_relation,
+			'rel'       => $newRelation,
 		];
 		$this->dba->update('contact', $fields, ['id' => $contact['id']]);
 
 		array_merge($contact, $fields);
 
-		if ($new_relation == Contact::FRIEND) {
+		if ($newRelation == Contact::FRIEND) {
 			if ($protocol == Protocol::DIASPORA) {
 				$ret = Diaspora::sendShare(User::getById($contact['uid']), $contact);
 				$this->logger->info('share returns', ['return' => $ret]);
@@ -94,28 +123,27 @@ final class Introduction extends BaseModel
 			}
 		}
 
-		$this->delete();
+		return $this->intro->delete($this);
 	}
 
 	/**
 	 * Silently ignores the introduction, hides it from notifications and prevents the remote contact from submitting
 	 * additional follow requests.
 	 *
-	 * Chainable
-	 *
-	 * @return Introduction
+	 * @return bool
 	 * @throws \Exception
 	 */
 	public function ignore()
 	{
-		$this->dba->update('intro', ['ignore' => true], ['id' => $this->id]);
+		$this->ignore = true;
 
-		return $this;
+		return $this->intro->update($this);
 	}
 
 	/**
 	 * Discards the introduction and sends a rejection message to AP contacts.
 	 *
+	 * @return bool
 	 * @throws HTTPException\InternalServerErrorException
 	 * @throws HTTPException\NotFoundException
 	 * @throws \ImagickException
@@ -151,6 +179,6 @@ final class Introduction extends BaseModel
 			ActivityPub\Transmitter::sendContactReject($contact['url'], $contact['hub-verify'], $contact['uid']);
 		}
 
-		$this->delete();
+		return $this->intro->delete($this);
 	}
 }

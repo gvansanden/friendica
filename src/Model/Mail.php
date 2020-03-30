@@ -1,17 +1,32 @@
 <?php
-
 /**
- * @file src/Model/Mail.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Model;
 
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
-use Friendica\Model\Item;
-use Friendica\Model\Photo;
+use Friendica\DI;
 use Friendica\Database\DBA;
+use Friendica\Model\Notify\Type;
 use Friendica\Network\Probe;
 use Friendica\Protocol\Activity;
 use Friendica\Util\DateTimeFormat;
@@ -70,7 +85,7 @@ class Mail
 
 		// send notifications.
 		$notif_params = [
-			'type' => NOTIFY_MAIL,
+			'type' => Type::MAIL,
 			'notify_flags' => $user['notify-flags'],
 			'language' => $user['language'],
 			'to_name' => $user['username'],
@@ -104,14 +119,14 @@ class Mail
 	 */
 	public static function send($recipient = 0, $body = '', $subject = '', $replyto = '')
 	{
-		$a = \get_app();
+		$a = DI::app();
 
 		if (!$recipient) {
 			return -1;
 		}
 
 		if (!strlen($subject)) {
-			$subject = L10n::t('[no subject]');
+			$subject = DI::l10n()->t('[no subject]');
 		}
 
 		$me = DBA::selectFirst('contact', [], ['uid' => local_user(), 'self' => true]);
@@ -148,7 +163,7 @@ class Mail
 			$recip_host = substr($recip_host, 0, strpos($recip_host, '/'));
 
 			$recip_handle = (($contact['addr']) ? $contact['addr'] : $contact['nick'] . '@' . $recip_host);
-			$sender_handle = $a->user['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+			$sender_handle = $a->user['nickname'] . '@' . substr(DI::baseUrl(), strpos(DI::baseUrl(), '://') + 3);
 
 			$conv_guid = System::createUUID();
 			$convuri = $recip_handle . ':' . $conv_guid;
@@ -214,12 +229,10 @@ class Mail
 			$images = $match[1];
 			if (count($images)) {
 				foreach ($images as $image) {
-					if (!stristr($image, System::baseUrl() . '/photo/')) {
-						continue;
+					$image_rid = Photo::ridFromURI($image);
+					if (!empty($image_rid)) {
+						Photo::update(['allow-cid' => '<' . $recipient . '>'], ['resource-id' => $image_rid, 'album' => 'Wall Photos', 'uid' => local_user()]);
 					}
-					$image_uri = substr($image, strrpos($image, '/') + 1);
-					$image_uri = substr($image_uri, 0, strpos($image_uri, '-'));
-					Photo::update(['allow-cid' => '<' . $recipient . '>'], ['resource-id' => $image_uri, 'album' => 'Wall Photos', 'uid' => local_user()]);
 				}
 			}
 		}
@@ -248,7 +261,7 @@ class Mail
 		}
 
 		if (!strlen($subject)) {
-			$subject = L10n::t('[no subject]');
+			$subject = DI::l10n()->t('[no subject]');
 		}
 
 		$guid = System::createUUID();
@@ -262,7 +275,7 @@ class Mail
 
 		$conv_guid = System::createUUID();
 
-		$recip_handle = $recipient['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+		$recip_handle = $recipient['nickname'] . '@' . substr(DI::baseUrl(), strpos(DI::baseUrl(), '://') + 3);
 
 		$sender_nick = basename($replyto);
 		$sender_host = substr($replyto, strpos($replyto, '://') + 3);

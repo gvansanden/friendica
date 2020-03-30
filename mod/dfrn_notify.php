@@ -1,16 +1,32 @@
 <?php
-
 /**
- * @file mod/dfrn_notify.php
- * @brief The dfrn notify endpoint
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * The dfrn notify endpoint
+ *
  * @see PDF with dfrn specs: https://github.com/friendica/friendica/blob/master/spec/dfrn2.pdf
  */
 
 use Friendica\App;
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\User;
 use Friendica\Protocol\DFRN;
@@ -128,7 +144,7 @@ function dfrn_notify_post(App $a) {
 		System::xmlExit(0, 'relationship dissolved');
 	}
 
-	$rino = Config::get('system', 'rino_encrypt');
+	$rino = DI::config()->get('system', 'rino_encrypt');
 	$rino = intval($rino);
 
 	if (strlen($key)) {
@@ -343,7 +359,7 @@ function dfrn_notify_content(App $a) {
 		$encrypted_id = bin2hex($encrypted_id);
 
 
-		$rino = Config::get('system', 'rino_encrypt');
+		$rino = DI::config()->get('system', 'rino_encrypt');
 		$rino = intval($rino);
 
 		Logger::log("Local rino version: ". $rino, Logger::DATA);

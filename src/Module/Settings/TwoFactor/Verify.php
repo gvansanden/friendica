@@ -1,20 +1,35 @@
 <?php
-
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Settings\TwoFactor;
-
 
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
-use Friendica\BaseModule;
-use Friendica\Core\L10n;
-use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
 use Friendica\Core\Session;
-use Friendica\Module\BaseSettingsModule;
-use Friendica\Module\Login;
+use Friendica\DI;
+use Friendica\Module\BaseSettings;
+use Friendica\Module\Security\Login;
 use PragmaRX\Google2FA\Google2FA;
 
 /**
@@ -22,7 +37,7 @@ use PragmaRX\Google2FA\Google2FA;
  *
  * @package Friendica\Module\TwoFactor\Settings
  */
-class Verify extends BaseSettingsModule
+class Verify extends BaseSettings
 {
 	public static function init(array $parameters = [])
 	{
@@ -30,16 +45,16 @@ class Verify extends BaseSettingsModule
 			return;
 		}
 
-		$secret = PConfig::get(local_user(), '2fa', 'secret');
-		$verified = PConfig::get(local_user(), '2fa', 'verified');
+		$secret = DI::pConfig()->get(local_user(), '2fa', 'secret');
+		$verified = DI::pConfig()->get(local_user(), '2fa', 'verified');
 
 		if ($secret && $verified) {
-			self::getApp()->internalRedirect('settings/2fa');
+			DI::baseUrl()->redirect('settings/2fa');
 		}
 
 		if (!self::checkFormSecurityToken('settings_2fa_password', 't')) {
-			notice(L10n::t('Please enter your password to access this page.'));
-			self::getApp()->internalRedirect('settings/2fa');
+			notice(DI::l10n()->t('Please enter your password to access this page.'));
+			DI::baseUrl()->redirect('settings/2fa');
 		}
 	}
 
@@ -54,17 +69,17 @@ class Verify extends BaseSettingsModule
 
 			$google2fa = new Google2FA();
 
-			$valid = $google2fa->verifyKey(PConfig::get(local_user(), '2fa', 'secret'), $_POST['verify_code'] ?? '');
+			$valid = $google2fa->verifyKey(DI::pConfig()->get(local_user(), '2fa', 'secret'), $_POST['verify_code'] ?? '');
 
 			if ($valid) {
-				PConfig::set(local_user(), '2fa', 'verified', true);
+				DI::pConfig()->set(local_user(), '2fa', 'verified', true);
 				Session::set('2fa', true);
 
-				notice(L10n::t('Two-factor authentication successfully activated.'));
+				notice(DI::l10n()->t('Two-factor authentication successfully activated.'));
 
-				self::getApp()->internalRedirect('settings/2fa');
+				DI::baseUrl()->redirect('settings/2fa');
 			} else {
-				notice(L10n::t('Invalid code, please retry.'));
+				notice(DI::l10n()->t('Invalid code, please retry.'));
 			}
 		}
 	}
@@ -79,7 +94,7 @@ class Verify extends BaseSettingsModule
 
 		$company = 'Friendica';
 		$holder = Session::get('my_address');
-		$secret = PConfig::get(local_user(), '2fa', 'secret');
+		$secret = DI::pConfig()->get(local_user(), '2fa', 'secret');
 
 		$otpauthUrl = (new Google2FA())->getQRCodeUrl($company, $holder, $secret);
 
@@ -93,7 +108,7 @@ class Verify extends BaseSettingsModule
 
 		$shortOtpauthUrl = explode('?', $otpauthUrl)[0];
 
-		$manual_message = L10n::t('<p>Or you can submit the authentication settings manually:</p>
+		$manual_message = DI::l10n()->t('<p>Or you can submit the authentication settings manually:</p>
 <dl>
 	<dt>Issuer</dt>
 	<dd>%s</dd>
@@ -113,18 +128,18 @@ class Verify extends BaseSettingsModule
 			'$form_security_token'     => self::getFormSecurityToken('settings_2fa_verify'),
 			'$password_security_token' => self::getFormSecurityToken('settings_2fa_password'),
 
-			'$title'              => L10n::t('Two-factor code verification'),
-			'$help_label'         => L10n::t('Help'),
-			'$message'            => L10n::t('<p>Please scan this QR Code with your authenticator app and submit the provided code.</p>'),
+			'$title'              => DI::l10n()->t('Two-factor code verification'),
+			'$help_label'         => DI::l10n()->t('Help'),
+			'$message'            => DI::l10n()->t('<p>Please scan this QR Code with your authenticator app and submit the provided code.</p>'),
 			'$qrcode_image'       => $qrcode_image,
-			'$qrcode_url_message' => L10n::t('<p>Or you can open the following URL in your mobile devicde:</p><p><a href="%s">%s</a></p>', $otpauthUrl, $shortOtpauthUrl),
+			'$qrcode_url_message' => DI::l10n()->t('<p>Or you can open the following URL in your mobile devicde:</p><p><a href="%s">%s</a></p>', $otpauthUrl, $shortOtpauthUrl),
 			'$manual_message'     => $manual_message,
 			'$company'            => $company,
 			'$holder'             => $holder,
 			'$secret'             => $secret,
 
-			'$verify_code'  => ['verify_code', L10n::t('Please enter a code from your authentication app'), '', '', 'required', 'autofocus placeholder="000000"'],
-			'$verify_label' => L10n::t('Verify code and enable two-factor authentication'),
+			'$verify_code'  => ['verify_code', DI::l10n()->t('Please enter a code from your authentication app'), '', '', 'required', 'autofocus placeholder="000000"'],
+			'$verify_label' => DI::l10n()->t('Verify code and enable two-factor authentication'),
 		]);
 	}
 }

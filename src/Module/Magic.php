@@ -1,13 +1,31 @@
 <?php
 /**
- * @file src/Module/Magic.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Util\HTTPSignature;
 use Friendica\Util\Network;
@@ -22,7 +40,7 @@ class Magic extends BaseModule
 {
 	public static function init(array $parameters = [])
 	{
-		$a = self::getApp();
+		$a = DI::app();
 		$ret = ['success' => false, 'url' => '', 'message' => ''];
 		Logger::log('magic mdule: invoked', Logger::DEBUG);
 
@@ -48,7 +66,7 @@ class Magic extends BaseModule
 		$contact = DBA::selectFirst('contact', ['id', 'nurl', 'url'], ['id' => $cid]);
 
 		// Redirect if the contact is already authenticated on this site.
-		if (!empty($a->contact) && array_key_exists('id', $a->contact) && strpos($contact['nurl'], Strings::normaliseLink(self::getApp()->getBaseURL())) !== false) {
+		if (!empty($a->contact) && array_key_exists('id', $a->contact) && strpos($contact['nurl'], Strings::normaliseLink(DI::baseUrl()->get())) !== false) {
 			if ($test) {
 				$ret['success'] = true;
 				$ret['message'] .= 'Local site - you are already authenticated.' . EOL;
@@ -79,7 +97,7 @@ class Magic extends BaseModule
 				$headers = HTTPSignature::createSig(
 					$headers,
 					$user['prvkey'],
-					'acct:' . $user['nickname'] . '@' . $a->getHostName() . ($a->getURLPath() ? '/' . $a->getURLPath() : '')
+					'acct:' . $user['nickname'] . '@' . DI::baseUrl()->getHostname() . (DI::baseUrl()->getUrlPath() ? '/' . DI::baseUrl()->getUrlPath() : '')
 				);
 
 				// Try to get an authentication token from the other instance.

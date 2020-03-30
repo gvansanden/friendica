@@ -1,14 +1,29 @@
 <?php
-
-/*
- * @file src/Content/Widget/CalendarExport.php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Content\Widget;
 
 use Friendica\Content\Feature;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
+use Friendica\DI;
 
 /**
  * TagCloud widget
@@ -18,13 +33,13 @@ use Friendica\Core\Renderer;
 class CalendarExport
 {
 	/**
-	 * @brief Get the events widget.
+	 * Get the events widget.
 	 *
 	 * @return string Formated HTML of the calendar widget.
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function getHTML() {
-		$a = \get_app();
+		$a = DI::app();
 
 		if (empty($a->data['user'])) {
 			return;
@@ -61,9 +76,9 @@ class CalendarExport
 
 		$tpl = Renderer::getMarkupTemplate("widget/events.tpl");
 		$return = Renderer::replaceMacros($tpl, [
-			'$etitle'      => L10n::t("Export"),
-			'$export_ical' => L10n::t("Export calendar as ical"),
-			'$export_csv'  => L10n::t("Export calendar as csv"),
+			'$etitle'      => DI::l10n()->t("Export"),
+			'$export_ical' => DI::l10n()->t("Export calendar as ical"),
+			'$export_csv'  => DI::l10n()->t("Export calendar as csv"),
 			'$user'        => $user
 		]);
 

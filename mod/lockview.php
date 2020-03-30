@@ -1,15 +1,30 @@
 <?php
 /**
- * @file mod/lockview.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 use Friendica\App;
-use Friendica\BaseObject;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Group;
 use Friendica\Model\Item;
-use Friendica\Util\ACLFormatter;
 
 function lockview_content(App $a)
 {
@@ -46,42 +61,41 @@ function lockview_content(App $a)
 	Hook::callAll('lockview_content', $item);
 
 	if ($item['uid'] != local_user()) {
-		echo L10n::t('Remote privacy information not available.') . '<br />';
+		echo DI::l10n()->t('Remote privacy information not available.') . '<br />';
 		exit();
 	}
 
 	if (isset($item['private'])
-		&& $item['private'] == 1
+		&& $item['private'] == Item::PRIVATE
 		&& empty($item['allow_cid'])
 		&& empty($item['allow_gid'])
 		&& empty($item['deny_cid'])
 		&& empty($item['deny_gid']))
 	{
-		echo L10n::t('Remote privacy information not available.') . '<br />';
+		echo DI::l10n()->t('Remote privacy information not available.') . '<br />';
 		exit();
 	}
 
-	/** @var ACLFormatter $aclFormatter */
-	$aclFormatter = BaseObject::getClass(ACLFormatter::class);
+	$aclFormatter = DI::aclFormatter();
 
 	$allowed_users = $aclFormatter->expand($item['allow_cid']);
 	$allowed_groups = $aclFormatter->expand($item['allow_gid']);
 	$deny_users = $aclFormatter->expand($item['deny_cid']);
 	$deny_groups = $aclFormatter->expand($item['deny_gid']);
 
-	$o = L10n::t('Visible to:') . '<br />';
+	$o = DI::l10n()->t('Visible to:') . '<br />';
 	$l = [];
 
 	if (count($allowed_groups)) {
 		$key = array_search(Group::FOLLOWERS, $allowed_groups);
 		if ($key !== false) {
-			$l[] = '<b>' . L10n::t('Followers') . '</b>';
+			$l[] = '<b>' . DI::l10n()->t('Followers') . '</b>';
 			unset($allowed_groups[$key]);
 		}
 
 		$key = array_search(Group::MUTUALS, $allowed_groups);
 		if ($key !== false) {
-			$l[] = '<b>' . L10n::t('Mutuals') . '</b>';
+			$l[] = '<b>' . DI::l10n()->t('Mutuals') . '</b>';
 			unset($allowed_groups[$key]);
 		}
 
@@ -110,13 +124,13 @@ function lockview_content(App $a)
 	if (count($deny_groups)) {
 		$key = array_search(Group::FOLLOWERS, $deny_groups);
 		if ($key !== false) {
-			$l[] = '<b><strike>' . L10n::t('Followers') . '</strike></b>';
+			$l[] = '<b><strike>' . DI::l10n()->t('Followers') . '</strike></b>';
 			unset($deny_groups[$key]);
 		}
 
 		$key = array_search(Group::MUTUALS, $deny_groups);
 		if ($key !== false) {
-			$l[] = '<b><strike>' . L10n::t('Mutuals') . '</strike></b>';
+			$l[] = '<b><strike>' . DI::l10n()->t('Mutuals') . '</strike></b>';
 			unset($deny_groups[$key]);
 		}
 

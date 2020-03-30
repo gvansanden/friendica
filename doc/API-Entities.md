@@ -361,6 +361,123 @@ Ex: Wed May 23 06:01:13 +0000 2007
 </tbody>
 </table>
 
+## Event
+
+<table class="table table-condensed table-striped table-bordered">
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Integer</td>
+<td></td>
+</tr>
+
+<tr>
+<td><code>uid</code></td>
+<td>Integer</td>
+<td>Owner User Id</td>
+</tr>
+
+<tr>
+<td><code>cid</code></td>
+<td>Integer</td>
+<td>Target Contact Id</td>
+</tr>
+
+<tr>
+<td><code>uri</code></td>
+<td>String</td>
+<td>Item unique URI string</td>
+</tr>
+
+<tr>
+<td><code>name</code></td>
+<td>String (Plaintext)</td>
+<td>Title</td>
+</tr>
+
+<tr>
+<td><code>desc</code></td>
+<td>String (HTML)</td>
+<td>Description</td>
+</tr>
+
+<tr>
+<td><code>startTime</code></td>
+<td>String (UTC <code>YYYY-MM-DD HH:II:SS)</code>)</td>
+<td></td>
+</tr>
+
+<tr>
+<td><code>endTime</code></td>
+<td>String (UTC <code>YYYY-MM-DD HH:II:SS)</code>)</td>
+<td>Optional (null date is <code>0001-01-01 00:00:00</code></td>
+</tr>
+
+<tr>
+<td><code>type</code></td>
+<td>String (<code>event</code> or <code>birthday</code>)</td>
+<td></td>
+</tr>
+
+<tr>
+<td><code>nofinish</code></td>
+<td>Boolean</td>
+<td>Ongoing event</td>
+</tr>
+
+<tr>
+<td><code>place</code></td>
+<td>String</td>
+<td>Optional. Location.</td>
+</tr>
+
+<tr>
+<td><code>adjust</code></td>
+<td>Boolean</td>
+<td>???</td>
+</tr>
+
+<tr>
+<td><code>ignore</code></td>
+<td>Boolean</td>
+<td>???</td>
+</tr>
+
+<tr>
+<td><code>allow_cid</code></td>
+<td>String (angle-brackets escaped integers)</td>
+<td>Optional. List of allowed contact ids</td>
+</tr>
+
+<tr>
+<td><code>allow_gid</code></td>
+<td>String (angle-brackets escaped integers)</td>
+<td>Optional. List of allowed group ids</td>
+</tr>
+
+<tr>
+<td><code>deny_cid</code></td>
+<td>String (angle-brackets escaped integers)</td>
+<td>Optional. List of disallowed contact ids</td>
+</tr>
+
+<tr>
+<td><code>deny_gid</code></td>
+<td>String (angle-brackets escaped integers)</td>
+<td>Optional. List of disallowed group ids</td>
+</tr>
+
+</tbody>
+</table>
+
 ## Hashtag
 
 Unused
@@ -1182,54 +1299,6 @@ Mutually exclusive with <code>link</code>.
 </tr>
 
 <tr>
-<td><code>hometown</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>gender</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>marital</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>marital_with</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>marital_since</code></td>
-<td>String (Date)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>sexual</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>politic</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>religion</code></td>
-<td>String</td>
-<td></td>
-</tr>
-
-<tr>
 <td><code>public_keywords</code></td>
 <td>String</td>
 <td>Comma-separated list of words meant to be displayed as hashtags.</td>
@@ -1242,87 +1311,9 @@ Mutually exclusive with <code>link</code>.
 </tr>
 
 <tr>
-<td><code>likes</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>dislikes</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>about</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>music</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>book</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>tv</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>film</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>interest</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>romance</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>work</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>education</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
-<td><code>social_networks</code></td>
-<td>String (Plaintext)</td>
-<td></td>
-</tr>
-
-<tr>
 <td><code>homepage</code></td>
 <td>String (URL)</td>
 <td></td>
-</tr>
-
-<tr>
-<td><code>users</code></td>
-<td>List of <a href="help/API-Entities#Contact">Contacts</a></td>
-<td>If populated, only these contacts have access to the profile.</td>
 </tr>
 
 </tbody>

@@ -1,7 +1,22 @@
 <?php
-
 /**
- * @file src/Util/DateTimeFormat.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Util;
@@ -12,7 +27,7 @@ use DateTimeZone;
 use Exception;
 
 /**
- * @brief Temporal class
+ * Temporal class
  */
 class DateTimeFormat
 {
@@ -84,7 +99,7 @@ class DateTimeFormat
 	}
 
 	/**
-	 * @brief General purpose date parse/convert/format function.
+	 * General purpose date parse/convert/format function.
 	 *
 	 * @param string $s       Some parseable date/time string
 	 * @param string $tz_to   Destination timezone
@@ -176,6 +191,27 @@ class DateTimeFormat
 		}
 
 		if ($date > $now) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Checks, if the given string is a date with the pattern YYYY-MM-DD
+	 *
+	 * @param string $dateString The given date
+	 *
+	 * @return boolean True, if the date is a valid pattern
+	 */
+	public function isYearMonthDay(string $dateString)
+	{
+		$date = DateTime::createFromFormat('Y-m-d', $dateString);
+		if (!$date) {
+			return false;
+		}
+
+		if (DateTime::getLastErrors()['error_count'] || DateTime::getLastErrors()['warning_count']) {
 			return false;
 		}
 

@@ -1,38 +1,48 @@
 <?php
 /**
- * @file include/dfrn.php
- * @brief The implementation of the dfrn protocol
+ * @copyright Copyright (C) 2020, Friendica
  *
- * @see https://github.com/friendica/friendica/wiki/Protocol and
- * https://github.com/friendica/friendica/blob/master/spec/dfrn2.pdf
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Protocol;
 
 use DOMDocument;
 use DOMXPath;
 use Friendica\App\BaseURL;
-use Friendica\BaseObject;
 use Friendica\Content\OEmbed;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Conversation;
 use Friendica\Model\Event;
 use Friendica\Model\GContact;
 use Friendica\Model\Item;
 use Friendica\Model\Mail;
+use Friendica\Model\Notify\Type;
 use Friendica\Model\PermissionSet;
 use Friendica\Model\Profile;
 use Friendica\Model\User;
 use Friendica\Network\Probe;
-use Friendica\Object\Image;
-use Friendica\Protocol\ActivityNamespace;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Images;
@@ -43,7 +53,7 @@ use HTMLPurifier;
 use HTMLPurifier_Config;
 
 /**
- * @brief This class contain functions to create and send DFRN XML files
+ * This class contain functions to create and send DFRN XML files
  */
 class DFRN
 {
@@ -53,7 +63,7 @@ class DFRN
 	const REPLY_RC = 2;	// Reply that will be relayed
 
 	/**
-	 * @brief Generates an array of contact and user for DFRN imports
+	 * Generates an array of contact and user for DFRN imports
 	 *
 	 * This array contains not only the receiver but also the sender of the message.
 	 *
@@ -94,7 +104,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Generates the atom entries for delivery.php
+	 * Generates the atom entries for delivery.php
 	 *
 	 * This function is used whenever content is transmitted via DFRN.
 	 *
@@ -133,7 +143,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Generate an atom feed for the given user
+	 * Generate an atom feed for the given user
 	 *
 	 * This function is called when another server is pulling data from the user feed.
 	 *
@@ -149,7 +159,7 @@ class DFRN
 	 */
 	public static function feed($dfrn_id, $owner_nick, $last_update, $direction = 0, $onlyheader = false)
 	{
-		$a = \get_app();
+		$a = DI::app();
 
 		$sitefeed    = ((strlen($owner_nick)) ? false : true); // not yet implemented, need to rewrite huge chunks of following logic
 		$public_feed = (($dfrn_id) ? false : true);
@@ -172,7 +182,7 @@ class DFRN
 
 		// default permissions - anonymous user
 
-		$sql_extra = " AND NOT `item`.`private` ";
+		$sql_extra = sprintf(" AND `item`.`private` != %s ", Item::PRIVATE);
 
 		$r = q(
 			"SELECT `contact`.*, `user`.`nickname`, `user`.`timezone`, `user`.`page-flags`, `user`.`account-type`
@@ -224,7 +234,7 @@ class DFRN
 			if (!empty($set)) {
 				$sql_extra = " AND `item`.`psid` IN (" . implode(',', $set) .")";
 			} else {
-				$sql_extra = " AND NOT `item`.`private`";
+				$sql_extra = sprintf(" AND `item`.`private` != %s", Item::PRIVATE);
 			}
 		}
 
@@ -322,7 +332,7 @@ class DFRN
 			if ($public_feed) {
 				$type = 'html';
 				// catch any email that's in a public conversation and make sure it doesn't leak
-				if ($item['private']) {
+				if ($item['private'] == Item::PRIVATE) {
 					continue;
 				}
 			} else {
@@ -343,7 +353,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Generate an atom entry for a given item id
+	 * Generate an atom entry for a given item id
 	 *
 	 * @param int     $item_id      The item id
 	 * @param boolean $conversation Show the conversation. If false show the single post.
@@ -412,7 +422,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Create XML text for DFRN mails
+	 * Create XML text for DFRN mails
 	 *
 	 * @param array $item  message elements
 	 * @param array $owner Owner record
@@ -449,7 +459,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Create XML text for DFRN friend suggestions
+	 * Create XML text for DFRN friend suggestions
 	 *
 	 * @param array $item  suggestion elements
 	 * @param array $owner Owner record
@@ -479,7 +489,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Create XML text for DFRN relocations
+	 * Create XML text for DFRN relocations
 	 *
 	 * @param array $owner Owner record
 	 * @param int   $uid   User ID
@@ -492,11 +502,11 @@ class DFRN
 	{
 
 		/* get site pubkey. this could be a new installation with no site keys*/
-		$pubkey = Config::get('system', 'site_pubkey');
+		$pubkey = DI::config()->get('system', 'site_pubkey');
 		if (! $pubkey) {
 			$res = Crypto::newKeypair(1024);
-			Config::set('system', 'site_prvkey', $res['prvkey']);
-			Config::set('system', 'site_pubkey', $res['pubkey']);
+			DI::config()->set('system', 'site_prvkey', $res['prvkey']);
+			DI::config()->set('system', 'site_pubkey', $res['pubkey']);
 		}
 
 		$rp = q(
@@ -508,7 +518,7 @@ class DFRN
 		$ext = Images::supportedTypes();
 
 		foreach ($rp as $p) {
-			$photos[$p['scale']] = System::baseUrl().'/photo/'.$p['resource-id'].'-'.$p['scale'].'.'.$ext[$p['type']];
+			$photos[$p['scale']] = DI::baseUrl().'/photo/'.$p['resource-id'].'-'.$p['scale'].'.'.$ext[$p['type']];
 		}
 
 
@@ -530,7 +540,7 @@ class DFRN
 		XML::addElement($doc, $relocate, "dfrn:confirm", $owner['confirm']);
 		XML::addElement($doc, $relocate, "dfrn:notify", $owner['notify']);
 		XML::addElement($doc, $relocate, "dfrn:poll", $owner['poll']);
-		XML::addElement($doc, $relocate, "dfrn:sitepubkey", Config::get('system', 'site_pubkey'));
+		XML::addElement($doc, $relocate, "dfrn:sitepubkey", DI::config()->get('system', 'site_pubkey'));
 
 		$root->appendChild($relocate);
 
@@ -538,7 +548,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Adds the header elements for the DFRN protocol
+	 * Adds the header elements for the DFRN protocol
 	 *
 	 * @param DOMDocument $doc           XML document
 	 * @param array       $owner         Owner record
@@ -570,7 +580,7 @@ class DFRN
 		$root->setAttribute("xmlns:ostatus", ActivityNamespace::OSTATUS);
 		$root->setAttribute("xmlns:statusnet", ActivityNamespace::STATUSNET);
 
-		XML::addElement($doc, $root, "id", System::baseUrl()."/profile/".$owner["nick"]);
+		XML::addElement($doc, $root, "id", DI::baseUrl()."/profile/".$owner["nick"]);
 		XML::addElement($doc, $root, "title", $owner["name"]);
 
 		$attributes = ["uri" => "https://friendi.ca", "version" => FRIENDICA_VERSION."-".DB_UPDATE_VERSION];
@@ -587,13 +597,13 @@ class DFRN
 			// DFRN itself doesn't uses this. But maybe someone else wants to subscribe to the public feed.
 			OStatus::hublinks($doc, $root, $owner["nick"]);
 
-			$attributes = ["rel" => "salmon", "href" => System::baseUrl()."/salmon/".$owner["nick"]];
+			$attributes = ["rel" => "salmon", "href" => DI::baseUrl()."/salmon/".$owner["nick"]];
 			XML::addElement($doc, $root, "link", "", $attributes);
 
-			$attributes = ["rel" => "http://salmon-protocol.org/ns/salmon-replies", "href" => System::baseUrl()."/salmon/".$owner["nick"]];
+			$attributes = ["rel" => "http://salmon-protocol.org/ns/salmon-replies", "href" => DI::baseUrl()."/salmon/".$owner["nick"]];
 			XML::addElement($doc, $root, "link", "", $attributes);
 
-			$attributes = ["rel" => "http://salmon-protocol.org/ns/salmon-mention", "href" => System::baseUrl()."/salmon/".$owner["nick"]];
+			$attributes = ["rel" => "http://salmon-protocol.org/ns/salmon-mention", "href" => DI::baseUrl()."/salmon/".$owner["nick"]];
 			XML::addElement($doc, $root, "link", "", $attributes);
 		}
 
@@ -616,7 +626,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Adds the author element in the header for the DFRN protocol
+	 * Adds the author element in the header for the DFRN protocol
 	 *
 	 * @param DOMDocument $doc           XML document
 	 * @param array       $owner         Owner record
@@ -629,38 +639,28 @@ class DFRN
 	 */
 	private static function addAuthor(DOMDocument $doc, array $owner, $authorelement, $public)
 	{
-		// Is the profile hidden or shouldn't be published in the net? Then add the "hide" element
-		$r = q(
-			"SELECT `id` FROM `profile` INNER JOIN `user` ON `user`.`uid` = `profile`.`uid`
-				WHERE (`hidewall` OR NOT `net-publish`) AND `user`.`uid` = %d",
-			intval($owner['uid'])
-		);
-		if (DBA::isResult($r)) {
-			$hidewall = true;
-		} else {
-			$hidewall = false;
-		}
+		// Should the profile be "unsearchable" in the net? Then add the "hide" element
+		$hide = DBA::exists('profile', ['uid' => $owner['uid'], 'net-publish' => false]);
 
 		$author = $doc->createElement($authorelement);
 
 		$namdate = DateTimeFormat::utc($owner['name-date'].'+00:00', DateTimeFormat::ATOM);
-		$uridate = DateTimeFormat::utc($owner['uri-date'].'+00:00', DateTimeFormat::ATOM);
 		$picdate = DateTimeFormat::utc($owner['avatar-date'].'+00:00', DateTimeFormat::ATOM);
 
 		$attributes = [];
 
-		if (!$public || !$hidewall) {
+		if (!$public || !$hide) {
 			$attributes = ["dfrn:updated" => $namdate];
 		}
 
 		XML::addElement($doc, $author, "name", $owner["name"], $attributes);
-		XML::addElement($doc, $author, "uri", System::baseUrl().'/profile/'.$owner["nickname"], $attributes);
+		XML::addElement($doc, $author, "uri", DI::baseUrl().'/profile/'.$owner["nickname"], $attributes);
 		XML::addElement($doc, $author, "dfrn:handle", $owner["addr"], $attributes);
 
 		$attributes = ["rel" => "photo", "type" => "image/jpeg",
 					"media:width" => 300, "media:height" => 300, "href" => $owner['photo']];
 
-		if (!$public || !$hidewall) {
+		if (!$public || !$hide) {
 			$attributes["dfrn:updated"] = $picdate;
 		}
 
@@ -669,7 +669,7 @@ class DFRN
 		$attributes["rel"] = "avatar";
 		XML::addElement($doc, $author, "link", "", $attributes);
 
-		if ($hidewall) {
+		if ($hide) {
 			XML::addElement($doc, $author, "dfrn:hide", "true");
 		}
 
@@ -691,7 +691,7 @@ class DFRN
 				`profile`.`pub_keywords`, `profile`.`xmpp`, `profile`.`dob`
 			FROM `profile`
 				INNER JOIN `user` ON `user`.`uid` = `profile`.`uid`
-				WHERE `profile`.`is-default` AND NOT `user`.`hidewall` AND `user`.`uid` = %d",
+				WHERE NOT `user`.`hidewall` AND `user`.`uid` = %d",
 			intval($owner['uid'])
 		);
 		if (DBA::isResult($r)) {
@@ -761,7 +761,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Adds the author elements in the "entry" elements of the DFRN protocol
+	 * Adds the author elements in the "entry" elements of the DFRN protocol
 	 *
 	 * @param DOMDocument $doc         XML document
 	 * @param string $element     Element name for the author
@@ -806,7 +806,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Adds the activity elements
+	 * Adds the activity elements
 	 *
 	 * @param DOMDocument $doc      XML document
 	 * @param string      $element  Element name for the activity
@@ -873,7 +873,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Adds the elements for attachments
+	 * Adds the elements for attachments
 	 *
 	 * @param object $doc  XML document
 	 * @param object $root XML root
@@ -909,7 +909,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Adds the "entry" elements for the DFRN protocol
+	 * Adds the "entry" elements for the DFRN protocol
 	 *
 	 * @param DOMDocument $doc     XML document
 	 * @param string      $type    "text" or "html"
@@ -955,7 +955,7 @@ class DFRN
 			$entry->setAttribute("xmlns:statusnet", ActivityNamespace::STATUSNET);
 		}
 
-		if ($item['private']) {
+		if ($item['private'] == Item::PRIVATE) {
 			$body = Item::fixPrivatePhotos($item['body'], $owner['uid'], $item, $cid);
 		} else {
 			$body = $item['body'];
@@ -991,7 +991,7 @@ class DFRN
 		}
 
 		// Add conversation data. This is used for OStatus
-		$conversation_href = System::baseUrl()."/display/".$item["parent-guid"];
+		$conversation_href = DI::baseUrl()."/display/".$item["parent-guid"];
 		$conversation_uri = $conversation_href;
 
 		if (isset($parent_item)) {
@@ -1032,7 +1032,7 @@ class DFRN
 			"link",
 			"",
 			["rel" => "alternate", "type" => "text/html",
-				 "href" => System::baseUrl() . "/display/" . $item["guid"]]
+				 "href" => DI::baseUrl() . "/display/" . $item["guid"]]
 		);
 
 		// "comment-allow" is some old fashioned stuff for old Friendica versions.
@@ -1050,7 +1050,9 @@ class DFRN
 		}
 
 		if ($item['private']) {
-			XML::addElement($doc, $entry, "dfrn:private", ($item['private'] ? $item['private'] : 1));
+			// Friendica versions prior to 2020.3 can't handle "unlisted" properly. So we can only transmit public and private
+			XML::addElement($doc, $entry, "dfrn:private", ($item['private'] == Item::PRIVATE ? Item::PRIVATE : Item::PUBLIC));
+			XML::addElement($doc, $entry, "dfrn:unlisted", $item['private'] == Item::UNLISTED);
 		}
 
 		if ($item['extid']) {
@@ -1146,7 +1148,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief encrypts data via AES
+	 * encrypts data via AES
 	 *
 	 * @param string $data The data that is to be encrypted
 	 * @param string $key  The AES key
@@ -1159,7 +1161,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief decrypts data via AES
+	 * decrypts data via AES
 	 *
 	 * @param string $encrypted The encrypted data
 	 * @param string $key       The AES key
@@ -1172,7 +1174,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Delivers the atom content to the contacts
+	 * Delivers the atom content to the contacts
 	 *
 	 * @param array  $owner    Owner record
 	 * @param array  $contact  Contact record of the receiver
@@ -1195,12 +1197,12 @@ class DFRN
 			$idtosend = '1:' . $orig_id;
 		}
 
-		$rino = Config::get('system', 'rino_encrypt');
+		$rino = DI::config()->get('system', 'rino_encrypt');
 		$rino = intval($rino);
 
 		Logger::log("Local rino version: ". $rino, Logger::DEBUG);
 
-		$ssl_val = intval(Config::get('system', 'ssl_policy'));
+		$ssl_val = intval(DI::config()->get('system', 'ssl_policy'));
 
 		switch ($ssl_val) {
 			case BaseURL::SSL_POLICY_FULL:
@@ -1408,7 +1410,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Transmits atom content to the contacts via the Diaspora transport layer
+	 * Transmits atom content to the contacts via the Diaspora transport layer
 	 *
 	 * @param array  $owner   Owner record
 	 * @param array  $contact Contact record of the receiver
@@ -1498,7 +1500,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Fetch the author data from head or entry items
+	 * Fetch the author data from head or entry items
 	 *
 	 * @param object $xpath     XPath object
 	 * @param object $context   In which context should the data be searched
@@ -1732,7 +1734,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Transforms activity objects into an XML string
+	 * Transforms activity objects into an XML string
 	 *
 	 * @param object $xpath    XPath object
 	 * @param object $activity Activity object
@@ -1787,7 +1789,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Processes the mail elements
+	 * Processes the mail elements
 	 *
 	 * @param object $xpath    XPath object
 	 * @param object $mail     mail elements
@@ -1816,7 +1818,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Processes the suggestion elements
+	 * Processes the suggestion elements
 	 *
 	 * @param object $xpath      XPath object
 	 * @param object $suggestion suggestion elements
@@ -1896,14 +1898,14 @@ class DFRN
 
 		notification(
 			[
-				'type'         => NOTIFY_SUGGEST,
+				'type'         => Type::SUGGEST,
 				'notify_flags' => $importer['notify-flags'],
 				'language'     => $importer['language'],
 				'to_name'      => $importer['username'],
 				'to_email'     => $importer['email'],
 				'uid'          => $importer['importer_uid'],
 				'item'         => $suggest,
-				'link'         => System::baseUrl().'/notifications/intros',
+				'link'         => DI::baseUrl().'/notifications/intros',
 				'source_name'  => $importer['name'],
 				'source_link'  => $importer['url'],
 				'source_photo' => $importer['photo'],
@@ -1915,7 +1917,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Processes the relocation elements
+	 * Processes the relocation elements
 	 *
 	 * @param object $xpath      XPath object
 	 * @param object $relocation relocation elements
@@ -2000,7 +2002,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Updates an item
+	 * Updates an item
 	 *
 	 * @param array $current   the current item record
 	 * @param array $item      the new item record
@@ -2033,7 +2035,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Detects the entry type of the item
+	 * Detects the entry type of the item
 	 *
 	 * @param array $importer Record of the importer user mixed with contact of the content
 	 * @param array $item     the new item record
@@ -2101,7 +2103,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Send a "poke"
+	 * Send a "poke"
 	 *
 	 * @param array $item      The new item record
 	 * @param array $importer  Record of the importer user mixed with contact of the content
@@ -2131,7 +2133,7 @@ class DFRN
 				}
 			}
 
-			if ($Blink && Strings::compareLink($Blink, System::baseUrl() . "/profile/" . $importer["nickname"])) {
+			if ($Blink && Strings::compareLink($Blink, DI::baseUrl() . "/profile/" . $importer["nickname"])) {
 				$author = DBA::selectFirst('contact', ['name', 'thumb', 'url'], ['id' => $item['author-id']]);
 
 				$parent = Item::selectFirst(['id'], ['uri' => $item['parent-uri'], 'uid' => $importer["importer_uid"]]);
@@ -2140,14 +2142,14 @@ class DFRN
 				// send a notification
 				notification(
 					[
-					"type"         => NOTIFY_POKE,
+					"type"         => Type::POKE,
 					"notify_flags" => $importer["notify-flags"],
 					"language"     => $importer["language"],
 					"to_name"      => $importer["username"],
 					"to_email"     => $importer["email"],
 					"uid"          => $importer["importer_uid"],
 					"item"         => $item,
-					"link"         => System::baseUrl()."/display/".urlencode($item['guid']),
+					"link"         => DI::baseUrl()."/display/".urlencode($item['guid']),
 					"source_name"  => $author["name"],
 					"source_link"  => $author["url"],
 					"source_photo" => $author["thumb"],
@@ -2161,7 +2163,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Processes several actions, depending on the verb
+	 * Processes several actions, depending on the verb
 	 *
 	 * @param int   $entrytype Is it a toplevel entry, a comment or a relayed comment?
 	 * @param array $importer  Record of the importer user mixed with contact of the content
@@ -2181,8 +2183,7 @@ class DFRN
 			// The functions below are partly used by ostatus.php as well - where we have this variable
 			$contact = Contact::selectFirst([], ['id' => $importer['id']]);
 
-			/** @var Activity $activity */
-			$activity = BaseObject::getClass(Activity::class);
+			$activity = DI::activity();
 
 			// Big question: Do we need these functions? They were part of the "consume_feed" function.
 			// This function once was responsible for DFRN and OStatus.
@@ -2264,7 +2265,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Processes the link elements
+	 * Processes the link elements
 	 *
 	 * @param object $links link elements
 	 * @param array  $item  the item record
@@ -2308,7 +2309,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Processes the entry elements which contain the items and comments
+	 * Processes the entry elements which contain the items and comments
 	 *
 	 * @param array  $header   Array of the header elements that always stay the same
 	 * @param object $xpath    XPath object
@@ -2368,31 +2369,10 @@ class DFRN
 
 		$item["body"] = XML::getFirstNodeValue($xpath, "dfrn:env/text()", $entry);
 		$item["body"] = str_replace([' ',"\t","\r","\n"], ['','','',''], $item["body"]);
-		// make sure nobody is trying to sneak some html tags by us
-		$item["body"] = Strings::escapeTags(Strings::base64UrlDecode($item["body"]));
+
+		$item["body"] = Strings::base64UrlDecode($item["body"]);
 
 		$item["body"] = BBCode::limitBodySize($item["body"]);
-
-		/// @todo Do we really need this check for HTML elements? (It was copied from the old function)
-		if ((strpos($item['body'], '<') !== false) && (strpos($item['body'], '>') !== false)) {
-			$base_url = \get_app()->getBaseURL();
-			$item['body'] = HTML::relToAbs($item['body'], $base_url);
-
-			$item['body'] = HTML::toBBCodeVideo($item['body']);
-
-			$item['body'] = OEmbed::HTML2BBCode($item['body']);
-
-			$config = HTMLPurifier_Config::createDefault();
-			$config->set('Cache.DefinitionImpl', null);
-
-			// we shouldn't need a whitelist, because the bbcode converter
-			// will strip out any unsupported tags.
-
-			$purifier = new HTMLPurifier($config);
-			$item['body'] = $purifier->purify($item['body']);
-
-			$item['body'] = @HTML::toBBCode($item['body']);
-		}
 
 		/// @todo We should check for a repeated post and if we know the repeated author.
 
@@ -2404,6 +2384,11 @@ class DFRN
 		$item["coord"] = XML::getFirstNodeValue($xpath, "georss:point", $entry);
 
 		$item["private"] = XML::getFirstNodeValue($xpath, "dfrn:private/text()", $entry);
+
+		$unlisted = XML::getFirstNodeValue($xpath, "dfrn:unlisted/text()", $entry);
+		if (!empty($unlisted) && ($item['private'] != Item::PRIVATE)) {
+			$item['private'] = Item::UNLISTED;
+		}
 
 		$item["extid"] = XML::getFirstNodeValue($xpath, "dfrn:extid/text()", $entry);
 
@@ -2653,7 +2638,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Deletes items
+	 * Deletes items
 	 *
 	 * @param object $xpath    XPath object
 	 * @param object $deletion deletion elements
@@ -2710,11 +2695,11 @@ class DFRN
 
 		Logger::log('deleting item '.$item['id'].' uri='.$uri, Logger::DEBUG);
 
-		Item::delete(['id' => $item['id']]);
+		Item::markForDeletion(['id' => $item['id']]);
 	}
 
 	/**
-	 * @brief Imports a DFRN message
+	 * Imports a DFRN message
 	 *
 	 * @param string $xml          The DFRN message
 	 * @param array  $importer     Record of the importer user mixed with contact of the content
@@ -2857,7 +2842,7 @@ class DFRN
 	}
 
 	/**
-	 * @brief Returns the activity verb
+	 * Returns the activity verb
 	 *
 	 * @param array $item Item array
 	 *
@@ -2889,13 +2874,13 @@ class DFRN
 		$community_page = ($user['page-flags'] == User::PAGE_FLAGS_COMMUNITY);
 		$prvgroup = ($user['page-flags'] == User::PAGE_FLAGS_PRVGROUP);
 
-		$link = Strings::normaliseLink(System::baseUrl() . '/profile/' . $user['nickname']);
+		$link = Strings::normaliseLink(DI::baseUrl() . '/profile/' . $user['nickname']);
 
 		/*
 		 * Diaspora uses their own hardwired link URL in @-tags
 		 * instead of the one we supply with webfinger
 		 */
-		$dlink = Strings::normaliseLink(System::baseUrl() . '/u/' . $user['nickname']);
+		$dlink = Strings::normaliseLink(DI::baseUrl() . '/u/' . $user['nickname']);
 
 		$cnt = preg_match_all('/[\@\!]\[url\=(.*?)\](.*?)\[\/url\]/ism', $item['body'], $matches, PREG_SET_ORDER);
 		if ($cnt) {

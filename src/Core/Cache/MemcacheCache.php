@@ -1,17 +1,35 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core\Cache;
 
 use Exception;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\BaseCache;
+use Friendica\Core\Config\IConfig;
 use Memcache;
 
 /**
  * Memcache Cache
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
-class MemcacheCache extends Cache implements IMemoryCache
+class MemcacheCache extends BaseCache implements IMemoryCache
 {
 	use TraitCompareSet;
 	use TraitCompareDelete;
@@ -25,7 +43,7 @@ class MemcacheCache extends Cache implements IMemoryCache
 	/**
 	 * @throws Exception
 	 */
-	public function __construct(string $hostname, Configuration $config)
+	public function __construct(string $hostname, IConfig $config)
 	{
 		if (!class_exists('Memcache', false)) {
 			throw new Exception('Memcache class isn\'t available');
@@ -84,7 +102,7 @@ class MemcacheCache extends Cache implements IMemoryCache
 	/**
 	 * (@inheritdoc)
 	 */
-	public function set($key, $value, $ttl = Cache::FIVE_MINUTES)
+	public function set($key, $value, $ttl = Duration::FIVE_MINUTES)
 	{
 		$cachekey = $this->getCacheKey($key);
 
@@ -129,7 +147,7 @@ class MemcacheCache extends Cache implements IMemoryCache
 	/**
 	 * (@inheritdoc)
 	 */
-	public function add($key, $value, $ttl = Cache::FIVE_MINUTES)
+	public function add($key, $value, $ttl = Duration::FIVE_MINUTES)
 	{
 		$cachekey = $this->getCacheKey($key);
 		return $this->memcache->add($cachekey, serialize($value), MEMCACHE_COMPRESSED, $ttl);
@@ -140,6 +158,6 @@ class MemcacheCache extends Cache implements IMemoryCache
 	 */
 	public function getName()
 	{
-		return self::TYPE_MEMCACHE;
+		return Type::MEMCACHE;
 	}
 }

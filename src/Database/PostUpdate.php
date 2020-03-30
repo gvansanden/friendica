@@ -1,24 +1,45 @@
 <?php
 /**
- * @file src/Database/PostUpdate.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Database;
 
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Model\ItemURI;
 use Friendica\Model\PermissionSet;
+use Friendica\Model\UserItem;
 
 /**
- * Post update functions
+ * These database-intensive post update routines are meant to be executed in the background by the cronjob.
+ *
+ * If there is a need for a intensive migration after a database structure change, update this file
+ * by adding a new method at the end with the number of the new DB_UPDATE_VERSION.
  */
 class PostUpdate
 {
 	/**
-	 * @brief Calls the post update functions
+	 * Calls the post update functions
 	 */
 	public static function update()
 	{
@@ -40,12 +61,15 @@ class PostUpdate
 		if (!self::update1322()) {
 			return false;
 		}
+		if (!self::update1329()) {
+			return false;
+		}
 
 		return true;
 	}
 
 	/**
-	 * @brief Updates the "global" field in the item table
+	 * Updates the "global" field in the item table
 	 *
 	 * @return bool "true" when the job is done
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -53,24 +77,24 @@ class PostUpdate
 	private static function update1194()
 	{
 		// Was the script completed?
-		if (Config::get("system", "post_update_version") >= 1194) {
+		if (DI::config()->get("system", "post_update_version") >= 1194) {
 			return true;
 		}
 
 		Logger::log("Start", Logger::DEBUG);
 
-		$end_id = Config::get("system", "post_update_1194_end");
+		$end_id = DI::config()->get("system", "post_update_1194_end");
 		if (!$end_id) {
 			$r = q("SELECT `id` FROM `item` WHERE `uid` != 0 ORDER BY `id` DESC LIMIT 1");
 			if ($r) {
-				Config::set("system", "post_update_1194_end", $r[0]["id"]);
-				$end_id = Config::get("system", "post_update_1194_end");
+				DI::config()->set("system", "post_update_1194_end", $r[0]["id"]);
+				$end_id = DI::config()->get("system", "post_update_1194_end");
 			}
 		}
 
 		Logger::log("End ID: ".$end_id, Logger::DEBUG);
 
-		$start_id = Config::get("system", "post_update_1194_start");
+		$start_id = DI::config()->get("system", "post_update_1194_start");
 
 		$query1 = "SELECT `item`.`id` FROM `item` ";
 
@@ -86,12 +110,12 @@ class PostUpdate
 			intval($start_id), intval($end_id),
 			DBA::escape(Protocol::DFRN), DBA::escape(Protocol::DIASPORA), DBA::escape(Protocol::OSTATUS));
 		if (!$r) {
-			Config::set("system", "post_update_version", 1194);
+			DI::config()->set("system", "post_update_version", 1194);
 			Logger::log("Update is done", Logger::DEBUG);
 			return true;
 		} else {
-			Config::set("system", "post_update_1194_start", $r[0]["id"]);
-			$start_id = Config::get("system", "post_update_1194_start");
+			DI::config()->set("system", "post_update_1194_start", $r[0]["id"]);
+			$start_id = DI::config()->get("system", "post_update_1194_start");
 		}
 
 		Logger::log("Start ID: ".$start_id, Logger::DEBUG);
@@ -114,7 +138,7 @@ class PostUpdate
 	}
 
 	/**
-	 * @brief update the "last-item" field in the "self" contact
+	 * update the "last-item" field in the "self" contact
 	 *
 	 * This field avoids cost intensive calls in the admin panel and in "nodeinfo"
 	 *
@@ -124,7 +148,7 @@ class PostUpdate
 	private static function update1206()
 	{
 		// Was the script completed?
-		if (Config::get("system", "post_update_version") >= 1206) {
+		if (DI::config()->get("system", "post_update_version") >= 1206) {
 			return true;
 		}
 
@@ -143,13 +167,13 @@ class PostUpdate
 			}
 		}
 
-		Config::set("system", "post_update_version", 1206);
+		DI::config()->set("system", "post_update_version", 1206);
 		Logger::log("Done", Logger::DEBUG);
 		return true;
 	}
 
 	/**
-	 * @brief update the item related tables
+	 * update the item related tables
 	 *
 	 * @return bool "true" when the job is done
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -158,11 +182,11 @@ class PostUpdate
 	private static function update1279()
 	{
 		// Was the script completed?
-		if (Config::get("system", "post_update_version") >= 1279) {
+		if (DI::config()->get("system", "post_update_version") >= 1279) {
 			return true;
 		}
 
-		$id = Config::get("system", "post_update_version_1279_id", 0);
+		$id = DI::config()->get("system", "post_update_version_1279_id", 0);
 
 		Logger::log("Start from item " . $id, Logger::DEBUG);
 
@@ -200,13 +224,19 @@ class PostUpdate
 			}
 
 			if (empty($item['psid'])) {
-				$item['psid'] = PermissionSet::fetchIDForPost($item);
-			} else {
-				$item['allow_cid'] = null;
-				$item['allow_gid'] = null;
-				$item['deny_cid'] = null;
-				$item['deny_gid'] = null;
+				$item['psid'] = PermissionSet::getIdFromACL(
+					$item['uid'],
+					$item['allow_cid'],
+					$item['allow_gid'],
+					$item['deny_cid'],
+					$item['deny_gid']
+				);
 			}
+
+			$item['allow_cid'] = null;
+			$item['allow_gid'] = null;
+			$item['deny_cid'] = null;
+			$item['deny_gid'] = null;
 
 			if ($item['post-type'] == 0) {
 				if (!empty($item['type']) && ($item['type'] == 'note')) {
@@ -231,7 +261,7 @@ class PostUpdate
 		}
 		DBA::close($items);
 
-		Config::set("system", "post_update_version_1279_id", $id);
+		DI::config()->set("system", "post_update_version_1279_id", $id);
 
 		Logger::log("Processed rows: " . $rows . " - last processed item:  " . $id, Logger::DEBUG);
 
@@ -250,7 +280,7 @@ class PostUpdate
 				DBA::update('item', $fields, $condition);
 			}
 
-			Config::set("system", "post_update_version", 1279);
+			DI::config()->set("system", "post_update_version", 1279);
 			Logger::log("Done", Logger::DEBUG);
 			return true;
 		}
@@ -301,7 +331,7 @@ class PostUpdate
 	}
 
 	/**
-	 * @brief update item-uri data. Prerequisite for the next item structure update.
+	 * update item-uri data. Prerequisite for the next item structure update.
 	 *
 	 * @return bool "true" when the job is done
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -309,11 +339,11 @@ class PostUpdate
 	private static function update1281()
 	{
 		// Was the script completed?
-		if (Config::get("system", "post_update_version") >= 1281) {
+		if (DI::config()->get("system", "post_update_version") >= 1281) {
 			return true;
 		}
 
-		$id = Config::get("system", "post_update_version_1281_id", 0);
+		$id = DI::config()->get("system", "post_update_version_1281_id", 0);
 
 		Logger::log("Start from item " . $id, Logger::DEBUG);
 
@@ -365,7 +395,7 @@ class PostUpdate
 		}
 		DBA::close($items);
 
-		Config::set("system", "post_update_version_1281_id", $id);
+		DI::config()->set("system", "post_update_version_1281_id", $id);
 
 		Logger::log("Processed rows: " . $rows . " - last processed item:  " . $id, Logger::DEBUG);
 
@@ -376,7 +406,7 @@ class PostUpdate
 			Logger::log("Updating item-uri in item-content", Logger::DEBUG);
 			DBA::e("UPDATE `item-content` INNER JOIN `item-uri` ON `item-uri`.`uri` = `item-content`.`uri` SET `item-content`.`uri-id` = `item-uri`.`id` WHERE `item-content`.`uri-id` IS NULL");
 
-			Config::set("system", "post_update_version", 1281);
+			DI::config()->set("system", "post_update_version", 1281);
 			Logger::log("Done", Logger::DEBUG);
 			return true;
 		}
@@ -393,7 +423,7 @@ class PostUpdate
 	private static function update1297()
 	{
 		// Was the script completed?
-		if (Config::get('system', 'post_update_version') >= 1297) {
+		if (DI::config()->get('system', 'post_update_version') >= 1297) {
 			return true;
 		}
 
@@ -413,7 +443,7 @@ class PostUpdate
 
 		Logger::info('Processed rows: ' . DBA::affectedRows());
 
-		Config::set('system', 'post_update_version', 1297);
+		DI::config()->set('system', 'post_update_version', 1297);
 
 		Logger::info('Done');
 
@@ -428,7 +458,7 @@ class PostUpdate
 	private static function update1322()
 	{
 		// Was the script completed?
-		if (Config::get('system', 'post_update_version') >= 1322) {
+		if (DI::config()->get('system', 'post_update_version') >= 1322) {
 			return true;
 		}
 
@@ -447,10 +477,60 @@ class PostUpdate
 		}
 
 		DBA::close($contact);
-		Config::set('system', 'post_update_version', 1322);
+		DI::config()->set('system', 'post_update_version', 1322);
 
 		Logger::info('Done');
 
 		return true;
+	}
+
+	/**
+	 * update user-item data with notifications
+	 *
+	 * @return bool "true" when the job is done
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	private static function update1329()
+	{
+		// Was the script completed?
+		if (DI::config()->get('system', 'post_update_version') >= 1329) {
+			return true;
+		}
+
+		$id = DI::config()->get('system', 'post_update_version_1329_id', 0);
+
+		Logger::info('Start', ['item' => $id]);
+
+		$start_id = $id;
+		$rows = 0;
+		$condition = ["`id` > ?", $id];
+		$params = ['order' => ['id'], 'limit' => 10000];
+		$items = DBA::select('item', ['id'], $condition, $params);
+
+		if (DBA::errorNo() != 0) {
+			Logger::error('Database error', ['no' => DBA::errorNo(), 'message' => DBA::errorMessage()]);
+			return false;
+		}
+
+		while ($item = DBA::fetch($items)) {
+			$id = $item['id'];
+
+			UserItem::setNotification($item['id']);
+
+			++$rows;
+		}
+		DBA::close($items);
+
+		DI::config()->set('system', 'post_update_version_1329_id', $id);
+
+		Logger::info('Processed', ['rows' => $rows, 'last' => $id]);
+
+		if ($start_id == $id) {
+			DI::config()->set('system', 'post_update_version', 1329);
+			Logger::info('Done');
+			return true;
+		}
+
+		return false;
 	}
 }

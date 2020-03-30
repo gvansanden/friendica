@@ -1,13 +1,29 @@
 <?php
 /**
- * @file src/Object/Image.php
- * @brief This file contains the Image class for image processing
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Object;
 
 use Exception;
-use Friendica\Core\Config;
 use Friendica\Core\System;
+use Friendica\DI;
 use Friendica\Util\Images;
 use Imagick;
 use ImagickPixel;
@@ -31,7 +47,7 @@ class Image
 	private $types;
 
 	/**
-	 * @brief Constructor
+	 * Constructor
 	 * @param string  $data
 	 * @param boolean $type optional, default null
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -56,7 +72,8 @@ class Image
 	}
 
 	/**
-	 * @brief Destructor
+	 * Destructor
+	 *
 	 * @return void
 	 */
 	public function __destruct()
@@ -113,7 +130,7 @@ class Image
 			 */
 			switch ($this->getType()) {
 				case "image/png":
-					$quality = Config::get('system', 'png_quality');
+					$quality = DI::config()->get('system', 'png_quality');
 					if ((! $quality) || ($quality > 9)) {
 						$quality = PNG_QUALITY;
 					}
@@ -129,7 +146,7 @@ class Image
 					$this->image->setCompressionQuality($quality);
 					break;
 				case "image/jpeg":
-					$quality = Config::get('system', 'jpeg_quality');
+					$quality = DI::config()->get('system', 'jpeg_quality');
 					if ((! $quality) || ($quality > 100)) {
 						$quality = JPEG_QUALITY;
 					}
@@ -500,7 +517,7 @@ class Image
 	}
 
 	/**
-	 * @brief Scale image to target dimensions
+	 * Scale image to target dimensions
 	 *
 	 * @param int $dest_width
 	 * @param int $dest_height
@@ -607,15 +624,13 @@ class Image
 
 		$string = $this->asString();
 
-		$a = \get_app();
-
 		$stamp1 = microtime(true);
 		file_put_contents($path, $string);
-		$a->getProfiler()->saveTimestamp($stamp1, "file", System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, "file", System::callstack());
 	}
 
 	/**
-	 * @brief Magic method allowing string casting of an Image object
+	 * Magic method allowing string casting of an Image object
 	 *
 	 * Ex: $data = $Image->asString();
 	 * can be replaced by
@@ -652,14 +667,14 @@ class Image
 
 		switch ($this->getType()) {
 			case "image/png":
-				$quality = Config::get('system', 'png_quality');
+				$quality = DI::config()->get('system', 'png_quality');
 				if ((!$quality) || ($quality > 9)) {
 					$quality = PNG_QUALITY;
 				}
 				imagepng($this->image, null, $quality);
 				break;
 			case "image/jpeg":
-				$quality = Config::get('system', 'jpeg_quality');
+				$quality = DI::config()->get('system', 'jpeg_quality');
 				if ((!$quality) || ($quality > 100)) {
 					$quality = JPEG_QUALITY;
 				}
@@ -672,7 +687,8 @@ class Image
 	}
 
 	/**
-	 * @brief supported mimetypes and corresponding file extensions
+	 * supported mimetypes and corresponding file extensions
+	 *
 	 * @return array
 	 * @deprecated in version 2019.12 please use Util\Images::supportedTypes() instead.
 	 */
@@ -682,7 +698,8 @@ class Image
 	}
 
 	/**
-	 * @brief Maps Mime types to Imagick formats
+	 * Maps Mime types to Imagick formats
+	 *
 	 * @return array With with image formats (mime type as key)
 	 * @deprecated in version 2019.12 please use Util\Images::getFormatsMap() instead.
 	 */

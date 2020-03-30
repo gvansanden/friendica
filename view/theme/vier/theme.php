@@ -12,12 +12,10 @@
 use Friendica\App;
 use Friendica\Content\ForumManager;
 use Friendica\Core\Addon;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
-use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
+use Friendica\Core\Search;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
 use Friendica\Util\Proxy as ProxyUtils;
@@ -32,17 +30,17 @@ function vier_init(App $a)
 	if (!empty($a->argv[0]) && ($a->argv[0] . ($a->argv[1] ?? '')) === ('profile' . $a->user['nickname']) || $a->argv[0] === 'network' && local_user()) {
 		vier_community_info();
 
-		$a->page['htmlhead'] .= "<link rel='stylesheet' type='text/css' href='view/theme/vier/wide.css' media='screen and (min-width: 1300px)'/>\n";
+		DI::page()['htmlhead'] .= "<link rel='stylesheet' type='text/css' href='view/theme/vier/wide.css' media='screen and (min-width: 1300px)'/>\n";
 	}
 
-	if ($a->is_mobile || $a->is_tablet) {
-		$a->page['htmlhead'] .= '<meta name=viewport content="width=device-width, initial-scale=1">'."\n";
-		$a->page['htmlhead'] .= '<link rel="stylesheet" type="text/css" href="view/theme/vier/mobile.css" media="screen"/>'."\n";
+	if (DI::mode()->isMobile() || DI::mode()->isMobile()) {
+		DI::page()['htmlhead'] .= '<meta name=viewport content="width=device-width, initial-scale=1">'."\n";
+		DI::page()['htmlhead'] .= '<link rel="stylesheet" type="text/css" href="view/theme/vier/mobile.css" media="screen"/>'."\n";
 	}
 	/// @todo deactivated since it doesn't work with desktop browsers at the moment
-	//$a->page['htmlhead'] .= '<link rel="stylesheet" type="text/css" href="view/theme/vier/mobile.css" media="screen and (max-width: 1000px)"/>'."\n";
+	//DI::page()['htmlhead'] .= '<link rel="stylesheet" type="text/css" href="view/theme/vier/mobile.css" media="screen and (max-width: 1000px)"/>'."\n";
 
-	$a->page['htmlhead'] .= <<< EOT
+	DI::page()['htmlhead'] .= <<< EOT
 <link rel='stylesheet' type='text/css' href='view/theme/vier/narrow.css' media='screen and (max-width: 1100px)' />
 <script type="text/javascript">
 function showThread(id) {
@@ -63,8 +61,8 @@ function cmtBbClose(id) {
 </script>
 EOT;
 
-	if ($a->is_mobile || $a->is_tablet) {
-		$a->page['htmlhead'] .= <<< EOT
+	if (DI::mode()->isMobile() || DI::mode()->isMobile()) {
+		DI::page()['htmlhead'] .= <<< EOT
 <script>
 	$(document).ready(function() {
 		$(".mobile-aside-toggle a").click(function(e){
@@ -81,22 +79,22 @@ EOT;
 
 	// Hide the left menu bar
 	/// @TODO maybe move this static array out where it should belong?
-	if (empty($a->page['aside']) && in_array($a->argv[0], ["community", "events", "help", "delegation", "notifications",
+	if (empty(DI::page()['aside']) && in_array($a->argv[0], ["community", "events", "help", "delegation", "notifications",
 			"probe", "webfinger", "login", "invite", "credits"])) {
-		$a->page['htmlhead'] .= "<link rel='stylesheet' href='view/theme/vier/hide.css' />";
+		DI::page()['htmlhead'] .= "<link rel='stylesheet' href='view/theme/vier/hide.css' />";
 	}
 }
 
 function get_vier_config($key, $default = false, $admin = false)
 {
 	if (local_user() && !$admin) {
-		$result = PConfig::get(local_user(), "vier", $key);
+		$result = DI::pConfig()->get(local_user(), "vier", $key);
 		if (!is_null($result)) {
 			return $result;
 		}
 	}
 
-	$result = Config::get("vier", $key);
+	$result = DI::config()->get("vier", $key);
 	if (!is_null($result)) {
 		return $result;
 	}
@@ -106,7 +104,7 @@ function get_vier_config($key, $default = false, $admin = false)
 
 function vier_community_info()
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	$show_pages      = get_vier_config("show_pages", 1);
 	$show_profiles   = get_vier_config("show_profiles", 1);
@@ -116,7 +114,7 @@ function vier_community_info()
 	$show_lastusers  = get_vier_config("show_lastusers", 1);
 
 	// get_baseurl
-	$url = System::baseUrl();
+	$url = DI::baseUrl();
 	$aside['$url'] = $url;
 
 	// comunity_profiles
@@ -125,7 +123,7 @@ function vier_community_info()
 
 		$tpl = Renderer::getMarkupTemplate('ch_directory_item.tpl');
 		if (DBA::isResult($r)) {
-			$aside['$comunity_profiles_title'] = L10n::t('Community Profiles');
+			$aside['$comunity_profiles_title'] = DI::l10n()->t('Community Profiles');
 			$aside['$comunity_profiles_items'] = [];
 
 			foreach ($r as $rr) {
@@ -142,28 +140,28 @@ function vier_community_info()
 
 	// last 9 users
 	if ($show_lastusers) {
-		$publish = (Config::get('system', 'publish_all') ? '' : " AND `publish` = 1 ");
+		$publish = (DI::config()->get('system', 'publish_all') ? '' : "`publish` = 1");
 		$order = " ORDER BY `register_date` DESC ";
 
 		$tpl = Renderer::getMarkupTemplate('ch_directory_item.tpl');
 
-		$r = q("SELECT `profile`.*, `profile`.`uid` AS `profile_uid`, `user`.`nickname`
+		$r = q("SELECT `profile`.*, `user`.`nickname`
 				FROM `profile` LEFT JOIN `user` ON `user`.`uid` = `profile`.`uid`
-				WHERE `is-default` = 1 $publish AND `user`.`blocked` = 0 $order LIMIT %d , %d ",
+				WHERE $publish AND `user`.`blocked` = 0 $order LIMIT %d , %d ",
 			0,
 			9
 		);
 
 		if (DBA::isResult($r)) {
-			$aside['$lastusers_title'] = L10n::t('Last users');
+			$aside['$lastusers_title'] = DI::l10n()->t('Last users');
 			$aside['$lastusers_items'] = [];
 
 			foreach ($r as $rr) {
-				$profile_link = 'profile/' . ((strlen($rr['nickname'])) ? $rr['nickname'] : $rr['profile_uid']);
+				$profile_link = 'profile/' . ((strlen($rr['nickname'])) ? $rr['nickname'] : $rr['uid']);
 				$entry = Renderer::replaceMacros($tpl, [
 					'$id' => $rr['id'],
 					'$profile_link' => $profile_link,
-					'$photo' => $a->removeBaseURL($rr['thumb']),
+					'$photo' => DI::baseUrl()->remove($rr['thumb']),
 					'$alt_text' => $rr['name']]);
 				$aside['$lastusers_items'][] = $entry;
 			}
@@ -173,18 +171,18 @@ function vier_community_info()
 	//right_aside FIND FRIENDS
 	if ($show_friends && local_user()) {
 		$nv = [];
-		$nv['findpeople'] = L10n::t('Find People');
-		$nv['desc'] = L10n::t('Enter name or interest');
-		$nv['label'] = L10n::t('Connect/Follow');
-		$nv['hint'] = L10n::t('Examples: Robert Morgenstein, Fishing');
-		$nv['findthem'] = L10n::t('Find');
-		$nv['suggest'] = L10n::t('Friend Suggestions');
-		$nv['similar'] = L10n::t('Similar Interests');
-		$nv['random'] = L10n::t('Random Profile');
-		$nv['inv'] = L10n::t('Invite Friends');
-		$nv['directory'] = L10n::t('Global Directory');
-		$nv['global_dir'] = get_server();
-		$nv['local_directory'] = L10n::t('Local Directory');
+		$nv['findpeople'] = DI::l10n()->t('Find People');
+		$nv['desc'] = DI::l10n()->t('Enter name or interest');
+		$nv['label'] = DI::l10n()->t('Connect/Follow');
+		$nv['hint'] = DI::l10n()->t('Examples: Robert Morgenstein, Fishing');
+		$nv['findthem'] = DI::l10n()->t('Find');
+		$nv['suggest'] = DI::l10n()->t('Friend Suggestions');
+		$nv['similar'] = DI::l10n()->t('Similar Interests');
+		$nv['random'] = DI::l10n()->t('Random Profile');
+		$nv['inv'] = DI::l10n()->t('Invite Friends');
+		$nv['directory'] = DI::l10n()->t('Global Directory');
+		$nv['global_dir'] = Search::getGlobalDirectory();
+		$nv['local_directory'] = DI::l10n()->t('Local Directory');
 
 		$aside['$nv'] = $nv;
 	}
@@ -212,7 +210,7 @@ function vier_community_info()
 					'name'         => $contact['name'],
 					'cid'          => $contact['id'],
 					'selected'     => $selected,
-					'micro'        => System::removedBaseUrl(ProxyUtils::proxifyUrl($contact['micro'], false, ProxyUtils::SIZE_MICRO)),
+					'micro'        => DI::baseUrl()->remove(ProxyUtils::proxifyUrl($contact['micro'], false, ProxyUtils::SIZE_MICRO)),
 					'id'           => ++$id,
 				];
 				$entries[] = $entry;
@@ -224,12 +222,12 @@ function vier_community_info()
 			$page = Renderer::replaceMacros(
 				$tpl,
 				[
-					'$title'          => L10n::t('Forums'),
+					'$title'          => DI::l10n()->t('Forums'),
 					'$forums'         => $entries,
-					'$link_desc'      => L10n::t('External link to forum'),
+					'$link_desc'      => DI::l10n()->t('External link to forum'),
 					'$total'          => $total,
 					'$visible_forums' => $visible_forums,
-					'$showmore'       => L10n::t('show more')]
+					'$showmore'       => DI::l10n()->t('show more')]
 			);
 
 			$aside['$page'] = $page;
@@ -241,7 +239,7 @@ function vier_community_info()
 	if ($show_helpers) {
 		$r = [];
 
-		$helperlist = Config::get("vier", "helperlist");
+		$helperlist = DI::config()->get("vier", "helperlist");
 
 		$helpers = explode(",", $helperlist);
 
@@ -262,13 +260,13 @@ function vier_community_info()
 			$r[$index]["url"] = Contact::magicLink($helper["url"]);
 		}
 
-		$r[] = ["url" => "help/Quick-Start-guide", "name" => L10n::t("Quick Start")];
+		$r[] = ["url" => "help/Quick-Start-guide", "name" => DI::l10n()->t("Quick Start")];
 
 		$tpl = Renderer::getMarkupTemplate('ch_helpers.tpl');
 
 		if ($r) {
 			$helpers = [];
-			$helpers['title'] = ["", L10n::t('Help'), "", ""];
+			$helpers['title'] = ["", DI::l10n()->t('Help'), "", ""];
 
 			$aside['$helpers_items'] = [];
 
@@ -339,7 +337,7 @@ function vier_community_info()
 			$r[] = ["photo" => "images/wordpress.png", "name" => "Wordpress"];
 		}
 
-		if (function_exists("imap_open") && !Config::get("system", "imap_disabled") && !Config::get("system", "dfrn_only")) {
+		if (function_exists("imap_open") && !DI::config()->get("system", "imap_disabled") && !DI::config()->get("system", "dfrn_only")) {
 			$r[] = ["photo" => "images/mail.png", "name" => "E-Mail"];
 		}
 
@@ -347,7 +345,7 @@ function vier_community_info()
 
 		if (DBA::isResult($r)) {
 			$con_services = [];
-			$con_services['title'] = ["", L10n::t('Connect Services'), "", ""];
+			$con_services['title'] = ["", DI::l10n()->t('Connect Services'), "", ""];
 			$aside['$con_services'] = $con_services;
 
 			foreach ($r as $rr) {
@@ -364,5 +362,27 @@ function vier_community_info()
 
 	//print right_aside
 	$tpl = Renderer::getMarkupTemplate('communityhome.tpl');
-	$a->page['right_aside'] = Renderer::replaceMacros($tpl, $aside);
+	DI::page()['right_aside'] = Renderer::replaceMacros($tpl, $aside);
+}
+
+/**
+ * @param int|null $uid
+ * @return null
+ * @see \Friendica\Core\Theme::getBackgroundColor()
+ * @TODO Implement this function
+ */
+function vier_get_background_color(int $uid = null)
+{
+	return null;
+}
+
+/**
+ * @param int|null $uid
+ * @return null
+ * @see \Friendica\Core\Theme::getThemeColor()
+ * @TODO Implement this function
+ */
+function vier_get_theme_color(int $uid = null)
+{
+	return null;
 }

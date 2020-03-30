@@ -1,11 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
-use Friendica\App;
 use Friendica\BaseModule;
 use Friendica\Core\Addon;
-use Friendica\Core\System;
+use Friendica\DI;
+use stdClass;
 
 /**
  * Standardized way of exposing metadata about a server running one of the distributed social networks.
@@ -15,12 +34,10 @@ class NodeInfo extends BaseModule
 {
 	public static function rawContent(array $parameters = [])
 	{
-		$app = self::getApp();
-
 		if ($parameters['version'] == '1.0') {
-			self::printNodeInfo1($app);
+			self::printNodeInfo1();
 		} elseif ($parameters['version'] == '2.0') {
-			self::printNodeInfo2($app);
+			self::printNodeInfo2();
 		} else {
 			throw new \Friendica\Network\HTTPException\NotFoundException();
 		}
@@ -29,24 +46,22 @@ class NodeInfo extends BaseModule
 	/**
 	 * Return the supported services
 	 *
-	 * @param App $app
-	 *
-	 * @return array with supported services
+	 * @return Object with supported services
 	*/
-	private static function getUsage(App $app)
+	private static function getUsage()
 	{
-		$config = $app->getConfig();
+		$config = DI::config();
 
-		$usage = [];
+		$usage = new stdClass();
 
 		if (!empty($config->get('system', 'nodeinfo'))) {
-			$usage['users'] = [
+			$usage->users = [
 				'total'          => intval($config->get('nodeinfo', 'total_users')),
 				'activeHalfyear' => intval($config->get('nodeinfo', 'active_users_halfyear')),
 				'activeMonth'    => intval($config->get('nodeinfo', 'active_users_monthly'))
 			];
-			$usage['localPosts'] = intval($config->get('nodeinfo', 'local_posts'));
-			$usage['localComments'] = intval($config->get('nodeinfo', 'local_comments'));
+			$usage->localPosts = intval($config->get('nodeinfo', 'local_posts'));
+			$usage->localComments = intval($config->get('nodeinfo', 'local_comments'));
 		}
 
 		return $usage;
@@ -55,11 +70,9 @@ class NodeInfo extends BaseModule
 	/**
 	 * Return the supported services
 	 *
-	 * @param App $app
-	 *
 	 * @return array with supported services
 	*/
-	private static function getServices(App $app)
+	private static function getServices()
 	{
 		$services = [
 			'inbound'  => [],
@@ -116,25 +129,23 @@ class NodeInfo extends BaseModule
 
 	/**
 	 * Print the nodeinfo version 1
-	 *
-	 * @param App $app
 	 */
-	private static function printNodeInfo1(App $app)
+	private static function printNodeInfo1()
 	{
-		$config = $app->getConfig();
+		$config = DI::config();
 
 		$nodeinfo = [
 			'version'           => '1.0',
 			'software'          => [
-				'name'    => 'Friendica',
+				'name'    => 'friendica',
 				'version' => FRIENDICA_VERSION . '-' . DB_UPDATE_VERSION,
 			],
 			'protocols'         => [
 				'inbound'  => [
-					'friendica', 'activitypub'
+					'friendica'
 				],
 				'outbound' => [
-					'friendica', 'activitypub'
+					'friendica'
 				],
 			],
 			'services'          => [],
@@ -155,9 +166,9 @@ class NodeInfo extends BaseModule
 			$nodeinfo['protocols']['outbound'][] = 'gnusocial';
 		}
 
-		$nodeinfo['usage'] = self::getUsage($app);
+		$nodeinfo['usage'] = self::getUsage();
 
-		$nodeinfo['services'] = self::getServices($app);
+		$nodeinfo['services'] = self::getServices();
 
 		$nodeinfo['metadata']['protocols'] = $nodeinfo['protocols'];
 		$nodeinfo['metadata']['protocols']['outbound'][] = 'atom1.0';
@@ -179,19 +190,17 @@ class NodeInfo extends BaseModule
 
 	/**
 	 * Print the nodeinfo version 2
-	 *
-	 * @param App $app
 	 */
-	private static function printNodeInfo2(App $app)
+	private static function printNodeInfo2()
 	{
-		$config = $app->getConfig();
+		$config = DI::config();
 
 		$imap = (function_exists('imap_open') && !$config->get('system', 'imap_disabled') && !$config->get('system', 'dfrn_only'));
 
 		$nodeinfo = [
 			'version'           => '2.0',
 			'software'          => [
-				'name'    => 'Friendica',
+				'name'    => 'friendica',
 				'version' => FRIENDICA_VERSION . '-' . DB_UPDATE_VERSION,
 			],
 			'protocols'         => ['dfrn', 'activitypub'],
@@ -211,9 +220,9 @@ class NodeInfo extends BaseModule
 			$nodeinfo['protocols'][] = 'ostatus';
 		}
 
-		$nodeinfo['usage'] = self::getUsage($app);
+		$nodeinfo['usage'] = self::getUsage();
 
-		$nodeinfo['services'] = self::getServices($app);
+		$nodeinfo['services'] = self::getServices();
 
 		if (Addon::isEnabled('twitter')) {
 			$nodeinfo['services']['inbound'][] = 'twitter';

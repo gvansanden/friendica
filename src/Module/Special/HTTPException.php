@@ -1,12 +1,29 @@
 <?php
-
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Special;
 
-use Friendica\Core\L10n;
-use Friendica\Core\Logger;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
+use Friendica\DI;
 
 /**
  * This special module displays HTTPException when they are thrown in modules.
@@ -29,30 +46,36 @@ class HTTPException
 
 		$titles = [
 			200 => 'OK',
-			400 => L10n::t('Bad Request'),
-			401 => L10n::t('Unauthorized'),
-			403 => L10n::t('Forbidden'),
-			404 => L10n::t('Not Found'),
-			500 => L10n::t('Internal Server Error'),
-			503 => L10n::t('Service Unavailable'),
+			400 => DI::l10n()->t('Bad Request'),
+			401 => DI::l10n()->t('Unauthorized'),
+			403 => DI::l10n()->t('Forbidden'),
+			404 => DI::l10n()->t('Not Found'),
+			500 => DI::l10n()->t('Internal Server Error'),
+			503 => DI::l10n()->t('Service Unavailable'),
 		];
 		$title = ($titles[$e->getCode()] ?? '') ?: 'Error ' . $e->getCode();
 
 		if (empty($message)) {
 			// Explanations are taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
 			$explanation = [
-				400 => L10n::t('The server cannot or will not process the request due to an apparent client error.'),
-				401 => L10n::t('Authentication is required and has failed or has not yet been provided.'),
-				403 => L10n::t('The request was valid, but the server is refusing action. The user might not have the necessary permissions for a resource, or may need an account.'),
-				404 => L10n::t('The requested resource could not be found but may be available in the future.'),
-				500 => L10n::t('An unexpected condition was encountered and no more specific message is suitable.'),
-				503 => L10n::t('The server is currently unavailable (because it is overloaded or down for maintenance). Please try again later.'),
+				400 => DI::l10n()->t('The server cannot or will not process the request due to an apparent client error.'),
+				401 => DI::l10n()->t('Authentication is required and has failed or has not yet been provided.'),
+				403 => DI::l10n()->t('The request was valid, but the server is refusing action. The user might not have the necessary permissions for a resource, or may need an account.'),
+				404 => DI::l10n()->t('The requested resource could not be found but may be available in the future.'),
+				500 => DI::l10n()->t('An unexpected condition was encountered and no more specific message is suitable.'),
+				503 => DI::l10n()->t('The server is currently unavailable (because it is overloaded or down for maintenance). Please try again later.'),
 			];
 
 			$message = $explanation[$e->getCode()] ?? '';
 		}
 
-		return ['$title' => $title, '$message' => $message, '$back' => L10n::t('Go back')];
+		$vars = ['$title' => $title, '$message' => $message, '$back' => DI::l10n()->t('Go back')];
+
+		if (is_site_admin()) {
+			$vars['$trace'] = $e->getTraceAsString();
+		}
+
+		return $vars;
 	}
 
 	/**

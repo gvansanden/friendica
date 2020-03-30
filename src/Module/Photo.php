@@ -1,31 +1,46 @@
 <?php
 /**
- * @file src/Module/Photo.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
+use Friendica\DI;
 use Friendica\Model\Photo as MPhoto;
-use Friendica\Object\Image;
 
 /**
- * @brief Photo Module
+ * Photo Module
  */
 class Photo extends BaseModule
 {
 	/**
-	 * @brief Module initializer
+	 * Module initializer
 	 *
 	 * Fetch a photo or an avatar, in optional size, check for permissions and
 	 * return the image
 	 */
 	public static function init(array $parameters = [])
 	{
-		$a = self::getApp();
+		$a = DI::app();
 		// @TODO: Replace with parameter from router
 		if ($a->argc <= 1 || $a->argc > 4) {
 			throw new \Friendica\Network\HTTPException\BadRequestException();
@@ -69,13 +84,13 @@ class Photo extends BaseModule
 				}
 				$photo = MPhoto::getPhoto($photoid, $scale);
 				if ($photo === false) {
-					$photo = MPhoto::createPhotoForSystemResource("images/nosign.jpg");
+					throw new \Friendica\Network\HTTPException\NotFoundException(DI::l10n()->t('The Photo with id %s is not available.', $photoid));
 				}
 				break;
 		}
 
 		if ($photo === false) {
-			System::httpExit('404', 'Not Found');
+			throw new \Friendica\Network\HTTPException\NotFoundException();
 		}
 
 		$cacheable = ($photo["allow_cid"] . $photo["allow_gid"] . $photo["deny_cid"] . $photo["deny_gid"] === "") && (isset($photo["cacheable"]) ? $photo["cacheable"] : true);
@@ -84,7 +99,7 @@ class Photo extends BaseModule
 
 		if (is_null($img) || !$img->isValid()) {
 			Logger::log("Invalid photo with id {$photo["id"]}.");
-			throw new \Friendica\Network\HTTPException\InternalServerErrorException(L10n::t('Invalid photo with id %s.', $photo["id"]));
+			throw new \Friendica\Network\HTTPException\InternalServerErrorException(DI::l10n()->t('Invalid photo with id %s.', $photo["id"]));
 		}
 
 		// if customsize is set and image is not a gif, resize it

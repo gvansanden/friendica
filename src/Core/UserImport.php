@@ -1,19 +1,39 @@
 <?php
 /**
- * @file src/Core/UserImport.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Core;
 
 use Friendica\App;
 use Friendica\Database\DBA;
 use Friendica\Database\DBStructure;
+use Friendica\DI;
+use Friendica\Model\Contact;
 use Friendica\Model\Photo;
 use Friendica\Object\Image;
+use Friendica\Repository\PermissionSet;
 use Friendica\Util\Strings;
 use Friendica\Worker\Delivery;
 
 /**
- * @brief UserImport class
+ * UserImport class
  */
 class UserImport
 {
@@ -83,14 +103,13 @@ class UserImport
 	}
 
 	/**
-	 * @brief Import account file exported from mod/uexport
+	 * Import account file exported from mod/uexport
 	 *
-	 * @param App   $a    Friendica App Class
 	 * @param array $file array from $_FILES
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 * @throws \ImagickException
 	 */
-	public static function importAccount(App $a, $file)
+	public static function importAccount($file)
 	{
 		Logger::log("Start user import from " . $file['tmp_name']);
 		/*
@@ -104,13 +123,13 @@ class UserImport
 
 		$account = json_decode(file_get_contents($file['tmp_name']), true);
 		if ($account === null) {
-			notice(L10n::t("Error decoding account file"));
+			notice(DI::l10n()->t("Error decoding account file"));
 			return;
 		}
 
 
 		if (empty($account['version'])) {
-			notice(L10n::t("Error! No version data in file! This is not a Friendica account file?"));
+			notice(DI::l10n()->t("Error! No version data in file! This is not a Friendica account file?"));
 			return;
 		}
 
@@ -118,12 +137,12 @@ class UserImport
 		// check if username matches deleted account
 		if (DBA::exists('user', ['nickname' => $account['user']['nickname']])
 			|| DBA::exists('userd', ['username' => $account['user']['nickname']])) {
-			notice(L10n::t("User '%s' already exists on this server!", $account['user']['nickname']));
+			notice(DI::l10n()->t("User '%s' already exists on this server!", $account['user']['nickname']));
 			return;
 		}
 
 		$oldbaseurl = $account['baseurl'];
-		$newbaseurl = System::baseUrl();
+		$newbaseurl = DI::baseUrl();
 
 		$oldaddr = str_replace('http://', '@', Strings::normaliseLink($oldbaseurl));
 		$newaddr = str_replace('http://', '@', Strings::normaliseLink($newbaseurl));
@@ -154,29 +173,12 @@ class UserImport
 		$r = self::dbImportAssoc('user', $account['user']);
 		if ($r === false) {
 			Logger::log("uimport:insert user : ERROR : " . DBA::errorMessage(), Logger::INFO);
-			notice(L10n::t("User creation error"));
+			notice(DI::l10n()->t("User creation error"));
 			return;
 		}
 		$newuid = self::lastInsertId();
 
-		PConfig::set($newuid, 'system', 'previous_addr', $old_handle);
-
-		foreach ($account['profile'] as &$profile) {
-			foreach ($profile as $k => &$v) {
-				$v = str_replace([$oldbaseurl, $oldaddr], [$newbaseurl, $newaddr], $v);
-				foreach (["profile", "avatar"] as $k) {
-					$v = str_replace($oldbaseurl . "/photo/" . $k . "/" . $olduid . ".jpg", $newbaseurl . "/photo/" . $k . "/" . $newuid . ".jpg", $v);
-				}
-			}
-			$profile['uid'] = $newuid;
-			$r = self::dbImportAssoc('profile', $profile);
-			if ($r === false) {
-				Logger::log("uimport:insert profile " . $profile['profile-name'] . " : ERROR : " . DBA::errorMessage(), Logger::INFO);
-				info(L10n::t("User profile creation error"));
-				DBA::delete('user', ['uid' => $newuid]);
-				return;
-			}
-		}
+		DI::pConfig()->set($newuid, 'system', 'previous_addr', $old_handle);
 
 		$errorcount = 0;
 		foreach ($account['contact'] as &$contact) {
@@ -216,7 +218,7 @@ class UserImport
 			}
 		}
 		if ($errorcount > 0) {
-			notice(L10n::tt("%d contact not imported", "%d contacts not imported", $errorcount));
+			notice(DI::l10n()->tt("%d contact not imported", "%d contacts not imported", $errorcount));
 		}
 
 		foreach ($account['group'] as &$group) {
@@ -253,6 +255,50 @@ class UserImport
 			}
 		}
 
+		foreach ($account['profile'] as &$profile) {
+			unset($profile['id']);
+			$profile['uid'] = $newuid;
+
+			foreach ($profile as $k => &$v) {
+				$v = str_replace([$oldbaseurl, $oldaddr], [$newbaseurl, $newaddr], $v);
+				foreach (["profile", "avatar"] as $k) {
+					$v = str_replace($oldbaseurl . "/photo/" . $k . "/" . $olduid . ".jpg", $newbaseurl . "/photo/" . $k . "/" . $newuid . ".jpg", $v);
+				}
+			}
+
+			if (count($account['profile']) === 1 || $profile['is-default']) {
+				$r = self::dbImportAssoc('profile', $profile);
+
+				if ($r === false) {
+					Logger::log("uimport:insert profile: ERROR : " . DBA::errorMessage(), Logger::INFO);
+					info(DI::l10n()->t("User profile creation error"));
+					DBA::delete('user', ['uid' => $newuid]);
+					DBA::delete('profile_field', ['uid' => $newuid]);
+					return;
+				}
+
+				$profile['id'] = DBA::lastInsertId();
+			}
+
+			DI::profileField()->migrateFromLegacyProfile($profile);
+		}
+
+		///@TODO Replace with permissionset import
+		$self_contact = Contact::selectFirst(['id'], ['uid' => $newuid, 'self' => true]);
+		$allow_cid = DI::aclFormatter()->toString($self_contact['id']);
+		$self_psid = DI::permissionSet()->getIdFromACL($newuid, $allow_cid);
+
+		foreach ($account['profile_fields'] ?? [] as $profile_field) {
+			$profile_field['uid'] = $newuid;
+
+			///@TODO Replace with permissionset import
+			$profile_field['psid'] = $profile_field['psid'] ? $self_psid : PermissionSet::PUBLIC;
+
+			if (self::dbImportAssoc('profile_field', $profile_field) === false) {
+				Logger::info("uimport:insert profile field " . $profile_field['id'] . " : ERROR : " . DBA::errorMessage());
+			}
+		}
+
 		foreach ($account['photo'] as &$photo) {
 			$photo['uid'] = $newuid;
 			$photo['data'] = hex2bin($photo['data']);
@@ -281,7 +327,7 @@ class UserImport
 		// send relocate messages
 		Worker::add(PRIORITY_HIGH, 'Notifier', Delivery::RELOCATION, $newuid);
 
-		info(L10n::t("Done. You can now login with your username and password"));
-		$a->internalRedirect('login');
+		info(DI::l10n()->t("Done. You can now login with your username and password"));
+		DI::baseUrl()->redirect('login');
 	}
 }

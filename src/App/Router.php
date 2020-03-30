@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\App;
 
@@ -44,12 +63,18 @@ class Router
 	 */
 	private $parameters = [];
 
+	/** @var L10n */
+	private $l10n;
+
 	/**
 	 * @param array $server The $_SERVER variable
+	 * @param L10n  $l10n
 	 * @param RouteCollector|null $routeCollector Optional the loaded Route collector
 	 */
-	public function __construct(array $server, RouteCollector $routeCollector = null)
+	public function __construct(array $server, L10n $l10n, RouteCollector $routeCollector = null)
 	{
+		$this->l10n = $l10n;
+
 		$httpMethod = $server['REQUEST_METHOD'] ?? self::GET;
 		$this->httpMethod = in_array($httpMethod, self::ALLOWED_METHODS) ? $httpMethod : self::GET;
 
@@ -181,9 +206,9 @@ class Router
 			$moduleClass = $routeInfo[1];
 			$this->parameters = $routeInfo[2];
 		} elseif ($routeInfo[0] === Dispatcher::METHOD_NOT_ALLOWED) {
-			throw new HTTPException\MethodNotAllowedException(L10n::t('Method not allowed for this module. Allowed method(s): %s', implode(', ', $routeInfo[1])));
+			throw new HTTPException\MethodNotAllowedException($this->l10n->t('Method not allowed for this module. Allowed method(s): %s', implode(', ', $routeInfo[1])));
 		} else {
-			throw new HTTPException\NotFoundException(L10n::t('Page not found.'));
+			throw new HTTPException\NotFoundException($this->l10n->t('Page not found.'));
 		}
 
 		return $moduleClass;

@@ -1,17 +1,31 @@
 <?php
 /**
- * @file src/Module/Group.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
-use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model;
 use Friendica\Util\Strings;
 
@@ -21,15 +35,15 @@ class Group extends BaseModule
 {
 	public static function post(array $parameters = [])
 	{
-		$a = self::getApp();
+		$a = DI::app();
 
-		if ($a->isAjax()) {
+		if (DI::mode()->isAjax()) {
 			self::ajaxPost();
 		}
 
 		if (!local_user()) {
-			notice(L10n::t('Permission denied.'));
-			$a->internalRedirect();
+			notice(DI::l10n()->t('Permission denied.'));
+			DI::baseUrl()->redirect();
 		}
 
 		// @TODO: Replace with parameter from router
@@ -39,15 +53,15 @@ class Group extends BaseModule
 			$name = Strings::escapeTags(trim($_POST['groupname']));
 			$r = Model\Group::create(local_user(), $name);
 			if ($r) {
-				info(L10n::t('Group created.'));
+				info(DI::l10n()->t('Group created.'));
 				$r = Model\Group::getIdByName(local_user(), $name);
 				if ($r) {
-					$a->internalRedirect('group/' . $r);
+					DI::baseUrl()->redirect('group/' . $r);
 				}
 			} else {
-				notice(L10n::t('Could not create group.'));
+				notice(DI::l10n()->t('Could not create group.'));
 			}
-			$a->internalRedirect('group');
+			DI::baseUrl()->redirect('group');
 		}
 
 		// @TODO: Replace with parameter from router
@@ -56,13 +70,13 @@ class Group extends BaseModule
 
 			$group = DBA::selectFirst('group', ['id', 'name'], ['id' => $a->argv[1], 'uid' => local_user()]);
 			if (!DBA::isResult($group)) {
-				notice(L10n::t('Group not found.'));
-				$a->internalRedirect('contact');
+				notice(DI::l10n()->t('Group not found.'));
+				DI::baseUrl()->redirect('contact');
 			}
 			$groupname = Strings::escapeTags(trim($_POST['groupname']));
 			if (strlen($groupname) && ($groupname != $group['name'])) {
 				if (Model\Group::update($group['id'], $groupname)) {
-					info(L10n::t('Group name changed.'));
+					info(DI::l10n()->t('Group name changed.'));
 				}
 			}
 		}
@@ -71,10 +85,10 @@ class Group extends BaseModule
 	public static function ajaxPost()
 	{
 		try {
-			$a = self::getApp();
+			$a = DI::app();
 
 			if (!local_user()) {
-				throw new \Exception(L10n::t('Permission denied.'), 403);
+				throw new \Exception(DI::l10n()->t('Permission denied.'), 403);
 			}
 
 			// POST /group/123/add/123
@@ -84,44 +98,38 @@ class Group extends BaseModule
 				list($group_id, $command, $contact_id) = array_slice($a->argv, 1);
 
 				if (!Model\Group::exists($group_id, local_user())) {
-					throw new \Exception(L10n::t('Unknown group.'), 404);
+					throw new \Exception(DI::l10n()->t('Unknown group.'), 404);
 				}
 
-				$contact = DBA::selectFirst('contact', ['pending', 'blocked', 'deleted'], ['id' => $contact_id, 'uid' => local_user()]);
+				$contact = DBA::selectFirst('contact', ['deleted'], ['id' => $contact_id, 'uid' => local_user()]);
 				if (!DBA::isResult($contact)) {
-					throw new \Exception(L10n::t('Contact not found.'), 404);
-				}
-
-				if ($contact['pending']) {
-					throw new \Exception(L10n::t('Contact is unavailable.'), 400);
+					throw new \Exception(DI::l10n()->t('Contact not found.'), 404);
 				}
 
 				if ($contact['deleted']) {
-					throw new \Exception(L10n::t('Contact is deleted.'), 410);
+					throw new \Exception(DI::l10n()->t('Contact is deleted.'), 410);
 				}
 
 				switch($command) {
 					case 'add':
-						if ($contact['blocked']) {
-							throw new \Exception(L10n::t('Contact is blocked, unable to add it to a group.'), 400);
+						if (!Model\Group::addMember($group_id, $contact_id)) {
+							throw new \Exception(DI::l10n()->t('Unable to add the contact to the group.'), 500);
 						}
 
-						if (!Model\Group::addMember($group_id, $contact_id)) {
-							throw new \Exception(L10n::t('Unable to add the contact to the group.'), 500);
-						}
-						$message = L10n::t('Contact successfully added to group.');
+						$message = DI::l10n()->t('Contact successfully added to group.');
 						break;
 					case 'remove':
 						if (!Model\Group::removeMember($group_id, $contact_id)) {
-							throw new \Exception(L10n::t('Unable to remove the contact from the group.'), 500);
+							throw new \Exception(DI::l10n()->t('Unable to remove the contact from the group.'), 500);
 						}
-						$message = L10n::t('Contact successfully removed from group.');
+
+						$message = DI::l10n()->t('Contact successfully removed from group.');
 						break;
 					default:
-						throw new \Exception(L10n::t('Unknown group command.'), 400);
+						throw new \Exception(DI::l10n()->t('Unknown group command.'), 400);
 				}
 			} else {
-				throw new \Exception(L10n::t('Bad request.'), 400);
+				throw new \Exception(DI::l10n()->t('Bad request.'), 400);
 			}
 
 			notice($message);
@@ -140,35 +148,35 @@ class Group extends BaseModule
 			throw new \Friendica\Network\HTTPException\ForbiddenException();
 		}
 
-		$a = self::getApp();
+		$a = DI::app();
 
-		$a->page['aside'] = Model\Group::sidebarWidget('contact', 'group', 'extended', (($a->argc > 1) ? $a->argv[1] : 'everyone'));
+		DI::page()['aside'] = Model\Group::sidebarWidget('contact', 'group', 'extended', (($a->argc > 1) ? $a->argv[1] : 'everyone'));
 
 		// With no group number provided we jump to the unassigned contacts as a starting point
 		// @TODO: Replace with parameter from router
 		if ($a->argc == 1) {
-			$a->internalRedirect('group/none');
+			DI::baseUrl()->redirect('group/none');
 		}
 
 		// Switch to text mode interface if we have more than 'n' contacts or group members
-		$switchtotext = PConfig::get(local_user(), 'system', 'groupedit_image_limit');
+		$switchtotext = DI::pConfig()->get(local_user(), 'system', 'groupedit_image_limit');
 		if (is_null($switchtotext)) {
-			$switchtotext = Config::get('system', 'groupedit_image_limit', 200);
+			$switchtotext = DI::config()->get('system', 'groupedit_image_limit', 200);
 		}
 
 		$tpl = Renderer::getMarkupTemplate('group_edit.tpl');
 
 
 		$context = [
-			'$submit' => L10n::t('Save Group'),
-			'$submit_filter' => L10n::t('Filter'),
+			'$submit' => DI::l10n()->t('Save Group'),
+			'$submit_filter' => DI::l10n()->t('Filter'),
 		];
 
 		// @TODO: Replace with parameter from router
 		if (($a->argc == 2) && ($a->argv[1] === 'new')) {
 			return Renderer::replaceMacros($tpl, $context + [
-				'$title' => L10n::t('Create a group of contacts/friends.'),
-				'$gname' => ['groupname', L10n::t('Group Name: '), '', ''],
+				'$title' => DI::l10n()->t('Create a group of contacts/friends.'),
+				'$gname' => ['groupname', DI::l10n()->t('Group Name: '), '', ''],
 				'$gid' => 'new',
 				'$form_security_token' => BaseModule::getFormSecurityToken("group_edit"),
 			]);
@@ -183,7 +191,7 @@ class Group extends BaseModule
 			$nogroup = true;
 			$group = [
 				'id' => $id,
-				'name' => L10n::t('Contacts not in any group'),
+				'name' => DI::l10n()->t('Contacts not in any group'),
 			];
 
 			$members = [];
@@ -191,7 +199,7 @@ class Group extends BaseModule
 
 			$context = $context + [
 				'$title' => $group['name'],
-				'$gname' => ['groupname', L10n::t('Group Name: '), $group['name'], ''],
+				'$gname' => ['groupname', DI::l10n()->t('Group Name: '), $group['name'], ''],
 				'$gid' => $id,
 				'$editable' => 0,
 			];
@@ -204,17 +212,17 @@ class Group extends BaseModule
 			// @TODO: Replace with parameter from router
 			if (intval($a->argv[2])) {
 				if (!Model\Group::exists($a->argv[2], local_user())) {
-					notice(L10n::t('Group not found.'));
-					$a->internalRedirect('contact');
+					notice(DI::l10n()->t('Group not found.'));
+					DI::baseUrl()->redirect('contact');
 				}
 
 				if (Model\Group::remove($a->argv[2])) {
-					info(L10n::t('Group removed.'));
+					info(DI::l10n()->t('Group removed.'));
 				} else {
-					notice(L10n::t('Unable to remove group.'));
+					notice(DI::l10n()->t('Unable to remove group.'));
 				}
 			}
-			$a->internalRedirect('group');
+			DI::baseUrl()->redirect('group');
 		}
 
 		// @TODO: Replace with parameter from router
@@ -230,8 +238,8 @@ class Group extends BaseModule
 		if (($a->argc > 1) && intval($a->argv[1])) {
 			$group = DBA::selectFirst('group', ['id', 'name'], ['id' => $a->argv[1], 'uid' => local_user(), 'deleted' => false]);
 			if (!DBA::isResult($group)) {
-				notice(L10n::t('Group not found.'));
-				$a->internalRedirect('contact');
+				notice(DI::l10n()->t('Group not found.'));
+				DI::baseUrl()->redirect('contact');
 			}
 
 			$members = Model\Contact::getByGroupId($group['id']);
@@ -262,17 +270,17 @@ class Group extends BaseModule
 			$drop_tpl = Renderer::getMarkupTemplate('group_drop.tpl');
 			$drop_txt = Renderer::replaceMacros($drop_tpl, [
 				'$id' => $group['id'],
-				'$delete' => L10n::t('Delete Group'),
+				'$delete' => DI::l10n()->t('Delete Group'),
 				'$form_security_token' => BaseModule::getFormSecurityToken("group_drop"),
 			]);
 
 			$context = $context + [
 				'$title' => $group['name'],
-				'$gname' => ['groupname', L10n::t('Group Name: '), $group['name'], ''],
+				'$gname' => ['groupname', DI::l10n()->t('Group Name: '), $group['name'], ''],
 				'$gid' => $group['id'],
 				'$drop' => $drop_txt,
 				'$form_security_token' => BaseModule::getFormSecurityToken('group_edit'),
-				'$edit_name' => L10n::t('Edit Group Name'),
+				'$edit_name' => DI::l10n()->t('Edit Group Name'),
 				'$editable' => 1,
 			];
 		}
@@ -282,10 +290,10 @@ class Group extends BaseModule
 		}
 
 		$groupeditor = [
-			'label_members' => L10n::t('Members'),
+			'label_members' => DI::l10n()->t('Members'),
 			'members' => [],
-			'label_contacts' => L10n::t('All Contacts'),
-			'group_is_empty' => L10n::t('Group is empty'),
+			'label_contacts' => DI::l10n()->t('All Contacts'),
+			'group_is_empty' => DI::l10n()->t('Group is empty'),
 			'contacts' => [],
 		];
 
@@ -298,7 +306,7 @@ class Group extends BaseModule
 				$entry['label'] = 'members';
 				$entry['photo_menu'] = '';
 				$entry['change_member'] = [
-					'title'     => L10n::t("Remove contact from group"),
+					'title'     => DI::l10n()->t("Remove contact from group"),
 					'gid'       => $group['id'],
 					'cid'       => $member['id'],
 					'sec_token' => $sec_token
@@ -318,7 +326,7 @@ class Group extends BaseModule
 				['order' => ['name']]
 			);
 			$contacts = DBA::toArray($contacts_stmt);
-			$context['$desc'] = L10n::t('Click on a contact to add or remove.');
+			$context['$desc'] = DI::l10n()->t('Click on a contact to add or remove.');
 		}
 
 		if (DBA::isResult($contacts)) {
@@ -332,7 +340,7 @@ class Group extends BaseModule
 
 					if (!$nogroup) {
 						$entry['change_member'] = [
-							'title'     => L10n::t("Add contact to group"),
+							'title'     => DI::l10n()->t("Add contact to group"),
 							'gid'       => $group['id'],
 							'cid'       => $member['id'],
 							'sec_token' => $sec_token

@@ -1,12 +1,28 @@
 <?php
-
-// CONFIG.PHP
-
-/* This file declares the default values for the base config of Friendica.
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * This file declares the default values for the base config of Friendica.
  *
  * These configuration values aren't accessible from the admin settings page and custom values must be set in config/local.config.php
  *
  * Please don't edit this file directly as its content may change in the upcoming versions.
+ *
  */
 
 return [
@@ -211,6 +227,15 @@ return [
 		// If set true registration is only possible after a current member of the node has send an invitation.
 		'invitation_only' => false,
 
+		// itemspage_network (Integer)
+		// default number of items per page in stream pages (network, community, profile/contact statuses, search)
+		'itemspage_network' => 40,
+
+		// itemspage_network_mobile (Integer)
+		// default number of items per page in stream pages (network, community, profile/contact statuses, search)
+		// on detected mobile devices
+		'itemspage_network_mobile' => 20,
+
 		// like_no_comment (Boolean)
 		// Don't update the "commented" value of an item when it is liked.
 		'like_no_comment' => false,
@@ -247,6 +272,10 @@ return [
 		// max_contact_queue (Integer)
 		// Maximum number of queue items for a single contact before subsequent messages are discarded.
 		'max_contact_queue' => 500,
+
+		// max_feed_items (Integer)
+		// Maximum number of feed items that are fetched and processed. For unlimited items set to 0.
+		'max_feed_items' => 20,
 
 		// max_image_length (Integer)
 		// An alternate way of limiting picture upload sizes.
@@ -296,10 +325,6 @@ return [
 		// no_smilies (Boolean)
 		// Don't show smilies.
 		'no_smilies' => false,
-
-		// no_view_full_size (Boolean)
-		// Don't add the link "View full size" under a resized image.
-		'no_view_full_size' => false,
 
 		// optimize_items (Boolean)
 		// Triggers an SQL command to optimize the item table before expiring items.
@@ -474,6 +499,10 @@ return [
 		// ap_inbox_log (Boolean)
 		// Logs every call to /inbox as a JSON file in Friendica's temporary directory
 		'ap_inbox_log' => false,
+
+		// show_direction (Boolean)
+		// Display if a post had been fetched or had been pushed towards our server
+		'show_direction' => false,
 
 		// total_ap_delivery (Boolean)
 		// Deliver via AP to every possible receiver and we suppress the delivery to these contacts with other protocols

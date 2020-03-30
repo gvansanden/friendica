@@ -1,8 +1,23 @@
 <?php
 /**
- * @file mod/dfrn_confirm.php
- * @brief Module: dfrn_confirm
- * Purpose: Friendship acceptance for DFRN contacts
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Friendship acceptance for DFRN contacts
  *
  * There are two possible entry points and three scenarios.
  *
@@ -18,16 +33,15 @@
  */
 
 use Friendica\App;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Group;
+use Friendica\Model\Notify\Type;
 use Friendica\Model\User;
-use Friendica\Network\Probe;
 use Friendica\Protocol\Activity;
 use Friendica\Util\Crypto;
 use Friendica\Util\DateTimeFormat;
@@ -62,13 +76,13 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 	if (empty($_POST['source_url'])) {
 		$uid = ($handsfree['uid'] ?? 0) ?: local_user();
 		if (!$uid) {
-			notice(L10n::t('Permission denied.') . EOL);
+			notice(DI::l10n()->t('Permission denied.') . EOL);
 			return;
 		}
 
 		$user = DBA::selectFirst('user', [], ['uid' => $uid]);
 		if (!DBA::isResult($user)) {
-			notice(L10n::t('Profile not found.') . EOL);
+			notice(DI::l10n()->t('Profile not found.') . EOL);
 			return;
 		}
 
@@ -123,8 +137,8 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		);
 		if (!DBA::isResult($r)) {
 			Logger::log('Contact not found in DB.');
-			notice(L10n::t('Contact not found.') . EOL);
-			notice(L10n::t('This may occasionally happen if contact was requested by both persons and it has already been approved.') . EOL);
+			notice(DI::l10n()->t('Contact not found.') . EOL);
+			notice(DI::l10n()->t('This may occasionally happen if contact was requested by both persons and it has already been approved.') . EOL);
 			return;
 		}
 
@@ -176,7 +190,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		$params['dfrn_id'] = bin2hex($result);
 		$params['public_key'] = $public_key;
 
-		$my_url = System::baseUrl() . '/profile/' . $user['nickname'];
+		$my_url = DI::baseUrl() . '/profile/' . $user['nickname'];
 
 		openssl_public_encrypt($my_url, $params['source_url'], $site_pubkey);
 		$params['source_url'] = bin2hex($params['source_url']);
@@ -225,20 +239,20 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			// We shouldn't proceed, because the xml parser might choke,
 			// and $status is going to be zero, which indicates success.
 			// We can hardly call this a success.
-			notice(L10n::t('Response from remote site was not understood.') . EOL);
+			notice(DI::l10n()->t('Response from remote site was not understood.') . EOL);
 			return;
 		}
 
-		if (strlen($leading_junk) && Config::get('system', 'debugging')) {
+		if (strlen($leading_junk) && DI::config()->get('system', 'debugging')) {
 			// This might be more common. Mixed error text and some XML.
 			// If we're configured for debugging, show the text. Proceed in either case.
-			notice(L10n::t('Unexpected response from remote site: ') . EOL . $leading_junk . EOL);
+			notice(DI::l10n()->t('Unexpected response from remote site: ') . EOL . $leading_junk . EOL);
 		}
 
 		if (stristr($res, "<status") === false) {
 			// wrong xml! stop here!
 			Logger::log('Unexpected response posting to ' . $dfrn_confirm);
-			notice(L10n::t('Unexpected response from remote site: ') . EOL . htmlspecialchars($res) . EOL);
+			notice(DI::l10n()->t('Unexpected response from remote site: ') . EOL . htmlspecialchars($res) . EOL);
 			return;
 		}
 
@@ -247,7 +261,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		$message = XML::unescape($xml->message);   // human readable text of what may have gone wrong.
 		switch ($status) {
 			case 0:
-				info(L10n::t("Confirmation completed successfully.") . EOL);
+				info(DI::l10n()->t("Confirmation completed successfully.") . EOL);
 				break;
 			case 1:
 				// birthday paradox - generate new dfrn-id and fall through.
@@ -259,15 +273,15 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 				);
 
 			case 2:
-				notice(L10n::t("Temporary failure. Please wait and try again.") . EOL);
+				notice(DI::l10n()->t("Temporary failure. Please wait and try again.") . EOL);
 				break;
 			case 3:
-				notice(L10n::t("Introduction failed or was revoked.") . EOL);
+				notice(DI::l10n()->t("Introduction failed or was revoked.") . EOL);
 				break;
 		}
 
 		if (strlen($message)) {
-			notice(L10n::t('Remote site reported: ') . $message . EOL);
+			notice(DI::l10n()->t('Remote site reported: ') . $message . EOL);
 		}
 
 		if (($status == 0) && $intro_id) {
@@ -331,7 +345,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		// Let's send our user to the contact editor in case they want to
 		// do anything special with this new friend.
 		if ($handsfree === null) {
-			$a->internalRedirect('contact/' . intval($contact_id));
+			DI::baseUrl()->redirect('contact/' . intval($contact_id));
 		} else {
 			return;
 		}
@@ -372,7 +386,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		// Find our user's account
 		$user = DBA::selectFirst('user', [], ['nickname' => $node]);
 		if (!DBA::isResult($user)) {
-			$message = L10n::t('No user record found for \'%s\' ', $node);
+			$message = DI::l10n()->t('No user record found for \'%s\' ', $node);
 			System::xmlExit(3, $message); // failure
 			// NOTREACHED
 		}
@@ -382,7 +396,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 
 
 		if (!strstr($my_prvkey, 'PRIVATE KEY')) {
-			$message = L10n::t('Our site encryption key is apparently messed up.');
+			$message = DI::l10n()->t('Our site encryption key is apparently messed up.');
 			System::xmlExit(3, $message);
 		}
 
@@ -393,7 +407,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 
 
 		if (!strlen($decrypted_source_url)) {
-			$message = L10n::t('Empty site URL was provided or URL could not be decrypted by us.');
+			$message = DI::l10n()->t('Empty site URL was provided or URL could not be decrypted by us.');
 			System::xmlExit(3, $message);
 			// NOTREACHED
 		}
@@ -409,7 +423,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			$contact = DBA::selectFirst('contact', [], ['url' => $newurl, 'uid' => $local_uid]);
 			if (!DBA::isResult($contact)) {
 				// this is either a bogus confirmation (?) or we deleted the original introduction.
-				$message = L10n::t('Contact record was not found for you on our site.');
+				$message = DI::l10n()->t('Contact record was not found for you on our site.');
 				System::xmlExit(3, $message);
 				return; // NOTREACHED
 			}
@@ -423,7 +437,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		$dfrn_record = $contact['id'];
 
 		if (!$foreign_pubkey) {
-			$message = L10n::t('Site public key not available in contact record for URL %s.', $decrypted_source_url);
+			$message = DI::l10n()->t('Site public key not available in contact record for URL %s.', $decrypted_source_url);
 			System::xmlExit(3, $message);
 		}
 
@@ -439,7 +453,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		}
 
 		if (DBA::exists('contact', ['dfrn-id' => $decrypted_dfrn_id])) {
-			$message = L10n::t('The ID provided by your system is a duplicate on our system. It should work if you try again.');
+			$message = DI::l10n()->t('The ID provided by your system is a duplicate on our system. It should work if you try again.');
 			System::xmlExit(1, $message); // Birthday paradox - duplicate dfrn-id
 			// NOTREACHED
 		}
@@ -450,7 +464,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			intval($dfrn_record)
 		);
 		if (!DBA::isResult($r)) {
-			$message = L10n::t('Unable to set your contact credentials on our system.');
+			$message = DI::l10n()->t('Unable to set your contact credentials on our system.');
 			System::xmlExit(3, $message);
 		}
 
@@ -468,7 +482,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		if (DBA::isResult($contact)) {
 			$photo = $contact['photo'];
 		} else {
-			$photo = System::baseUrl() . '/images/person-300.jpg';
+			$photo = DI::baseUrl() . '/images/person-300.jpg';
 		}
 
 		Contact::updateAvatar($photo, $local_uid, $dfrn_record);
@@ -506,7 +520,7 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 			intval($dfrn_record)
 		);
 		if (!DBA::isResult($r)) {	// indicates schema is messed up or total db failure
-			$message = L10n::t('Unable to update your contact profile details on our system');
+			$message = DI::l10n()->t('Unable to update your contact profile details on our system');
 			System::xmlExit(3, $message);
 		}
 
@@ -526,17 +540,17 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 		if (DBA::isResult($r)) {
 			$combined = $r[0];
 
-			if ($combined['notify-flags'] & NOTIFY_CONFIRM) {
+			if ($combined['notify-flags'] & Type::CONFIRM) {
 				$mutual = ($new_relation == Contact::FRIEND);
 				notification([
-					'type'         => NOTIFY_CONFIRM,
+					'type'         => Type::CONFIRM,
 					'notify_flags' => $combined['notify-flags'],
 					'language'     => $combined['language'],
 					'to_name'      => $combined['username'],
 					'to_email'     => $combined['email'],
 					'uid'          => $combined['uid'],
-					'link'         => System::baseUrl() . '/contact/' . $dfrn_record,
-					'source_name'  => ((strlen(stripslashes($combined['name']))) ? stripslashes($combined['name']) : L10n::t('[Name Withheld]')),
+					'link'         => DI::baseUrl() . '/contact/' . $dfrn_record,
+					'source_name'  => ((strlen(stripslashes($combined['name']))) ? stripslashes($combined['name']) : DI::l10n()->t('[Name Withheld]')),
 					'source_link'  => $combined['url'],
 					'source_photo' => $combined['photo'],
 					'verb'         => ($mutual ? Activity::FRIEND : Activity::FOLLOW),
@@ -551,6 +565,6 @@ function dfrn_confirm_post(App $a, $handsfree = null)
 	}
 
 	// somebody arrived here by mistake or they are fishing. Send them to the homepage.
-	$a->internalRedirect();
+	DI::baseUrl()->redirect();
 	// NOTREACHED
 }

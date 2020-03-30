@@ -1,11 +1,31 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
 use Asika\SimpleConsole\Console;
 use Friendica\App;
 use Friendica\App\BaseURL;
-use Friendica\Core\Config;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\Config\Cache;
 use Friendica\Core\Installer;
 use Friendica\Core\Theme;
 use Friendica\Database\Database;
@@ -15,23 +35,13 @@ use RuntimeException;
 
 class AutomaticInstallation extends Console
 {
-	/**
-	 * @var App\Mode
-	 */
+	/** @var App\Mode */
 	private $appMode;
-	/**
-	 * @var Config\Cache\ConfigCache
-	 */
+	/** @var Cache */
 	private $configCache;
-
-	/**
-	 * @var Config\Configuration
-	 */
+	/** @var IConfig */
 	private $config;
-
-	/**
-	 * @var Database
-	 */
+	/** @var Database */
 	private $dba;
 
 	protected function getHelp()
@@ -89,14 +99,14 @@ Examples
 HELP;
 	}
 
-	public function __construct(App\Mode $appMode, Config\Cache\ConfigCache $configCache, Config\Configuration $config, Database $dba, array $argv = null)
+	public function __construct(App\Mode $appMode, Cache $configCache, IConfig $config, Database $dba, array $argv = null)
 	{
 		parent::__construct($argv);
 
-		$this->appMode = $appMode;
-		$this->configCache  =$configCache;
-		$this->config = $config;
-		$this->dba = $dba;
+		$this->appMode     = $appMode;
+		$this->configCache = $configCache;
+		$this->config      = $config;
+		$this->dba         = $dba;
 	}
 
 	protected function doExecute()
@@ -106,9 +116,9 @@ HELP;
 
 		$installer = new Installer();
 
-		$configCache = $this->configCache;
+		$configCache  = $this->configCache;
 		$basePathConf = $configCache->get('system', 'basepath');
-		$basepath = new BasePath($basePathConf);
+		$basepath     = new BasePath($basePathConf);
 		$installer->setUpCache($configCache, $basepath->getPath());
 
 		$this->out(" Complete!\n\n");
@@ -241,18 +251,18 @@ HELP;
 	}
 
 	/**
-	 * @param Installer                 $installer   The Installer instance
-	 * @param Config\Cache\ConfigCache $configCache The config cache
+	 * @param Installer $installer   The Installer instance
+	 * @param Cache     $configCache The config cache
 	 *
 	 * @return bool true if checks were successfully, otherwise false
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
-	private function runBasicChecks(Installer $installer, Config\Cache\ConfigCache $configCache)
+	private function runBasicChecks(Installer $installer, Cache $configCache)
 	{
 		$checked = true;
 
 		$installer->resetChecks();
-		if (!$installer->checkFunctions())		{
+		if (!$installer->checkFunctions()) {
 			$checked = false;
 		}
 		if (!$installer->checkImagick()) {
@@ -281,11 +291,12 @@ HELP;
 
 	/**
 	 * @param array $results
+	 *
 	 * @return string
 	 */
 	private function extractErrors($results)
 	{
-		$errorMessage = '';
+		$errorMessage      = '';
 		$allChecksRequired = $this->getOption('a') !== null;
 
 		foreach ($results as $result) {

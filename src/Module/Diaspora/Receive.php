@@ -1,11 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Diaspora;
 
-use Friendica\App;
 use Friendica\BaseModule;
-use Friendica\Core\Config\Configuration;
-use Friendica\Core\L10n\L10n;
+use Friendica\DI;
 use Friendica\Model\User;
 use Friendica\Network\HTTPException;
 use Friendica\Protocol\Diaspora;
@@ -23,24 +40,18 @@ class Receive extends BaseModule
 
 	public static function init(array $parameters = [])
 	{
-		/** @var LoggerInterface $logger */
-		self::$logger = self::getClass(LoggerInterface::class);
+		self::$logger = DI::logger();
 	}
 
 	public static function post(array $parameters = [])
 	{
-		/** @var Configuration $config */
-		$config = self::getClass(Configuration::class);
-
-		$enabled = $config->get('system', 'diaspora_enabled', false);
+		$enabled = DI::config()->get('system', 'diaspora_enabled', false);
 		if (!$enabled) {
 			self::$logger->info('Diaspora disabled.');
-			$l10n = self::getClass(L10n::class);
-			throw new HTTPException\ForbiddenException($l10n->t('Access denied.'));
+			throw new HTTPException\ForbiddenException(DI::l10n()->t('Access denied.'));
 		}
 
-		/** @var App\Arguments $args */
-		$args = self::getClass(App\Arguments::class);
+		$args = DI::args();
 
 		$type = $args->get(1);
 

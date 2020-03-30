@@ -1,15 +1,29 @@
 <?php
-
-/*
- * @file src/Content/Widget/TagCloud.php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Content\Widget;
 
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Item;
 
 /**
@@ -22,7 +36,6 @@ class TagCloud
 	/**
 	 * Construct a tag/term cloud block for an user.
 	 *
-	 * @brief Construct a tag/term cloud block for an user.
 	 * @param int    $uid      The user ID.
 	 * @param int    $count    Max number of displayed tags/terms.
 	 * @param int    $owner_id The contact ID of the owner of the tagged items.
@@ -38,7 +51,7 @@ class TagCloud
 		$r = self::tagadelic($uid, $count, $owner_id, $flags, $type);
 		if (count($r)) {
 			$contact = DBA::selectFirst('contact', ['url'], ['uid' => $uid, 'self' => true]);
-			$url = System::removedBaseUrl($contact['url']);
+			$url = DI::baseUrl()->remove($contact['url']);
 
 			$tags = [];
 			foreach ($r as $rr) {
@@ -51,7 +64,7 @@ class TagCloud
 
 			$tpl = Renderer::getMarkupTemplate('widget/tagcloud.tpl');
 			$o = Renderer::replaceMacros($tpl, [
-				'$title' => L10n::t('Tags'),
+				'$title' => DI::l10n()->t('Tags'),
 				'$tags' => $tags
 			]);
 		}
@@ -62,8 +75,6 @@ class TagCloud
 	 * Get alphabetical sorted array of used tags/terms of an user including
 	 * a weighting by frequency of use.
 	 *
-	 * @brief Get alphabetical sorted array of used tags/terms of an user including
-	 * a weighting by frequency of use.
 	 * @param int    $uid      The user ID.
 	 * @param int    $count    Max number of displayed tags/terms.
 	 * @param int    $owner_id The contact id of the owner of the tagged items.
@@ -112,7 +123,6 @@ class TagCloud
 	/**
 	 * Calculate weighting of tags according to the frequency of use.
 	 *
-	 * @brief Calculate weighting of tags according to the frequency of use.
 	 * @param array $arr Array of tags/terms with tag/term name and total count of use.
 	 * @return array     Alphabetical sorted array of used tags/terms of an user.
 	 */
@@ -149,7 +159,6 @@ class TagCloud
 	/**
 	 * Compare function to sort tags/terms alphabetically.
 	 *
-	 * @brief Compare function to sort tags/terms alphabetically.
 	 * @param string $a
 	 * @param string $b
 	 *

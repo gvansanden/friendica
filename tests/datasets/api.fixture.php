@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 return [
 	// Empty these tables
@@ -187,6 +206,25 @@ return [
 			'wall'        => 1,
 			'starred'     => 0,
 			'origin'      => 1,
+		],
+	],
+	'notify' => [
+		[
+			'id' => 1,
+			'type' => 8,
+			'name' => 'Reply to',
+			'url' => 'http://localhost/display/1',
+			'photo' => 'http://localhost/',
+			'date' => '2020-01-01 12:12:02',
+			'msg' => 'A test reply from an item',
+			'uid' => 42,
+			'link' => 'http://localhost/notification/1',
+			'iid' => 4,
+			'seen' => 0,
+			'verb' => '',
+			'otype' => 'item',
+			'name_cache' => 'Reply to',
+			'msg_cache' => 'A test reply from an item',
 		],
 	],
 	'thread'  => [

@@ -1,7 +1,27 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\src\Content\Text;
 
+use Friendica\Content\Text\HTML;
 use Friendica\Content\Text\Markdown;
 use Friendica\Test\MockedTest;
 use Friendica\Test\Util\AppMockTrait;
@@ -48,5 +68,31 @@ class MarkdownTest extends MockedTest
 		$output = Markdown::convert($input);
 
 		$this->assertEquals($expected, $output);
+	}
+
+	public function dataMarkdownText()
+	{
+		return [
+			'bug-8358-double-decode' => [
+				'expectedBBCode' => 'with the <sup> and </sup> tag',
+				'markdown' => 'with the &lt;sup&gt; and &lt;/sup&gt; tag',
+			],
+		];
+	}
+
+	/**
+	 * Test convert Markdown to BBCode
+	 *
+	 * @dataProvider dataMarkdownText
+	 *
+	 * @param string $expectedBBCode Expected BBCode output
+	 * @param string $html           Markdown text
+	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
+	 */
+	public function testToBBCode($expectedBBCode, $html)
+	{
+		$actual = Markdown::toBBCode($html);
+
+		$this->assertEquals($expectedBBCode, $actual);
 	}
 }

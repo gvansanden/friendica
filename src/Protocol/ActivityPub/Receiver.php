@@ -1,7 +1,24 @@
 <?php
 /**
- * @file src/Protocol/ActivityPub/Receiver.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Protocol\ActivityPub;
 
 use Friendica\Database\DBA;
@@ -11,7 +28,6 @@ use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Model\Contact;
 use Friendica\Model\APContact;
-use Friendica\Model\Conversation;
 use Friendica\Model\Item;
 use Friendica\Model\User;
 use Friendica\Protocol\Activity;
@@ -23,10 +39,10 @@ use Friendica\Util\LDSignature;
 use Friendica\Util\Strings;
 
 /**
- * @brief ActivityPub Receiver Protocol class
+ * ActivityPub Receiver Protocol class
  *
  * To-Do:
- * - Undo Announce
+ * @todo Undo Announce
  *
  * Check what this is meant to do:
  * - Add
@@ -39,7 +55,7 @@ class Receiver
 {
 	const PUBLIC_COLLECTION = 'as:Public';
 	const ACCOUNT_TYPES = ['as:Person', 'as:Organization', 'as:Service', 'as:Group', 'as:Application'];
-	const CONTENT_TYPES = ['as:Note', 'as:Article', 'as:Video', 'as:Image', 'as:Event'];
+	const CONTENT_TYPES = ['as:Note', 'as:Article', 'as:Video', 'as:Image', 'as:Event', 'as:Audio'];
 	const ACTIVITY_TYPES = ['as:Like', 'as:Dislike', 'as:Accept', 'as:Reject', 'as:TentativeAccept'];
 
 	/**
@@ -110,7 +126,7 @@ class Receiver
 			$trust_source = false;
 		}
 
-		self::processActivity($ldactivity, $body, $uid, $trust_source);
+		self::processActivity($ldactivity, $body, $uid, $trust_source, true);
 	}
 
 	/**
@@ -158,15 +174,16 @@ class Receiver
 	/**
 	 * Prepare the object array
 	 *
-	 * @param array   $activity
-	 * @param integer $uid User ID
-	 * @param         $trust_source
+	 * @param array   $activity     Array with activity data
+	 * @param integer $uid          User ID
+	 * @param boolean $push         Message had been pushed to our system
+	 * @param boolean $trust_source Do we trust the source?
 	 *
 	 * @return array with object data
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 * @throws \ImagickException
 	 */
-	private static function prepareObjectData($activity, $uid, &$trust_source)
+	private static function prepareObjectData($activity, $uid, $push, &$trust_source)
 	{
 		$actor = JsonLD::fetchElement($activity, 'as:actor', '@id');
 		if (empty($actor)) {
@@ -214,7 +231,14 @@ class Receiver
 				Logger::log("Object data couldn't be processed", Logger::DEBUG);
 				return [];
 			}
+
 			$object_data['object_id'] = $object_id;
+
+			if ($type == 'as:Announce') {
+				$object_data['push'] = false;
+			} else {
+				$object_data['push'] = $push;
+			}
 
 			// Test if it is an answer to a mail
 			if (DBA::exists('mail', ['uri' => $object_data['reply-to-id']])) {
@@ -287,42 +311,16 @@ class Receiver
 	}
 
 	/**
-	 * Store the unprocessed data into the conversation table
-	 * This has to be done outside the regular function,
-	 * since we store everything - not only item posts.
-	 *
-	 * @param array  $activity Array with activity data
-	 * @param string $body     The raw message
-	 * @throws \Exception
-	 */
-	private static function storeConversation($activity, $body)
-	{
-		if (empty($body) || empty($activity['id'])) {
-			return;
-		}
-
-		$conversation = [
-			'protocol' => Conversation::PARCEL_ACTIVITYPUB,
-			'item-uri' => $activity['id'],
-			'reply-to-uri' => $activity['reply-to-id'] ?? '',
-			'conversation-href' => $activity['context'] ?? '',
-			'conversation-uri' => $activity['conversation'] ?? '',
-			'source' => $body,
-			'received' => DateTimeFormat::utcNow()];
-
-		DBA::insert('conversation', $conversation, true);
-	}
-
-	/**
 	 * Processes the activity object
 	 *
 	 * @param array   $activity     Array with activity data
 	 * @param string  $body
 	 * @param integer $uid          User ID
 	 * @param boolean $trust_source Do we trust the source?
+	 * @param boolean $push         Message had been pushed to our system
 	 * @throws \Exception
 	 */
-	public static function processActivity($activity, $body = '', $uid = null, $trust_source = false)
+	public static function processActivity($activity, $body = '', $uid = null, $trust_source = false, $push = false)
 	{
 		$type = JsonLD::fetchElement($activity, '@type');
 		if (!$type) {
@@ -352,7 +350,7 @@ class Receiver
 		}
 
 		// $trust_source is called by reference and is set to true if the content was retrieved successfully
-		$object_data = self::prepareObjectData($activity, $uid, $trust_source);
+		$object_data = self::prepareObjectData($activity, $uid, $push, $trust_source);
 		if (empty($object_data)) {
 			Logger::log('No object data found', Logger::DEBUG);
 			return;
@@ -363,9 +361,8 @@ class Receiver
 			return;
 		}
 
-		// Only store content related stuff - and no announces, since they possibly overwrite the original content
-		if (in_array($object_data['object_type'], self::CONTENT_TYPES) && ($type != 'as:Announce')) {
-			self::storeConversation($object_data, $body);
+		if (!empty($body) && empty($object_data['raw'])) {
+			$object_data['raw'] = $body;
 		}
 
 		// Internal flag for thread completion. See Processor.php
@@ -402,6 +399,11 @@ class Receiver
 						$announce_object_data['author'] = JsonLD::fetchElement($activity, 'as:actor', '@id');
 						$announce_object_data['object_id'] = $object_data['object_id'];
 						$announce_object_data['object_type'] = $object_data['object_type'];
+						$announce_object_data['push'] = $push;
+
+						if (!empty($body)) {
+							$announce_object_data['raw'] = $body;
+						}
 
 						ActivityPub\Processor::createActivity($announce_object_data, Activity::ANNOUNCE);
 					}
@@ -489,20 +491,25 @@ class Receiver
 	/**
 	 * Fetch the receiver list from an activity array
 	 *
-	 * @param array  $activity
-	 * @param string $actor
-	 * @param array  $tags
+	 * @param array   $activity
+	 * @param string  $actor
+	 * @param array   $tags
+	 * @param boolean $fetch_unlisted 
 	 *
 	 * @return array with receivers (user id)
 	 * @throws \Exception
 	 */
-	private static function getReceivers($activity, $actor, $tags = [])
+	private static function getReceivers($activity, $actor, $tags = [], $fetch_unlisted = false)
 	{
 		$receivers = [];
 
 		// When it is an answer, we inherite the receivers from the parent
 		$replyto = JsonLD::fetchElement($activity, 'as:inReplyTo', '@id');
 		if (!empty($replyto)) {
+			// Fix possibly wrong item URI (could be an answer to a plink uri)
+			$fixedReplyTo = Item::getURIByLink($replyto);
+			$replyto = $fixedReplyTo ?: $replyto;
+
 			$parents = Item::select(['uid'], ['uri' => $replyto]);
 			while ($parent = Item::fetch($parents)) {
 				$receivers['uid:' . $parent['uid']] = $parent['uid'];
@@ -528,6 +535,11 @@ class Receiver
 			foreach ($receiver_list as $receiver) {
 				if ($receiver == self::PUBLIC_COLLECTION) {
 					$receivers['uid:0'] = 0;
+				}
+
+				// Add receiver "-1" for unlisted posts 
+				if ($fetch_unlisted && ($receiver == self::PUBLIC_COLLECTION) && ($element == 'as:cc')) {
+					$receivers['uid:-1'] = -1;
 				}
 
 				if (($receiver == self::PUBLIC_COLLECTION) && !empty($actor)) {
@@ -723,6 +735,15 @@ class Receiver
 		$object_data['service'] = JsonLD::fetchElement($activity, 'as:instrument', 'as:name', '@type', 'as:Service');
 		$object_data['service'] = JsonLD::fetchElement($object_data, 'service', '@value');
 
+		if (!empty($object_data['object_id'])) {
+			// Some systems (e.g. GNU Social) don't reply to the "id" field but the "uri" field.
+			$objectId = Item::getURIByLink($object_data['object_id']);
+			if (!empty($objectId) && ($object_data['object_id'] != $objectId)) {
+				Logger::notice('Fix wrong object-id', ['received' => $object_data['object_id'], 'correct' => $objectId]);
+				$object_data['object_id'] = $objectId;
+			}
+		}
+
 		return $object_data;
 	}
 
@@ -772,7 +793,12 @@ class Receiver
 		}
 
 		if (in_array($type, self::CONTENT_TYPES)) {
-			return self::processObject($object);
+			$object_data = self::processObject($object);
+
+			if (!empty($data)) {
+				$object_data['raw'] = json_encode($data);
+			}
+			return $object_data;
 		}
 
 		if ($type == 'as:Announce') {
@@ -813,6 +839,10 @@ class Receiver
 
 			if (empty($element['type'])) {
 				continue;
+			}
+
+			if (empty($element['href'])) {
+				$element['href'] = $element['name'];
 			}
 
 			$taglist[] = $element;
@@ -907,18 +937,75 @@ class Receiver
 			return $object_data;
 		}
 
-		$markdown = JsonLD::fetchElement($object, 'as:content', '@value', '@language', 'text/markdown');
-		if (!empty($markdown)) {
-			$object_data['source'] = Markdown::toBBCode($markdown);
+		return $object_data;
+	}
+
+	/**
+	 * Check if the "as:url" element is an array with multiple links
+	 * This is the case with audio and video posts.
+	 * Then the links are added as attachments
+	 *
+	 * @param array $object      The raw object
+	 * @param array $object_data The parsed object data for later processing
+	 * @return array the object data
+	 */
+	private static function processAttachmentUrls(array $object, array $object_data) {
+		// Check if this is some url with multiple links
+		if (empty($object['as:url'])) {
+			return $object_data;
+		}
+		
+		$urls = $object['as:url'];
+		$keys = array_keys($urls);
+		if (!is_numeric(array_pop($keys))) {
 			return $object_data;
 		}
 
-		$html = JsonLD::fetchElement($object, 'as:content', '@value', '@language', 'text/html');
-		if (!empty($html)) {
-			$object_data['source'] = HTML::toBBCode($markdown);
-			return $object_data;
+		$attachments = [];
+
+		foreach ($urls as $url) {
+			if (empty($url['@type']) || ($url['@type'] != 'as:Link')) {
+				continue;
+			}
+
+			$href = JsonLD::fetchElement($url, 'as:href', '@id');
+			if (empty($href)) {
+				continue;
+			}
+
+			$mediatype = JsonLD::fetchElement($url, 'as:mediaType');
+			if (empty($mediatype)) {
+				continue;
+			}
+
+			if ($mediatype == 'text/html') {
+				$object_data['alternate-url'] = $href;
+			}
+
+			$filetype = strtolower(substr($mediatype, 0, strpos($mediatype, '/')));
+
+			if ($filetype == 'audio') {
+				$attachments[$filetype] = ['type' => $mediatype, 'url' => $href];
+			} elseif ($filetype == 'video') {
+				$height = (int)JsonLD::fetchElement($url, 'as:height', '@value');
+
+				// We save bandwidth by using a moderate height
+				// Peertube normally uses these heights: 240, 360, 480, 720, 1080
+				if (!empty($attachments[$filetype]['height']) &&
+					(($height > 480) || $height < $attachments[$filetype]['height'])) {
+					continue;
+				}
+
+				$attachments[$filetype] = ['type' => $mediatype, 'url' => $href, 'height' => $height];
+			}
 		}
 
+		foreach ($attachments as $type => $attachment) {
+			$object_data['attachments'][] = ['type' => $type,
+				'mediaType' => $attachment['type'],
+				'name' => '',
+				'url' => $attachment['url']];
+		}
 		return $object_data;
 	}
 
@@ -944,6 +1031,13 @@ class Receiver
 		// An empty "id" field is translated to "./" by the compactor, so we have to check for this content
 		if (empty($object_data['reply-to-id']) || ($object_data['reply-to-id'] == './')) {
 			$object_data['reply-to-id'] = $object_data['id'];
+		} else {
+			// Some systems (e.g. GNU Social) don't reply to the "id" field but the "uri" field.
+			$replyToId = Item::getURIByLink($object_data['reply-to-id']);
+			if (!empty($replyToId) && ($object_data['reply-to-id'] != $replyToId)) {
+				Logger::notice('Fix wrong reply-to', ['received' => $object_data['reply-to-id'], 'correct' => $replyToId]);
+				$object_data['reply-to-id'] = $replyToId;
+			}
 		}
 
 		$object_data['published'] = JsonLD::fetchElement($object, 'as:published', '@value');
@@ -962,6 +1056,7 @@ class Receiver
 			$actor = JsonLD::fetchElement($object, 'as:actor', '@id');
 		}
 
+		$object_data['sc:identifier'] = JsonLD::fetchElement($object, 'sc:identifier', '@value');
 		$object_data['diaspora:guid'] = JsonLD::fetchElement($object, 'diaspora:guid', '@value');
 		$object_data['diaspora:comment'] = JsonLD::fetchElement($object, 'diaspora:comment', '@value');
 		$object_data['diaspora:like'] = JsonLD::fetchElement($object, 'diaspora:like', '@value');
@@ -997,7 +1092,13 @@ class Receiver
 			}
 		}
 
-		$object_data['receiver'] = self::getReceivers($object, $object_data['actor'], $object_data['tags']);
+		if (in_array($object_data['object_type'], ['as:Audio', 'as:Video'])) {
+			$object_data = self::processAttachmentUrls($object, $object_data);
+		}
+
+		$object_data['receiver'] = self::getReceivers($object, $object_data['actor'], $object_data['tags'], true);
+		$object_data['unlisted'] = in_array(-1, $object_data['receiver']);
+		unset($object_data['receiver']['uid:-1']);
 
 		// Common object data:
 

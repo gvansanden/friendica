@@ -1,9 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\App;
 
 use Friendica\App;
-use Friendica\BaseObject;
+use Friendica\BaseModule;
 use Friendica\Core;
 use Friendica\LegacyModule;
 use Friendica\Module\Home;
@@ -59,7 +78,7 @@ class Module
 	private $module;
 
 	/**
-	 * @var BaseObject The module class
+	 * @var BaseModule The module class
 	 */
 	private $module_class;
 
@@ -149,15 +168,15 @@ class Module
 	/**
 	 * Determine the class of the current module
 	 *
-	 * @param Arguments                 $args   The Friendica execution arguments
-	 * @param Router                    $router The Friendica routing instance
-	 * @param Core\Config\Configuration $config The Friendica Configuration
+	 * @param Arguments           $args   The Friendica execution arguments
+	 * @param Router              $router The Friendica routing instance
+	 * @param Core\Config\IConfig $config The Friendica Configuration
 	 *
 	 * @return Module The determined module of this call
 	 *
 	 * @throws \Exception
 	 */
-	public function determineClass(Arguments $args, Router $router, Core\Config\Configuration $config)
+	public function determineClass(Arguments $args, Router $router, Core\Config\IConfig $config)
 	{
 		$printNotAllowedAddon = false;
 
@@ -207,15 +226,15 @@ class Module
 	/**
 	 * Run the determined module class and calls all hooks applied to
 	 *
-	 * @param Core\L10n\L10n  $l10n         The L10n instance
-	 * @param App             $app          The whole Friendica app (for method arguments)
-	 * @param LoggerInterface $logger       The Friendica logger
-	 * @param array           $server       The $_SERVER variable
-	 * @param array           $post         The $_POST variables
+	 * @param \Friendica\Core\L10n $l10n    The L10n instance
+	 * @param App\BaseURL          $baseUrl The Friendica Base URL
+	 * @param LoggerInterface      $logger  The Friendica logger
+	 * @param array                $server  The $_SERVER variable
+	 * @param array                $post    The $_POST variables
 	 *
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
-	public function run(Core\L10n\L10n $l10n, App $app, LoggerInterface $logger, array $server, array $post)
+	public function run(Core\L10n $l10n, App\BaseURL $baseUrl, LoggerInterface $logger, array $server, array $post)
 	{
 		if ($this->printNotAllowedAddon) {
 			info($l10n->t("You must be logged in to use addons. "));
@@ -239,7 +258,7 @@ class Module
 
 			if (!empty($queryString) && ($queryString === 'q=internal_error.html') && isset($dreamhost_error_hack)) {
 				$logger->info('index.php: dreamhost_error_hack invoked.', ['Original URI' => $server['REQUEST_URI']]);
-				$app->internalRedirect($server['REQUEST_URI']);
+				$baseUrl->redirect($server['REQUEST_URI']);
 			}
 
 			$logger->debug('index.php: page not found.', ['request_uri' => $server['REQUEST_URI'], 'address' => $server['REMOTE_ADDR'], 'query' => $server['QUERY_STRING']]);

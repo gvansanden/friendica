@@ -1,6 +1,23 @@
 <?php
-
-/* Main database structure configuration file.
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Main database structure configuration file.
  *
  * Here are described all the tables, fields and indexes Friendica needs to work.
  *
@@ -34,7 +51,7 @@
 use Friendica\Database\DBA;
 
 if (!defined('DB_UPDATE_VERSION')) {
-	define('DB_UPDATE_VERSION', 1327);
+	define('DB_UPDATE_VERSION', 1338);
 }
 
 return [
@@ -223,7 +240,7 @@ return [
 			"location" => ["type" => "varchar(255)", "default" => "", "comment" => ""],
 			"about" => ["type" => "text", "comment" => ""],
 			"keywords" => ["type" => "text", "comment" => "public keywords (interests) of the contact"],
-			"gender" => ["type" => "varchar(32)", "not null" => "1", "default" => "", "comment" => ""],
+			"gender" => ["type" => "varchar(32)", "not null" => "1", "default" => "", "comment" => "Deprecated"],
 			"xmpp" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"attag" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"avatar" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
@@ -277,7 +294,7 @@ return [
 			"reason" => ["type" => "text", "comment" => ""],
 			"closeness" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "99", "comment" => ""],
 			"info" => ["type" => "mediumtext", "comment" => ""],
-			"profile-id" => ["type" => "int unsigned", "not null" => "1", "default" => "0", "comment" => ""],
+			"profile-id" => ["type" => "int unsigned", "comment" => "Deprecated"],
 			"bdyear" => ["type" => "varchar(4)", "not null" => "1", "default" => "", "comment" => ""],
 			"bd" => ["type" => "date", "not null" => "1", "default" => DBA::NULL_DATE, "comment" => ""],
 			"notify_new_posts" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
@@ -298,6 +315,18 @@ return [
 			"nick_uid" => ["nick(32)", "uid"],
 			"dfrn-id" => ["dfrn-id(64)"],
 			"issued-id" => ["issued-id(64)"],
+		]
+	],
+	"contact-relation" => [
+		"comment" => "Contact relations",
+		"fields" => [
+			"cid" => ["type" => "int unsigned", "not null" => "1", "default" => "0", "relation" => ["contact" => "id"], "primary" => "1", "comment" => "contact the related contact had interacted with"],
+			"relation-cid" => ["type" => "int unsigned", "not null" => "1", "default" => "0", "relation" => ["contact" => "id"], "primary" => "1", "comment" => "related contact who had interacted with the contact"],
+			"last-interaction" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => "Date of the last interaction"],
+		],
+		"indexes" => [
+			"PRIMARY" => ["cid", "relation-cid"],
+			"relation-cid" => ["relation-cid"],
 		]
 	],
 	"conv" => [
@@ -325,6 +354,7 @@ return [
 			"conversation-uri" => ["type" => "varbinary(255)", "not null" => "1", "default" => "", "comment" => "GNU Social conversation URI"],
 			"conversation-href" => ["type" => "varbinary(255)", "not null" => "1", "default" => "", "comment" => "GNU Social conversation link"],
 			"protocol" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "255", "comment" => "The protocol of the item"],
+			"direction" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "0", "comment" => "How the message arrived here: 1=push, 2=pull"],
 			"source" => ["type" => "mediumtext", "comment" => "Original source"],
 			"received" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => "Receiving date"],
 		],
@@ -444,12 +474,13 @@ return [
 			"updated" => ["type" => "datetime", "default" => DBA::NULL_DATETIME, "comment" => ""],
 			"last_contact" => ["type" => "datetime", "default" => DBA::NULL_DATETIME, "comment" => ""],
 			"last_failure" => ["type" => "datetime", "default" => DBA::NULL_DATETIME, "comment" => ""],
+			"last_discovery" => ["type" => "datetime", "default" => DBA::NULL_DATETIME, "comment" => "Date of the last contact discovery"],
 			"archive_date" => ["type" => "datetime", "default" => DBA::NULL_DATETIME, "comment" => ""],
 			"archived" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
 			"location" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"about" => ["type" => "text", "comment" => ""],
 			"keywords" => ["type" => "text", "comment" => "puplic keywords (interests)"],
-			"gender" => ["type" => "varchar(32)", "not null" => "1", "default" => "", "comment" => ""],
+			"gender" => ["type" => "varchar(32)", "not null" => "1", "default" => "", "comment" => "Deprecated"],
 			"birthday" => ["type" => "varchar(32)", "not null" => "1", "default" => DBA::NULL_DATE, "comment" => ""],
 			"community" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "1 if contact is forum account"],
 			"contact-type" => ["type" => "tinyint", "not null" => "1", "default" => "-1", "comment" => ""],
@@ -470,6 +501,18 @@ return [
 			"addr" => ["addr(64)"],
 			"hide_network_updated" => ["hide", "network", "updated"],
 			"updated" => ["updated"],
+		]
+	],
+	"gfollower" => [
+		"comment" => "Followers of global contacts",
+		"fields" => [
+			"gcid" => ["type" => "int unsigned", "not null" => "1", "default" => "0", "primary" => "1", "relation" => ["gcontact" => "id"], "comment" => "global contact"],
+			"follower-gcid" => ["type" => "int unsigned", "not null" => "1", "default" => "0", "primary" => "1", "relation" => ["gcontact" => "id"], "comment" => "global contact of the follower"],
+			"deleted" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "1 indicates that the connection has been deleted"],
+		],
+		"indexes" => [
+			"PRIMARY" => ["gcid", "follower-gcid"],
+			"follower-gcid" => ["follower-gcid"],
 		]
 	],
 	"glink" => [
@@ -526,6 +569,7 @@ return [
 			"info" => ["type" => "text", "comment" => ""],
 			"register_policy" => ["type" => "tinyint", "not null" => "1", "default" => "0", "comment" => ""],
 			"registered-users" => ["type" => "int unsigned", "not null" => "1", "default" => "0", "comment" => "Number of registered users"],
+			"directory-type" => ["type" => "tinyint", "default" => "0", "comment" => "Type of directory service (Poco, Mastodon)"],
 			"poco" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"noscrape" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"network" => ["type" => "char(4)", "not null" => "1", "default" => "", "comment" => ""],
@@ -629,7 +673,7 @@ return [
 			"extid" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"post-type" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "0", "comment" => "Post type (personal note, bookmark, ...)"],
 			"global" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
-			"private" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "distribution is restricted"],
+			"private" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "0", "comment" => "0=public, 1=private, 2=unlisted"],
 			"visible" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
 			"moderated" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
 			"deleted" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "item has been deleted"],
@@ -715,7 +759,7 @@ return [
 	"item-activity" => [
 		"comment" => "Activities for items",
 		"fields" => [
-			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1", "relation" => ["thread" => "iid"]],
+			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1"],
 			"uri" => ["type" => "varchar(255)", "comment" => ""],
 			"uri-id" => ["type" => "int unsigned", "relation" => ["item-uri" => "id"], "comment" => "Id of the item-uri table entry that contains the item uri"],
 			"uri-hash" => ["type" => "varchar(80)", "not null" => "1", "default" => "", "comment" => "RIPEMD-128 hash from uri"],
@@ -731,7 +775,7 @@ return [
 	"item-content" => [
 		"comment" => "Content for all posts",
 		"fields" => [
-			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1", "relation" => ["thread" => "iid"]],
+			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1"],
 			"uri" => ["type" => "varchar(255)", "comment" => ""],
 			"uri-id" => ["type" => "int unsigned", "relation" => ["item-uri" => "id"], "comment" => "Id of the item-uri table entry that contains the item uri"],
 			"uri-plink-hash" => ["type" => "varchar(80)", "not null" => "1", "default" => "", "comment" => "RIPEMD-128 hash from uri"],
@@ -1019,6 +1063,7 @@ return [
 			"allow_gid" => ["type" => "mediumtext", "comment" => "Access Control - list of allowed groups"],
 			"deny_cid" => ["type" => "mediumtext", "comment" => "Access Control - list of denied contact.id"],
 			"deny_gid" => ["type" => "mediumtext", "comment" => "Access Control - list of denied groups"],
+			"accessible" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "Make photo publicly accessible, ignoring permissions"],
 			"backend-class" => ["type" => "tinytext", "comment" => "Storage backend class"],
 			"backend-ref" => ["type" => "text", "comment" => "Storage backend data reference"],
 			"updated" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => ""]
@@ -1083,40 +1128,40 @@ return [
 		"fields" => [
 			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1", "comment" => "sequential ID"],
 			"uid" => ["type" => "mediumint unsigned", "not null" => "1", "default" => "0", "relation" => ["user" => "uid"], "comment" => "Owner User id"],
-			"profile-name" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => "Name of the profile"],
-			"is-default" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "Mark this profile as default profile"],
+			"profile-name" => ["type" => "varchar(255)", "comment" => "Deprecated"],
+			"is-default" => ["type" => "boolean", "comment" => "Deprecated"],
 			"hide-friends" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "Hide friend list from viewers of this profile"],
 			"name" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"pdesc" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => "Title or description"],
+			"pdesc" => ["type" => "varchar(255)", "comment" => "Deprecated"],
 			"dob" => ["type" => "varchar(32)", "not null" => "1", "default" => "0000-00-00", "comment" => "Day of birth"],
 			"address" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"locality" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"region" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"postal-code" => ["type" => "varchar(32)", "not null" => "1", "default" => "", "comment" => ""],
 			"country-name" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"hometown" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"gender" => ["type" => "varchar(32)", "not null" => "1", "default" => "", "comment" => ""],
-			"marital" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"with" => ["type" => "text", "comment" => ""],
-			"howlong" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => ""],
-			"sexual" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"politic" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"religion" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
+			"hometown" => ["type" => "varchar(255)", "comment" => "Deprecated"],
+			"gender" => ["type" => "varchar(32)", "comment" => "Deprecated"],
+			"marital" => ["type" => "varchar(255)", "comment" => "Deprecated"],
+			"with" => ["type" => "text", "comment" => "Deprecated"],
+			"howlong" => ["type" => "datetime", "comment" => "Deprecated"],
+			"sexual" => ["type" => "varchar(255)", "comment" => "Deprecated"],
+			"politic" => ["type" => "varchar(255)", "comment" => "Deprecated"],
+			"religion" => ["type" => "varchar(255)", "comment" => "Deprecated"],
 			"pub_keywords" => ["type" => "text", "comment" => ""],
 			"prv_keywords" => ["type" => "text", "comment" => ""],
-			"likes" => ["type" => "text", "comment" => ""],
-			"dislikes" => ["type" => "text", "comment" => ""],
-			"about" => ["type" => "text", "comment" => ""],
-			"summary" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
-			"music" => ["type" => "text", "comment" => ""],
-			"book" => ["type" => "text", "comment" => ""],
-			"tv" => ["type" => "text", "comment" => ""],
-			"film" => ["type" => "text", "comment" => ""],
-			"interest" => ["type" => "text", "comment" => ""],
-			"romance" => ["type" => "text", "comment" => ""],
-			"work" => ["type" => "text", "comment" => ""],
-			"education" => ["type" => "text", "comment" => ""],
-			"contact" => ["type" => "text", "comment" => ""],
+			"likes" => ["type" => "text", "comment" => "Deprecated"],
+			"dislikes" => ["type" => "text", "comment" => "Deprecated"],
+			"about" => ["type" => "text", "comment" => "Profile description"],
+			"summary" => ["type" => "varchar(255)", "comment" => "Deprecated"],
+			"music" => ["type" => "text", "comment" => "Deprecated"],
+			"book" => ["type" => "text", "comment" => "Deprecated"],
+			"tv" => ["type" => "text", "comment" => "Deprecated"],
+			"film" => ["type" => "text", "comment" => "Deprecated"],
+			"interest" => ["type" => "text", "comment" => "Deprecated"],
+			"romance" => ["type" => "text", "comment" => "Deprecated"],
+			"work" => ["type" => "text", "comment" => "Deprecated"],
+			"education" => ["type" => "text", "comment" => "Deprecated"],
+			"contact" => ["type" => "text", "comment" => "Deprecated"],
 			"homepage" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"xmpp" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
 			"photo" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => ""],
@@ -1142,6 +1187,25 @@ return [
 		],
 		"indexes" => [
 			"PRIMARY" => ["id"],
+		]
+	],
+	"profile_field" => [
+		"comment" => "Custom profile fields",
+		"fields" => [
+			"id" => ["type" => "int unsigned", "not null" => "1", "extra" => "auto_increment", "primary" => "1", "comment" => "sequential ID"],
+			"uid" => ["type" => "mediumint unsigned", "not null" => "1", "default" => "0", "relation" => ["user" => "uid"], "comment" => "Owner user id"],
+			"order" => ["type" => "mediumint unsigned", "not null" => "1", "default" => "1", "comment" => "Field ordering per user"],
+			"psid" => ["type" => "int unsigned", "relation" => ["permissionset" => "id"], "comment" => "ID of the permission set of this profile field - 0 = public"],
+			"label" => ["type" => "varchar(255)", "not null" => "1", "default" => "", "comment" => "Label of the field"],
+			"value" => ["type" => "text", "comment" => "Value of the field"],
+			"created" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => "creation time"],
+			"edited" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => "last edit time"],
+		],
+		"indexes" => [
+			"PRIMARY" => ["id"],
+			"uid" => ["uid"],
+			"order" => ["order"],
+			"psid" => ["psid"],
 		]
 	],
 	"push_subscriber" => [
@@ -1257,7 +1321,7 @@ return [
 			"received" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => ""],
 			"changed" => ["type" => "datetime", "not null" => "1", "default" => DBA::NULL_DATETIME, "comment" => ""],
 			"wall" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
-			"private" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
+			"private" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "0", "comment" => "0=public, 1=private, 2=unlisted"],
 			"pubmail" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
 			"moderated" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
 			"visible" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => ""],
@@ -1387,11 +1451,13 @@ return [
 			"uid" => ["type" => "mediumint unsigned", "not null" => "1", "default" => "0", "primary" => "1", "relation" => ["user" => "uid"], "comment" => "User id"],
 			"hidden" => ["type" => "boolean", "not null" => "1", "default" => "0", "comment" => "Marker to hide an item from the user"],
 			"ignored" => ["type" => "boolean", "comment" => "Ignore this thread if set"],
-			"pinned" => ["type" => "boolean", "comment" => "The item is pinned on the profile page"]
+			"pinned" => ["type" => "boolean", "comment" => "The item is pinned on the profile page"],
+			"notification-type" => ["type" => "tinyint unsigned", "not null" => "1", "default" => "0", "comment" => ""],
 		],
 		"indexes" => [
 			"PRIMARY" => ["uid", "iid"],
-			"uid_pinned" => ["uid", "pinned"]
+			"uid_pinned" => ["uid", "pinned"],
+			"iid_uid" => ["iid", "uid"]
 		]
 	],
 	"worker-ipc" => [

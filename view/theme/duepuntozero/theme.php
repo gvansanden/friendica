@@ -1,32 +1,50 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 use Friendica\App;
-use Friendica\Core\Config;
-use Friendica\Core\PConfig;
 use Friendica\Core\Renderer;
+use Friendica\DI;
 
 function duepuntozero_init(App $a) {
 
 Renderer::setActiveTemplateEngine('smarty3');
 
-    $colorset = PConfig::get( local_user(), 'duepuntozero','colorset');
+    $colorset = DI::pConfig()->get( local_user(), 'duepuntozero','colorset');
     if (!$colorset)
-       $colorset = Config::get('duepuntozero', 'colorset');          // user setting have priority, then node settings
+       $colorset = DI::config()->get('duepuntozero', 'colorset');          // user setting have priority, then node settings
     if ($colorset) {
         if ($colorset == 'greenzero')
-            $a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/greenzero.css" type="text/css" media="screen" />'."\n";
+            DI::page()['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/greenzero.css" type="text/css" media="screen" />'."\n";
         if ($colorset == 'purplezero')
-            $a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/purplezero.css" type="text/css" media="screen" />'."\n";
+	        DI::page()['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/purplezero.css" type="text/css" media="screen" />'."\n";
         if ($colorset == 'easterbunny')
-            $a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/easterbunny.css" type="text/css" media="screen" />'."\n";
+	        DI::page()['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/easterbunny.css" type="text/css" media="screen" />'."\n";
         if ($colorset == 'darkzero')
-            $a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/darkzero.css" type="text/css" media="screen" />'."\n";
+	        DI::page()['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/darkzero.css" type="text/css" media="screen" />'."\n";
         if ($colorset == 'comix')
-            $a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/comix.css" type="text/css" media="screen" />'."\n";
+	        DI::page()['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/comix.css" type="text/css" media="screen" />'."\n";
         if ($colorset == 'slackr')
-            $a->page['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/slackr.css" type="text/css" media="screen" />'."\n";
+	        DI::page()['htmlhead'] .= '<link rel="stylesheet" href="view/theme/duepuntozero/deriv/slackr.css" type="text/css" media="screen" />'."\n";
     }
-$a->page['htmlhead'] .= <<< EOT
+DI::page()['htmlhead'] .= <<< EOT
 <script>
 function cmtBbOpen(comment, id) {
 	if ($(comment).hasClass('comment-edit-text-full')) {
@@ -79,4 +97,26 @@ $(document).ready(function() {
 });
 </script>
 EOT;
+}
+
+/**
+ * @param int|null $uid
+ * @return null
+ * @see \Friendica\Core\Theme::getBackgroundColor()
+ * @TODO Implement this function
+ */
+function duepuntozero_get_background_color(int $uid = null)
+{
+	return null;
+}
+
+/**
+ * @param int|null $uid
+ * @return null
+ * @see \Friendica\Core\Theme::getThemeColor()
+ * @TODO Implement this function
+ */
+function duepuntozero_get_theme_color(int $uid = null)
+{
+	return null;
 }

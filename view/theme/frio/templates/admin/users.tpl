@@ -1,5 +1,5 @@
-<script type="text/javascript" src="view/theme/frio/js/mod_admin.js"></script>
-<link rel="stylesheet" href="view/theme/frio/css/mod_admin.css" type="text/css" media="screen"/>
+<script type="text/javascript" src="view/theme/frio/js/mod_admin.js?v={{$smarty.const.FRIENDICA_VERSION}}"></script>
+<link rel="stylesheet" href="view/theme/frio/css/mod_admin.css?v={{$smarty.const.FRIENDICA_VERSION}}" type="text/css" media="screen"/>
 
 <div id="admin-users" class="adminpage generic-page-wrapper">
 	<h1>{{$title}} - {{$page}}</h1>
@@ -49,8 +49,8 @@
 								<td>{{$u.name}}</td>
 								<td>{{$u.email}}</td>
 								<td>
-									<a href="{{$baseurl}}/regmod/allow/{{$u.hash}}" class="admin-settings-action-link" title="{{$approve}}"><i class="fa fa-check" aria-hidden="true"></i></a>
-									<a href="{{$baseurl}}/regmod/deny/{{$u.hash}}" class="admin-settings-action-link" title="{{$deny}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a>
+									<a href="{{$baseurl}}/admin/users/allow/{{$u.uid}}?t={{$form_security_token}}" class="admin-settings-action-link" title="{{$approve}}"><i class="fa fa-check" aria-hidden="true"></i></a>
+									<a href="{{$baseurl}}/admin/users/deny/{{$u.uid}}?t={{$form_security_token}}" class="admin-settings-action-link" title="{{$deny}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a>
 								</td>
 							</tr>
 							{{if $u.note}}

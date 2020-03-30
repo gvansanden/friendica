@@ -1,22 +1,38 @@
 <?php
 /**
- * @file src/App.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica;
 
 use Exception;
 use Friendica\App\Arguments;
 use Friendica\App\BaseURL;
-use Friendica\App\Page;
-use Friendica\Core\Config\Cache\ConfigCache;
-use Friendica\Core\Config\Configuration;
-use Friendica\Core\Config\PConfiguration;
-use Friendica\Core\L10n\L10n;
+use Friendica\App\Authentication;
+use Friendica\Core\Config\Cache;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\PConfig\IPConfig;
+use Friendica\Core\L10n;
 use Friendica\Core\System;
 use Friendica\Core\Theme;
 use Friendica\Database\Database;
 use Friendica\Model\Profile;
-use Friendica\Module\Login;
 use Friendica\Module\Special\HTTPException as ModuleHTTPException;
 use Friendica\Network\HTTPException;
 use Friendica\Util\ConfigFileLoader;
@@ -26,10 +42,7 @@ use Friendica\Util\Strings;
 use Psr\Log\LoggerInterface;
 
 /**
- *
- * class: App
- *
- * @brief Our main application structure for the life of this page.
+ * Our main application structure for the life of this page.
  *
  * Primarily deals with the URL that got us here
  * and tries to make some sense of it, and
@@ -40,12 +53,6 @@ use Psr\Log\LoggerInterface;
  */
 class App
 {
-	/** @deprecated 2019.09 - use App\Arguments->getQueryString() */
-	public $query_string;
-	/**
-	 * @var Page The current page environment
-	 */
-	public $page;
 	public $profile;
 	public $profile_uid;
 	public $user;
@@ -55,21 +62,13 @@ class App
 	public $page_contact;
 	public $content;
 	public $data = [];
-	/** @deprecated 2019.09 - use App\Arguments->getCommand() */
-	public $cmd = '';
 	/** @deprecated 2019.09 - use App\Arguments->getArgv() or Arguments->get() */
 	public $argv;
 	/** @deprecated 2019.09 - use App\Arguments->getArgc() */
 	public $argc;
-	/** @deprecated 2019.09 - Use App\Module->getName() instead */
-	public $module;
 	public $timezone;
 	public $interactive = true;
 	public $identities;
-	/** @deprecated 2019.09 - Use App\Mode->isMobile() instead */
-	public $is_mobile;
-	/** @deprecated 2019.09 - Use App\Mode->isTable() instead */
-	public $is_tablet;
 	public $theme_info = [];
 	public $category;
 	// Allow themes to control internal parameters
@@ -98,7 +97,7 @@ class App
 	private $currentMobileTheme;
 
 	/**
-	 * @var Configuration The config
+	 * @var IConfig The config
 	 */
 	private $config;
 
@@ -133,23 +132,18 @@ class App
 	private $process;
 
 	/**
+	 * @var IPConfig
+	 */
+	private $pConfig;
+
+	/**
 	 * Returns the current config cache of this node
 	 *
-	 * @return ConfigCache
+	 * @return Cache
 	 */
 	public function getConfigCache()
 	{
 		return $this->config->getCache();
-	}
-
-	/**
-	 * Returns the current config of this node
-	 *
-	 * @return Configuration
-	 */
-	public function getConfig()
-	{
-		return $this->config;
 	}
 
 	/**
@@ -164,66 +158,8 @@ class App
 	}
 
 	/**
-	 * The Logger of this app
-	 *
-	 * @return LoggerInterface
-	 */
-	public function getLogger()
-	{
-		return $this->logger;
-	}
-
-	/**
-	 * The profiler of this app
-	 *
-	 * @return Profiler
-	 */
-	public function getProfiler()
-	{
-		return $this->profiler;
-	}
-
-	/**
-	 * Returns the Mode of the Application
-	 *
-	 * @return App\Mode The Application Mode
-	 */
-	public function getMode()
-	{
-		return $this->mode;
-	}
-
-	/**
-	 * Returns the Database of the Application
-	 *
-	 * @return Database
-	 */
-	public function getDBA()
-	{
-		return $this->database;
-	}
-
-	/**
-	 * @deprecated 2019.09 - use Page->registerStylesheet instead
-	 * @see        Page::registerStylesheet()
-	 */
-	public function registerStylesheet($path)
-	{
-		$this->page->registerStylesheet($path);
-	}
-
-	/**
-	 * @deprecated 2019.09 - use Page->registerFooterScript instead
-	 * @see        Page::registerFooterScript()
-	 */
-	public function registerFooterScript($path)
-	{
-		$this->page->registerFooterScript($path);
-	}
-
-	/**
 	 * @param Database        $database The Friendica Database
-	 * @param Configuration   $config   The Configuration
+	 * @param IConfig         $config   The Configuration
 	 * @param App\Mode        $mode     The mode of this Friendica app
 	 * @param BaseURL         $baseURL  The full base URL of this Friendica app
 	 * @param LoggerInterface $logger   The current app logger
@@ -231,8 +167,9 @@ class App
 	 * @param L10n            $l10n     The translator instance
 	 * @param App\Arguments   $args     The Friendica Arguments of the call
 	 * @param Core\Process    $process  The process methods
+	 * @param IPConfig        $pConfig  Personal configuration
 	 */
-	public function __construct(Database $database, Configuration $config, App\Mode $mode, BaseURL $baseURL, LoggerInterface $logger, Profiler $profiler, L10n $l10n, Arguments $args, App\Module $module, App\Page $page, Core\Process $process)
+	public function __construct(Database $database, IConfig $config, App\Mode $mode, BaseURL $baseURL, LoggerInterface $logger, Profiler $profiler, L10n $l10n, Arguments $args, Core\Process $process, IPConfig $pConfig)
 	{
 		$this->database = $database;
 		$this->config   = $config;
@@ -243,16 +180,10 @@ class App
 		$this->l10n     = $l10n;
 		$this->args     = $args;
 		$this->process  = $process;
+		$this->pConfig  = $pConfig;
 
-		$this->cmd          = $args->getCommand();
 		$this->argv         = $args->getArgv();
 		$this->argc         = $args->getArgc();
-		$this->query_string = $args->getQueryString();
-		$this->module       = $module->getName();
-		$this->page         = $page;
-
-		$this->is_mobile = $mode->isMobile();
-		$this->is_tablet = $mode->isTablet();
 
 		$this->load();
 	}
@@ -310,85 +241,6 @@ class App
 	}
 
 	/**
-	 * Returns the scheme of the current call
-	 *
-	 * @return string
-	 *
-	 * @deprecated 2019.06 - use BaseURL->getScheme() instead
-	 */
-	public function getScheme()
-	{
-		return $this->baseURL->getScheme();
-	}
-
-	/**
-	 * Retrieves the Friendica instance base URL
-	 *
-	 * @param bool $ssl Whether to append http or https under BaseURL::SSL_POLICY_SELFSIGN
-	 *
-	 * @return string Friendica server base URL
-	 *
-	 * @deprecated 2019.09 - use BaseUrl->get($ssl) instead
-	 */
-	public function getBaseURL($ssl = false)
-	{
-		return $this->baseURL->get($ssl);
-	}
-
-	/**
-	 * @brief      Initializes the baseurl components
-	 *
-	 * Clears the baseurl cache to prevent inconsistencies
-	 *
-	 * @param string $url
-	 *
-	 * @deprecated 2019.06 - use BaseURL->saveByURL($url) instead
-	 */
-	public function setBaseURL($url)
-	{
-		$this->baseURL->saveByURL($url);
-	}
-
-	/**
-	 * Returns the current hostname
-	 *
-	 * @return string
-	 *
-	 * @deprecated 2019.06 - use BaseURL->getHostname() instead
-	 */
-	public function getHostName()
-	{
-		return $this->baseURL->getHostname();
-	}
-
-	/**
-	 * Returns the sub-path of the full URL
-	 *
-	 * @return string
-	 *
-	 * @deprecated 2019.06 - use BaseURL->getUrlPath() instead
-	 */
-	public function getURLPath()
-	{
-		return $this->baseURL->getUrlPath();
-	}
-
-	/**
-	 * @brief      Removes the base url from an url. This avoids some mixed content problems.
-	 *
-	 * @param string $origURL
-	 *
-	 * @return string The cleaned url
-	 *
-	 * @deprecated 2019.09 - Use BaseURL->remove() instead
-	 * @see        BaseURL::remove()
-	 */
-	public function removeBaseURL(string $origURL)
-	{
-		return $this->baseURL->remove($origURL);
-	}
-
-	/**
 	 * Returns the current UserAgent as a String
 	 *
 	 * @return string the UserAgent as a String
@@ -401,52 +253,7 @@ class App
 			FRIENDICA_CODENAME . "' " .
 			FRIENDICA_VERSION . '-' .
 			DB_UPDATE_VERSION . '; ' .
-			$this->getBaseURL();
-	}
-
-	/**
-	 * @deprecated 2019.09 - use Core\Process->isMaxProcessesReached() instead
-	 */
-	public function isMaxProcessesReached()
-	{
-		return $this->process->isMaxProcessesReached();
-	}
-
-	/**
-	 * @deprecated 2019.09 - use Core\Process->isMinMemoryReached() instead
-	 */
-	public function isMinMemoryReached()
-	{
-		return $this->process->isMinMemoryReached();
-	}
-
-	/**
-	 * @deprecated 2019.09 - use Core\Process->isMaxLoadReached() instead
-	 */
-	public function isMaxLoadReached()
-	{
-		return $this->process->isMaxLoadReached();
-	}
-
-	/**
-	 * Generates the site's default sender email address
-	 *
-	 * @return string
-	 * @throws HTTPException\InternalServerErrorException
-	 */
-	public function getSenderEmailAddress()
-	{
-		$sender_email = $this->config->get('config', 'sender_email');
-		if (empty($sender_email)) {
-			$hostname = $this->baseURL->getHostname();
-			if (strpos($hostname, ':')) {
-				$hostname = substr($hostname, 0, strpos($hostname, ':'));
-			}
-
-			$sender_email = 'noreply@' . $hostname;
-		}
-
-		return $sender_email;
+			$this->baseURL->get();
 	}
 
 	/**
@@ -528,7 +335,7 @@ class App
 			// Allow folks to override user themes and always use their own on their own site.
 			// This works only if the user is on the same server
 			$user = $this->database->selectFirst('user', ['theme'], ['uid' => $this->profile_uid]);
-			if ($this->database->isResult($user) && !Core\PConfig::get(local_user(), 'system', 'always_my_theme')) {
+			if ($this->database->isResult($user) && !$this->pConfig->get(local_user(), 'system', 'always_my_theme')) {
 				$page_theme = $user['theme'];
 			}
 		}
@@ -560,8 +367,8 @@ class App
 		if ($this->profile_uid && ($this->profile_uid != local_user())) {
 			// Allow folks to override user themes and always use their own on their own site.
 			// This works only if the user is on the same server
-			if (!Core\PConfig::get(local_user(), 'system', 'always_my_theme')) {
-				$page_mobile_theme = Core\PConfig::get($this->profile_uid, 'system', 'mobile-theme');
+			if (!$this->pConfig->get(local_user(), 'system', 'always_my_theme')) {
+				$page_mobile_theme = $this->pConfig->get($this->profile_uid, 'system', 'mobile-theme');
 			}
 		}
 
@@ -579,8 +386,6 @@ class App
 	}
 
 	/**
-	 * @brief Return full URL to theme which is currently in effect.
-	 *
 	 * Provide a sane default if nothing is chosen or the specified theme does not exist.
 	 *
 	 * @return string
@@ -589,25 +394,6 @@ class App
 	public function getCurrentThemeStylesheetPath()
 	{
 		return Core\Theme::getStylesheetPath($this->getCurrentTheme());
-	}
-
-	/**
-	 * @deprecated 2019.09 - use App\Mode->isAjax() instead
-	 * @see        App\Mode::isAjax()
-	 */
-	public function isAjax()
-	{
-		return $this->mode->isAjax();
-	}
-
-	/**
-	 * @deprecated use Arguments->get() instead
-	 *
-	 * @see        App\Arguments
-	 */
-	public function getArgumentValue($position, $default = '')
-	{
-		return $this->args->get($position, $default);
 	}
 
 	/**
@@ -624,8 +410,8 @@ class App
 		// and www.example.com vs example.com.
 		// We will only change the url to an ip address if there is no existing setting
 
-		if (empty($url) || (!Util\Strings::compareLink($url, $this->getBaseURL())) && (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $this->baseURL->getHostname()))) {
-			$this->config->set('system', 'url', $this->getBaseURL());
+		if (empty($url) || (!Util\Strings::compareLink($url, $this->baseURL->get())) && (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $this->baseURL->getHostname()))) {
+			$this->config->set('system', 'url', $this->baseURL->get());
 		}
 	}
 
@@ -639,11 +425,14 @@ class App
 	 *
 	 * @param App\Module     $module The determined module
 	 * @param App\Router     $router
-	 * @param PConfiguration $pconfig
+	 * @param IPConfig       $pconfig
+	 * @param Authentication $auth The Authentication backend of the node
+	 * @param App\Page       $page The Friendica page printing container
+	 *
 	 * @throws HTTPException\InternalServerErrorException
 	 * @throws \ImagickException
 	 */
-	public function runFrontend(App\Module $module, App\Router $router, PConfiguration $pconfig)
+	public function runFrontend(App\Module $module, App\Router $router, IPConfig $pconfig, Authentication $auth, App\Page $page)
 	{
 		$moduleName = $module->getName();
 
@@ -667,19 +456,11 @@ class App
 					System::externalRedirect($this->baseURL->get() . '/' . $this->args->getQueryString());
 				}
 
-				Core\Session::init();
 				Core\Hook::callAll('init_1');
 			}
 
 			// Exclude the backend processes from the session management
-			if (!$this->mode->isBackend()) {
-				$stamp1 = microtime(true);
-				session_start();
-				$this->profiler->saveTimestamp($stamp1, 'parser', Core\System::callstack());
-				$this->l10n->setSessionVariable();
-				$this->l10n->setLangFromSession();
-			} else {
-				$_SESSION = [];
+			if ($this->mode->isBackend()) {
 				Core\Worker::executeIfIdle();
 			}
 
@@ -717,7 +498,7 @@ class App
 				Model\Profile::openWebAuthInit($token);
 			}
 
-			Login::sessionAuth();
+			$auth->withSession($this);
 
 			if (empty($_SESSION['authenticated'])) {
 				header('X-Account-Management-Status: none');
@@ -736,9 +517,9 @@ class App
 			// in install mode, any url loads install module
 			// but we need "view" module for stylesheet
 			if ($this->mode->isInstall() && $moduleName !== 'install') {
-				$this->internalRedirect('install');
+				$this->baseURL->redirect('install');
 			} elseif (!$this->mode->isInstall() && !$this->mode->has(App\Mode::MAINTENANCEDISABLED) && $moduleName !== 'maintenance') {
-				$this->internalRedirect('maintenance');
+				$this->baseURL->redirect('maintenance');
 			} else {
 				$this->checkURL();
 				Core\Update::check($this->getBasePath(), false, $this->mode);
@@ -748,70 +529,51 @@ class App
 
 			// Compatibility with the Android Diaspora client
 			if ($moduleName == 'stream') {
-				$this->internalRedirect('network?order=post');
+				$this->baseURL->redirect('network?order=post');
 			}
 
 			if ($moduleName == 'conversations') {
-				$this->internalRedirect('message');
+				$this->baseURL->redirect('message');
 			}
 
 			if ($moduleName == 'commented') {
-				$this->internalRedirect('network?order=comment');
+				$this->baseURL->redirect('network?order=comment');
 			}
 
 			if ($moduleName == 'liked') {
-				$this->internalRedirect('network?order=comment');
+				$this->baseURL->redirect('network?order=comment');
 			}
 
 			if ($moduleName == 'activity') {
-				$this->internalRedirect('network?conv=1');
+				$this->baseURL->redirect('network?conv=1');
 			}
 
 			if (($moduleName == 'status_messages') && ($this->args->getCommand() == 'status_messages/new')) {
-				$this->internalRedirect('bookmarklet');
+				$this->baseURL->redirect('bookmarklet');
 			}
 
 			if (($moduleName == 'user') && ($this->args->getCommand() == 'user/edit')) {
-				$this->internalRedirect('settings');
+				$this->baseURL->redirect('settings');
 			}
 
 			if (($moduleName == 'tag_followings') && ($this->args->getCommand() == 'tag_followings/manage')) {
-				$this->internalRedirect('search');
+				$this->baseURL->redirect('search');
 			}
 
 			// Initialize module that can set the current theme in the init() method, either directly or via App->profile_uid
-			$this->page['page_title'] = $moduleName;
+			$page['page_title'] = $moduleName;
 
 			// determine the module class and save it to the module instance
 			// @todo there's an implicit dependency due SESSION::start(), so it has to be called here (yet)
 			$module = $module->determineClass($this->args, $router, $this->config);
 
 			// Let the module run it's internal process (init, get, post, ...)
-			$module->run($this->l10n, $this, $this->logger, $_SERVER, $_POST);
+			$module->run($this->l10n, $this->baseURL, $this->logger, $_SERVER, $_POST);
 		} catch (HTTPException $e) {
 			ModuleHTTPException::rawContent($e);
 		}
 
-		$this->page->run($this, $this->baseURL, $this->mode, $module, $this->l10n, $this->config, $pconfig);
-	}
-
-	/**
-	 * Redirects to another module relative to the current Friendica base.
-	 * If you want to redirect to a external URL, use System::externalRedirectTo()
-	 *
-	 * @param string $toUrl The destination URL (Default is empty, which is the default page of the Friendica node)
-	 * @param bool   $ssl   if true, base URL will try to get called with https:// (works just for relative paths)
-	 *
-	 * @throws HTTPException\InternalServerErrorException In Case the given URL is not relative to the Friendica node
-	 */
-	public function internalRedirect($toUrl = '', $ssl = false)
-	{
-		if (!empty(parse_url($toUrl, PHP_URL_SCHEME))) {
-			throw new HTTPException\InternalServerErrorException("'$toUrl is not a relative path, please use System::externalRedirectTo");
-		}
-
-		$redirectTo = $this->baseURL->get($ssl) . '/' . ltrim($toUrl, '/');
-		Core\System::externalRedirect($redirectTo);
+		$page->run($this, $this->baseURL, $this->mode, $module, $this->l10n, $this->config, $pconfig);
 	}
 
 	/**
@@ -827,7 +589,7 @@ class App
 		if (!empty(parse_url($toUrl, PHP_URL_SCHEME))) {
 			Core\System::externalRedirect($toUrl);
 		} else {
-			$this->internalRedirect($toUrl);
+			$this->baseURL->redirect($toUrl);
 		}
 	}
 }

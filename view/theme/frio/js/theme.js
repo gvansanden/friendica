@@ -3,11 +3,21 @@ var jotcache = ''; //The jot cache. We use it as cache to restore old/original j
 
 $(document).ready(function(){
 	//fade in/out based on scrollTop value
+	var scrollStart;
+
 	$(window).scroll(function () {
-		if ($(this).scrollTop() > 1000) {
-			$("#back-to-top").fadeIn();
-		} else {
+		let currentScroll = $(this).scrollTop();
+
+		// Top of the page or going down = hide the button
+		if (!scrollStart || !currentScroll || currentScroll > scrollStart) {
 			$("#back-to-top").fadeOut();
+			scrollStart = currentScroll;
+		}
+
+		// Going up enough = show the button
+		if (scrollStart - currentScroll > 100) {
+			$("#back-to-top").fadeIn();
+			scrollStart = currentScroll;
 		}
 	});
 
@@ -63,26 +73,20 @@ $(document).ready(function(){
 		'target': ".flex-target"
 	});
 
-	// add Jot botton to the scecond navbar
+	// add Jot button to the second navbar
 	let $jotButton = $("#jotOpen");
-	let $composeButton = $("#composeOpen");
-	if (compose) {
-		$jotButton.hide();
-		if ($composeButton.length) {
-			$composeButton.appendTo("#topbar-second > .container > #navbar-button");
-			if($("#jot-popup").is(":hidden")) {
-				$composeButton.hide();
-			}
+	if ($jotButton.length) {
+		$jotButton.appendTo("#topbar-second > .container > #navbar-button");
+		if ($("#jot-popup").is(":hidden")) {
+			$jotButton.hide();
 		}
-	} else {
-		$composeButton.hide();
-		if ($jotButton.length) {
-			$jotButton.appendTo("#topbar-second > .container > #navbar-button");
-			if($("#jot-popup").is(":hidden")) {
-				$jotButton.hide();
-			}
-		}
+		$jotButton.on('click', function (e) {
+			e.preventDefault();
+			jotShow();
+		});
 	}
+
+	let $body = $('body');
 
 	// show bulk deletion button at network page if checkbox is checked
 	$("body").change("input.item-select", function(){
@@ -230,24 +234,6 @@ $(document).ready(function(){
 		toggleDropdownText(this);
 	});
 
-	/* setup onoff widgets */
-	// Add the correct class to the switcher according to the input
-	// value (On/Off)
-	$(".toggle input").each(function(){
-		// Get the value of the input element
-		val = $(this).val();
-		id = $(this).attr("id");
-
-		// The css classes for "on" and "off"
-		onstyle = "btn-primary";
-		offstyle = "btn-default off";
-
-		// Add the correct class in dependence of input value (On/Off)
-		toggleclass = (val == 0 ? offstyle : onstyle);
-		$("#"+id+"_onoff").addClass(toggleclass);
-
-	});
-
 	// Change the css class while clicking on the switcher elements
 	$(".toggle label, .toggle .toggle-handle").click(function(event){
 		event.preventDefault();
@@ -376,6 +362,45 @@ $(document).ready(function(){
 		showHideEventMap(this);
 	});
 
+	// Comment form submit
+	$body.on('submit', '.comment-edit-form', function(e) {
+		e.preventDefault();
+
+		let $form = $(this);
+		let id = $form.data('item-id');
+		let $commentSubmit = $form.find('.comment-edit-submit').button('loading');
+
+		unpause();
+		commentBusy = true;
+
+		$.post(
+			'item',
+			$form.serialize(),
+			'json'
+		)
+		.then(function(data) {
+			if (data.success) {
+				$('#comment-edit-wrapper-' + id).hide();
+				let $textarea = $('#comment-edit-text-' + id);
+				$textarea.val('');
+				if ($textarea.get(0)) {
+					commentClose($textarea.get(0), id);
+				}
+				if (timer) {
+					clearTimeout(timer);
+				}
+				timer = setTimeout(NavUpdate,10);
+				force_update = true;
+				update_item = id;
+			}
+			if (data.reload) {
+				window.location.href = data.reload;
+			}
+		})
+		.always(function() {
+			$commentSubmit.button('reset');
+		});
+	})
 });
 
 function openClose(theID) {
@@ -650,7 +675,7 @@ function scrollToItem(elementId) {
 	// Scroll to the DIV with the ID (GUID)
 	$('html, body').animate({
 		scrollTop: itemPos
-	}, 400, function() {
+	}, 400).promise().done( function() {
 		// Highlight post/commenent with ID  (GUID)
 		$el.animate(colWhite, 1000).animate(colShiny).animate(colWhite, 600);
 	});

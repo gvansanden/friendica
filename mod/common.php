@@ -1,14 +1,30 @@
 <?php
 /**
- * @file include/common.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 use Friendica\App;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Pager;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model;
 use Friendica\Module;
 use Friendica\Util\Proxy as ProxyUtils;
@@ -24,7 +40,7 @@ function common_content(App $a)
 	$zcid = 0;
 
 	if (!local_user()) {
-		notice(L10n::t('Permission denied.') . EOL);
+		notice(DI::l10n()->t('Permission denied.') . EOL);
 		return;
 	}
 
@@ -40,23 +56,23 @@ function common_content(App $a)
 		$contact = DBA::selectFirst('contact', ['name', 'url', 'photo', 'uid', 'id'], ['id' => $cid, 'uid' => $uid]);
 
 		if (DBA::isResult($contact)) {
-			$a->page['aside'] = "";
-			Model\Profile::load($a, "", 0, Model\Contact::getDetailsByURL($contact["url"]));
+			DI::page()['aside'] = "";
+			Model\Profile::load($a, "", Model\Contact::getDetailsByURL($contact["url"]));
 		}
 	} else {
 		$contact = DBA::selectFirst('contact', ['name', 'url', 'photo', 'uid', 'id'], ['self' => true, 'uid' => $uid]);
 
 		if (DBA::isResult($contact)) {
-			$vcard_widget = Renderer::replaceMacros(Renderer::getMarkupTemplate("widget/vcard.tpl"), [
+			$vcard_widget = Renderer::replaceMacros(Renderer::getMarkupTemplate('widget/vcard.tpl'), [
 				'$name'  => $contact['name'],
 				'$photo' => $contact['photo'],
 				'url'    => 'contact/' . $cid
 			]);
 
-			if (empty($a->page['aside'])) {
-				$a->page['aside'] = '';
+			if (empty(DI::page()['aside'])) {
+				DI::page()['aside'] = '';
 			}
-			$a->page['aside'] .= $vcard_widget;
+			DI::page()['aside'] .= $vcard_widget;
 		}
 	}
 
@@ -87,11 +103,11 @@ function common_content(App $a)
 	}
 
 	if ($total < 1) {
-		notice(L10n::t('No contacts in common.') . EOL);
+		notice(DI::l10n()->t('No contacts in common.') . EOL);
 		return $o;
 	}
 
-	$pager = new Pager($a->query_string);
+	$pager = new Pager(DI::l10n(), DI::args()->getQueryString());
 
 	if ($cid) {
 		$common_friends = Model\GContact::commonFriends($uid, $cid, $pager->getStart(), $pager->getItemsPerPage());
@@ -138,7 +154,7 @@ function common_content(App $a)
 	if ($cmd === 'loc' && $cid && local_user() == $uid) {
 		$tab_str = Module\Contact::getTabsHTML($a, $contact, 5);
 	} else {
-		$title = L10n::t('Common Friends');
+		$title = DI::l10n()->t('Common Friends');
 	}
 
 	$tpl = Renderer::getMarkupTemplate('viewcontact_template.tpl');

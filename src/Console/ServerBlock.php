@@ -1,14 +1,33 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
 use Asika\SimpleConsole\CommandArgsException;
 use Asika\SimpleConsole\Console;
 use Console_Table;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
 
 /**
- * @brief Manage blocked servers
+ * Manage blocked servers
  *
  * With this tool, you can list the current blocked servers
  * or you can add / remove a blocked server from the list
@@ -20,7 +39,7 @@ class ServerBlock extends Console
 	protected $helpOptions = ['h', 'help', '?'];
 
 	/**
-	 * @var Configuration
+	 * @var IConfig
 	 */
 	private $config;
 
@@ -49,7 +68,7 @@ HELP;
 		return $help;
 	}
 
-	public function __construct(Configuration $config, $argv = null)
+	public function __construct(IConfig $config, $argv = null)
 	{
 		parent::__construct($argv);
 
@@ -77,9 +96,9 @@ HELP;
 	/**
 	 * Prints the whole list of blocked domains including the reason
 	 *
-	 * @param Configuration $config
+	 * @param IConfig $config
 	 */
-	private function printBlockedServers(Configuration $config)
+	private function printBlockedServers(IConfig $config)
 	{
 		$table = new Console_Table();
 		$table->setHeaders(['Domain', 'Reason']);
@@ -93,11 +112,11 @@ HELP;
 	/**
 	 * Adds a server to the blocked list
 	 *
-	 * @param Configuration $config
+	 * @param IConfig $config
 	 *
 	 * @return int The return code (0 = success, 1 = failed)
 	 */
-	private function addBlockedServer(Configuration $config)
+	private function addBlockedServer(IConfig $config)
 	{
 		if (count($this->args) < 2 || count($this->args) > 3) {
 			throw new CommandArgsException('Add needs a domain and optional a reason.');
@@ -145,11 +164,11 @@ HELP;
 	/**
 	 * Removes a server from the blocked list
 	 *
-	 * @param Configuration $config
+	 * @param IConfig $config
 	 *
 	 * @return int The return code (0 = success, 1 = failed)
 	 */
-	private function removeBlockedServer(Configuration $config)
+	private function removeBlockedServer(IConfig $config)
 	{
 		if (count($this->args) !== 2) {
 			throw new CommandArgsException('Remove needs a second parameter.');

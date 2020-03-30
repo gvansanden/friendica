@@ -1,16 +1,32 @@
 <?php
 /**
- * @file mod/tagger.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 use Friendica\App;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Item;
 use Friendica\Protocol\Activity;
 use Friendica\Util\Strings;
@@ -69,9 +85,9 @@ function tagger_content(App $a) {
 
 	$uri = Item::newURI($owner_uid);
 	$xterm = XML::escape($term);
-	$post_type = (($item['resource-id']) ? L10n::t('photo') : L10n::t('status'));
+	$post_type = (($item['resource-id']) ? DI::l10n()->t('photo') : DI::l10n()->t('status'));
 	$targettype = (($item['resource-id']) ? Activity\ObjectType::IMAGE : Activity\ObjectType::NOTE );
-	$href = System::baseUrl() . '/display/' . $item['guid'];
+	$href = DI::baseUrl() . '/display/' . $item['guid'];
 
 	$link = XML::escape('<link rel="alternate" type="text/html" href="'. $href . '" />' . "\n");
 
@@ -88,7 +104,7 @@ function tagger_content(App $a) {
 	</target>
 EOT;
 
-	$tagid = System::baseUrl() . '/search?tag=' . $xterm;
+	$tagid = DI::baseUrl() . '/search?tag=' . $xterm;
 	$objtype = Activity\ObjectType::TAGTERM;
 
 	$obj = <<< EOT
@@ -102,13 +118,13 @@ EOT;
 	</object>
 EOT;
 
-	$bodyverb = L10n::t('%1$s tagged %2$s\'s %3$s with %4$s');
+	$bodyverb = DI::l10n()->t('%1$s tagged %2$s\'s %3$s with %4$s');
 
 	if (!isset($bodyverb)) {
 		return;
 	}
 
-	$termlink = html_entity_decode('&#x2317;') . '[url=' . System::baseUrl() . '/search?tag=' . $term . ']'. $term . '[/url]';
+	$termlink = html_entity_decode('&#x2317;') . '[url=' . DI::baseUrl() . '/search?tag=' . $term . ']'. $term . '[/url]';
 
 	$arr = [];
 

@@ -1,11 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Factory;
 
 use Friendica\App\BaseURL;
 use Friendica\Core\Cache;
 use Friendica\Core\Cache\ICache;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
 use Friendica\Database\Database;
 use Friendica\Util\Profiler;
 use Psr\Log\LoggerInterface;
@@ -22,10 +41,10 @@ class CacheFactory
 	/**
 	 * @var string The default cache if nothing set
 	 */
-	const DEFAULT_TYPE = Cache\Cache::TYPE_DATABASE;
+	const DEFAULT_TYPE = Cache\Type::DATABASE;
 
 	/**
-	 * @var Configuration The configuration to read parameters out of the config
+	 * @var IConfig The IConfiguration to read parameters out of the config
 	 */
 	private $config;
 
@@ -49,7 +68,7 @@ class CacheFactory
 	 */
 	private $logger;
 
-	public function __construct(BaseURL $baseURL, Configuration $config, Database $dba, Profiler $profiler, LoggerInterface $logger)
+	public function __construct(BaseURL $baseURL, IConfig $config, Database $dba, Profiler $profiler, LoggerInterface $logger)
 	{
 		$this->hostname = $baseURL->getHostname();
 		$this->config   = $config;
@@ -73,16 +92,16 @@ class CacheFactory
 		}
 
 		switch ($type) {
-			case Cache\Cache::TYPE_MEMCACHE:
+			case Cache\Type::MEMCACHE:
 				$cache = new Cache\MemcacheCache($this->hostname, $this->config);
 				break;
-			case Cache\Cache::TYPE_MEMCACHED:
+			case Cache\Type::MEMCACHED:
 				$cache = new Cache\MemcachedCache($this->hostname, $this->config, $this->logger);
 				break;
-			case Cache\Cache::TYPE_REDIS:
+			case Cache\Type::REDIS:
 				$cache = new Cache\RedisCache($this->hostname, $this->config);
 				break;
-			case Cache\Cache::TYPE_APCU:
+			case Cache\Type::APCU:
 				$cache = new Cache\APCuCache($this->hostname);
 				break;
 			default:

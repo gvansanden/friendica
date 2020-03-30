@@ -687,8 +687,8 @@ nav .nav-menu img {
 	margin-right: 4px;
 }
 
-nav .nav-menu > a > .nav-notify,
-nav .nav-menu-icon > a > .nav-notify {
+nav .nav-menu > a > .nav-notification,
+nav .nav-menu-icon > a > .nav-notification {
 	position: absolute;
 	top: 3px;
 	right: -5px;
@@ -741,7 +741,7 @@ nav .nav-menu:hover {
 	margin-right: -20px;
 }
 
-nav .nav-notify {
+nav .nav-notification {
 	display: none;
 	background-color: #F80;
 	-moz-border-radius: 5px 5px 5px 5px;
@@ -753,7 +753,7 @@ nav .nav-notify {
 	text-align: center;
 	color: white;
 }
-nav .nav-notify.show {
+nav .nav-notification.show {
 	display: inline-block;
 }
 
@@ -845,9 +845,9 @@ nav #nav-user-linkmenu {
 	padding: 5px 10px; */
 }
 
-.notify-unseen {background-color: #FFF; }
+.notification-unseen {background-color: #FFF; }
 
-.notify-seen {
+.notification-seen {
 	background: none repeat scroll 0 0 #EEE;
 }
 
@@ -2272,40 +2272,6 @@ ul.tabs li .active, span.pager_current a {
 	margin-left: 200px;
 	color: #666666;
 }
-.field .onoff {
-	float: left;
-	width: 80px;
-	margin-right:1em;
-}
-.field .onoff a {
-	display: block;
-	border: 1px solid #666666;
-	background-image: url("../../../images/onoff.jpg");
-	background-repeat: no-repeat;
-	padding: 4px 2px 2px 2px;
-	font-size:14px;
-	height: 16px;
-	line-height:16px;
-	text-decoration: none;
-	text-align: center;
-	text-transform: uppercase;
-	border-radius:4px;
-}
-.field .onoff .off {
-	border-color: #B0B0B0;
-	padding-left: 36px;
-	background-position: left center;
-	background-color: #cccccc;
-	color: #9C9C9C;
-}
-.field .onoff .on {
-	font-weight:bold;
-	border-color: #8EB8EE;
-	padding-right: 36px;
-	background-position: right center;
-	background-color: #D7E3F1;
-	color: #36c;
-}
 .field .hidden {
 	display: none!important;
 }
@@ -2406,6 +2372,10 @@ aside #id_password {
 	list-style: none;
 }
 
+#profile-menu {
+	display: none;
+}
+
 .profile-edit-side-div {
 /*  display: none; */
 	float: right;
@@ -2424,6 +2394,7 @@ aside #id_password {
 
 #register-name-end,
 #register-email-end,
+#register-repeat-end,
 #register-nickname-end {
 	clear: both;
 }
@@ -3235,7 +3206,6 @@ img.photo-album-photo {
 }
 #profile-edit-wrapper .toggle-section-content {
 	background:#ededed;
-	max-width:599px;
 	padding:5px;
 }
 

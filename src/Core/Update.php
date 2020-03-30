@@ -1,10 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core;
 
 use Friendica\App;
 use Friendica\Database\DBA;
 use Friendica\Database\DBStructure;
+use Friendica\DI;
 use Friendica\Util\Strings;
 
 class Update
@@ -13,7 +33,7 @@ class Update
 	const FAILED  = 1;
 
 	/**
-	 * @brief Function to check if the Database structure needs an update.
+	 * Function to check if the Database structure needs an update.
 	 *
 	 * @param string   $basePath   The base path of this application
 	 * @param boolean  $via_worker Is the check run via the worker?
@@ -28,14 +48,14 @@ class Update
 		}
 
 		// Don't check the status if the last update was failed
-		if (Config::get('system', 'update', Update::SUCCESS, true) == Update::FAILED) {
+		if (DI::config()->get('system', 'update', Update::SUCCESS, true) == Update::FAILED) {
 			return;
 		}
 
-		$build = Config::get('system', 'build');
+		$build = DI::config()->get('system', 'build');
 
 		if (empty($build)) {
-			Config::set('system', 'build', DB_UPDATE_VERSION - 1);
+			DI::config()->set('system', 'build', DB_UPDATE_VERSION - 1);
 			$build = DB_UPDATE_VERSION - 1;
 		}
 
@@ -73,14 +93,14 @@ class Update
 		// In force mode, we release the dbupdate lock first
 		// Necessary in case of an stuck update
 		if ($override) {
-			Lock::release('dbupdate', true);
+			DI::lock()->release('dbupdate', true);
 		}
 
-		$build = Config::get('system', 'build', null, true);
+		$build = DI::config()->get('system', 'build', null, true);
 
 		if (empty($build) || ($build > DB_UPDATE_VERSION)) {
 			$build = DB_UPDATE_VERSION - 1;
-			Config::set('system', 'build', $build);
+			DI::config()->set('system', 'build', $build);
 		}
 
 		if ($build != DB_UPDATE_VERSION || $force) {
@@ -89,19 +109,19 @@ class Update
 			$stored = intval($build);
 			$current = intval(DB_UPDATE_VERSION);
 			if ($stored < $current || $force) {
-				Config::load('database');
+				DI::config()->load('database');
 
 				Logger::info('Update starting.', ['from' => $stored, 'to' => $current]);
 
 				// Compare the current structure with the defined structure
 				// If the Lock is acquired, never release it automatically to avoid double updates
-				if (Lock::acquire('dbupdate', 120, Cache::INFINITE)) {
+				if (DI::lock()->acquire('dbupdate', 120, Cache\Duration::INFINITE)) {
 
 					// Checks if the build changed during Lock acquiring (so no double update occurs)
-					$retryBuild = Config::get('system', 'build', null, true);
+					$retryBuild = DI::config()->get('system', 'build', null, true);
 					if ($retryBuild !== $build) {
 						Logger::info('Update already done.', ['from' => $stored, 'to' => $current]);
-						Lock::release('dbupdate');
+						DI::lock()->release('dbupdate');
 						return '';
 					}
 
@@ -109,8 +129,8 @@ class Update
 					for ($x = $stored + 1; $x <= $current; $x++) {
 						$r = self::runUpdateFunction($x, 'pre_update');
 						if (!$r) {
-							Config::set('system', 'update', Update::FAILED);
-							Lock::release('dbupdate');
+							DI::config()->set('system', 'update', Update::FAILED);
+							DI::lock()->release('dbupdate');
 							return $r;
 						}
 					}
@@ -125,12 +145,12 @@ class Update
 							);
 						}
 						Logger::error('Update ERROR.', ['from' => $stored, 'to' => $current, 'retval' => $retval]);
-						Config::set('system', 'update', Update::FAILED);
-						Lock::release('dbupdate');
+						DI::config()->set('system', 'update', Update::FAILED);
+						DI::lock()->release('dbupdate');
 						return $retval;
 					} else {
-						Config::set('database', 'last_successful_update', $current);
-						Config::set('database', 'last_successful_update_time', time());
+						DI::config()->set('database', 'last_successful_update', $current);
+						DI::config()->set('database', 'last_successful_update_time', time());
 						Logger::info('Update finished.', ['from' => $stored, 'to' => $current]);
 					}
 
@@ -138,8 +158,8 @@ class Update
 					for ($x = $stored + 1; $x <= $current; $x++) {
 						$r = self::runUpdateFunction($x, 'update');
 						if (!$r) {
-							Config::set('system', 'update', Update::FAILED);
-							Lock::release('dbupdate');
+							DI::config()->set('system', 'update', Update::FAILED);
+							DI::lock()->release('dbupdate');
 							return $r;
 						}
 					}
@@ -149,8 +169,8 @@ class Update
 						self::updateSuccessfull($stored, $current);
 					}
 
-					Config::set('system', 'update', Update::SUCCESS);
-					Lock::release('dbupdate');
+					DI::config()->set('system', 'update', Update::SUCCESS);
+					DI::lock()->release('dbupdate');
 				}
 			}
 		}
@@ -181,7 +201,7 @@ class Update
 			// If the update fails or times-out completely you may need to
 			// delete the config entry to try again.
 
-			if (Lock::acquire('dbupdate_function', 120,Cache::INFINITE)) {
+			if (DI::lock()->acquire('dbupdate_function', 120, Cache\Duration::INFINITE)) {
 
 				// call the specific update
 				$retval = $funcname();
@@ -190,20 +210,20 @@ class Update
 					//send the administrator an e-mail
 					self::updateFailed(
 						$x,
-						L10n::t('Update %s failed. See error logs.', $x)
+						DI::l10n()->t('Update %s failed. See error logs.', $x)
 					);
 					Logger::error('Update function ERROR.', ['function' => $funcname, 'retval' => $retval]);
-					Lock::release('dbupdate_function');
+					DI::lock()->release('dbupdate_function');
 					return false;
 				} else {
-					Config::set('database', 'last_successful_update_function', $funcname);
-					Config::set('database', 'last_successful_update_function_time', time());
+					DI::config()->set('database', 'last_successful_update_function', $funcname);
+					DI::config()->set('database', 'last_successful_update_function_time', time());
 
 					if ($prefix == 'update') {
-						Config::set('system', 'build', $x);
+						DI::config()->set('system', 'build', $x);
 					}
 
-					Lock::release('dbupdate_function');
+					DI::lock()->release('dbupdate_function');
 					Logger::info('Update function finished.', ['function' => $funcname]);
 					return true;
 				}
@@ -211,11 +231,11 @@ class Update
 		} else {
 			Logger::info('Update function skipped.', ['function' => $funcname]);
 
-			Config::set('database', 'last_successful_update_function', $funcname);
-			Config::set('database', 'last_successful_update_function_time', time());
+			DI::config()->set('database', 'last_successful_update_function', $funcname);
+			DI::config()->set('database', 'last_successful_update_function_time', time());
 
 			if ($prefix == 'update') {
-				Config::set('system', 'build', $x);
+				DI::config()->set('system', 'build', $x);
 			}
 
 			return true;
@@ -231,7 +251,7 @@ class Update
 	 */
 	private static function updateFailed($update_id, $error_message) {
 		//send the administrators an e-mail
-		$condition = ['email' => explode(",", str_replace(" ", "", Config::get('config', 'admin_email'))), 'parent-uid' => 0];
+		$condition = ['email' => explode(",", str_replace(" ", "", DI::config()->get('config', 'admin_email'))), 'parent-uid' => 0];
 		$adminlist = DBA::select('user', ['uid', 'language', 'email'], $condition, ['order' => ['uid']]);
 
 		// No valid result?
@@ -251,27 +271,24 @@ class Update
 			}
 			$sent[] = $admin['email'];
 
-			$lang = (($admin['language'])?$admin['language']:'en');
-			L10n::pushLang($lang);
+			$lang = $admin['language'] ?? 'en';
+			$l10n = DI::l10n()->withLang($lang);
 
-			$preamble = Strings::deindent(L10n::t("
+			$preamble = Strings::deindent($l10n->t("
 				The friendica developers released update %s recently,
 				but when I tried to install it, something went terribly wrong.
 				This needs to be fixed soon and I can't do it alone. Please contact a
 				friendica developer if you can not help me on your own. My database might be invalid.",
 				$update_id));
-			$body = L10n::t("The error message is\n[pre]%s[/pre]", $error_message);
+			$body     = $l10n->t("The error message is\n[pre]%s[/pre]", $error_message);
 
-			notification([
-					'uid'      => $admin['uid'],
-					'type'     => SYSTEM_EMAIL,
-					'to_email' => $admin['email'],
-					'subject'  => l10n::t('[Friendica Notify] Database update'),
-					'preamble' => $preamble,
-					'body'     => $body,
-					'language' => $lang]
-			);
-			L10n::popLang();
+			$email = DI::emailer()
+				->newSystemMail()
+				->withMessage($l10n->t('[Friendica Notify] Database update'), $preamble, $body)
+				->forUser($admin)
+				->withRecipient($admin['email'])
+				->build();
+			DI::emailer()->send($email);
 		}
 
 		//try the logger
@@ -281,7 +298,7 @@ class Update
 	private static function updateSuccessfull($from_build, $to_build)
 	{
 		//send the administrators an e-mail
-		$condition = ['email' => explode(",", str_replace(" ", "", Config::get('config', 'admin_email'))), 'parent-uid' => 0];
+		$condition = ['email' => explode(",", str_replace(" ", "", DI::config()->get('config', 'admin_email'))), 'parent-uid' => 0];
 		$adminlist = DBA::select('user', ['uid', 'language', 'email'], $condition, ['order' => ['uid']]);
 
 		if (DBA::isResult($adminlist)) {
@@ -295,22 +312,19 @@ class Update
 				$sent[] = $admin['email'];
 
 				$lang = (($admin['language']) ? $admin['language'] : 'en');
-				L10n::pushLang($lang);
+				$l10n = DI::l10n()->withLang($lang);
 
-				$preamble = Strings::deindent(L10n::t("
+				$preamble = Strings::deindent($l10n->t("
 					The friendica database was successfully updated from %s to %s.",
 					$from_build, $to_build));
 
-				notification([
-						'uid' => $admin['uid'],
-						'type' => SYSTEM_EMAIL,
-						'to_email' => $admin['email'],
-						'subject'  => l10n::t('[Friendica Notify] Database update'),
-						'preamble' => $preamble,
-						'body' => $preamble,
-						'language' => $lang]
-				);
-				L10n::popLang();
+				$email = DI::emailer()
+					->newSystemMail()
+					->withMessage($l10n->t('[Friendica Notify] Database update'), $preamble)
+					->forUser($admin)
+					->withRecipient($admin['email'])
+					->build();
+				DI::emailer()->send($email);
 			}
 		}
 

@@ -1,25 +1,37 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Item;
 
 use Friendica\BaseModule;
 use Friendica\Content\Feature;
 use Friendica\Core\ACL;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Core\Theme;
-use Friendica\Database\DBA;
-use Friendica\Model\Contact;
-use Friendica\Model\FileTag;
-use Friendica\Model\Group;
+use Friendica\DI;
 use Friendica\Model\Item;
 use Friendica\Model\User;
-use Friendica\Module\Login;
+use Friendica\Module\Security\Login;
 use Friendica\Network\HTTPException\NotImplementedException;
-use Friendica\Util\ACLFormatter;
 use Friendica\Util\Crypto;
 
 class Compose extends BaseModule
@@ -29,9 +41,9 @@ class Compose extends BaseModule
 		if (!empty($_REQUEST['body'])) {
 			$_REQUEST['return'] = 'network';
 			require_once 'mod/item.php';
-			item_post(self::getApp());
+			item_post(DI::app());
 		} else {
-			notice(L10n::t('Please enter a post body.'));
+			notice(DI::l10n()->t('Please enter a post body.'));
 		}
 	}
 
@@ -41,10 +53,10 @@ class Compose extends BaseModule
 			return Login::form('compose', false);
 		}
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		if ($a->getCurrentTheme() !== 'frio') {
-			throw new NotImplementedException(L10n::t('This feature is only available with the frio theme.'));
+			throw new NotImplementedException(DI::l10n()->t('This feature is only available with the frio theme.'));
 		}
 
 		/// @TODO Retrieve parameter from router
@@ -60,10 +72,9 @@ class Compose extends BaseModule
 			}
 		}
 
-		$user = User::getById(local_user(), ['allow_cid', 'allow_gid', 'deny_cid', 'deny_gid', 'hidewall', 'default-location']);
+		$user = User::getById(local_user(), ['allow_cid', 'allow_gid', 'deny_cid', 'deny_gid', 'default-location']);
 
-		/** @var ACLFormatter $aclFormatter */
-		$aclFormatter = self::getClass(ACLFormatter::class);
+		$aclFormatter = DI::aclFormatter();
 
 		$contact_allow_list = $aclFormatter->expand($user['allow_cid']);
 		$group_allow_list   = $aclFormatter->expand($user['allow_gid']);
@@ -72,7 +83,7 @@ class Compose extends BaseModule
 
 		switch ($posttype) {
 			case Item::PT_PERSONAL_NOTE:
-				$compose_title = L10n::t('Compose new personal note');
+				$compose_title = DI::l10n()->t('Compose new personal note');
 				$type = 'note';
 				$doesFederate = false;
 				$contact_allow_list = [$a->contact['id']];
@@ -81,7 +92,7 @@ class Compose extends BaseModule
 				$group_deny_list = [];
 				break;
 			default:
-				$compose_title = L10n::t('Compose new post');
+				$compose_title = DI::l10n()->t('Compose new post');
 				$type = 'post';
 				$doesFederate = true;
 
@@ -114,40 +125,40 @@ class Compose extends BaseModule
 		Hook::callAll('jot_tool', $jotplugins);
 
 		// Output
-		$a->page->registerFooterScript(Theme::getPathForFile('js/ajaxupload.js'));
-		$a->page->registerFooterScript(Theme::getPathForFile('js/linkPreview.js'));
-		$a->page->registerFooterScript(Theme::getPathForFile('js/compose.js'));
+		DI::page()->registerFooterScript(Theme::getPathForFile('js/ajaxupload.js'));
+		DI::page()->registerFooterScript(Theme::getPathForFile('js/linkPreview.js'));
+		DI::page()->registerFooterScript(Theme::getPathForFile('js/compose.js'));
 
 		$tpl = Renderer::getMarkupTemplate('item/compose.tpl');
 		return Renderer::replaceMacros($tpl, [
 			'$compose_title'=> $compose_title,
-			'$visibility_title'=> L10n::t('Visibility'),
+			'$visibility_title'=> DI::l10n()->t('Visibility'),
 			'$id'           => 0,
 			'$posttype'     => $posttype,
 			'$type'         => $type,
 			'$wall'         => $wall,
 			'$default'      => '',
-			'$mylink'       => $a->removeBaseURL($a->contact['url']),
-			'$mytitle'      => L10n::t('This is you'),
-			'$myphoto'      => $a->removeBaseURL($a->contact['thumb']),
-			'$submit'       => L10n::t('Submit'),
-			'$edbold'       => L10n::t('Bold'),
-			'$editalic'     => L10n::t('Italic'),
-			'$eduline'      => L10n::t('Underline'),
-			'$edquote'      => L10n::t('Quote'),
-			'$edcode'       => L10n::t('Code'),
-			'$edimg'        => L10n::t('Image'),
-			'$edurl'        => L10n::t('Link'),
-			'$edattach'     => L10n::t('Link or Media'),
-			'$prompttext'   => L10n::t('Please enter a image/video/audio/webpage URL:'),
-			'$preview'      => L10n::t('Preview'),
-			'$location_set' => L10n::t('Set your location'),
-			'$location_clear' => L10n::t('Clear the location'),
-			'$location_unavailable' => L10n::t('Location services are unavailable on your device'),
-			'$location_disabled' => L10n::t('Location services are disabled. Please check the website\'s permissions on your device'),
-			'$wait'         => L10n::t('Please wait'),
-			'$placeholdertitle' => L10n::t('Set title'),
-			'$placeholdercategory' => (Feature::isEnabled(local_user(),'categories') ? L10n::t('Categories (comma-separated list)') : ''),
+			'$mylink'       => DI::baseUrl()->remove($a->contact['url']),
+			'$mytitle'      => DI::l10n()->t('This is you'),
+			'$myphoto'      => DI::baseUrl()->remove($a->contact['thumb']),
+			'$submit'       => DI::l10n()->t('Submit'),
+			'$edbold'       => DI::l10n()->t('Bold'),
+			'$editalic'     => DI::l10n()->t('Italic'),
+			'$eduline'      => DI::l10n()->t('Underline'),
+			'$edquote'      => DI::l10n()->t('Quote'),
+			'$edcode'       => DI::l10n()->t('Code'),
+			'$edimg'        => DI::l10n()->t('Image'),
+			'$edurl'        => DI::l10n()->t('Link'),
+			'$edattach'     => DI::l10n()->t('Link or Media'),
+			'$prompttext'   => DI::l10n()->t('Please enter a image/video/audio/webpage URL:'),
+			'$preview'      => DI::l10n()->t('Preview'),
+			'$location_set' => DI::l10n()->t('Set your location'),
+			'$location_clear' => DI::l10n()->t('Clear the location'),
+			'$location_unavailable' => DI::l10n()->t('Location services are unavailable on your device'),
+			'$location_disabled' => DI::l10n()->t('Location services are disabled. Please check the website\'s permissions on your device'),
+			'$wait'         => DI::l10n()->t('Please wait'),
+			'$placeholdertitle' => DI::l10n()->t('Set title'),
+			'$placeholdercategory' => (Feature::isEnabled(local_user(),'categories') ? DI::l10n()->t('Categories (comma-separated list)') : ''),
 
 			'$title'        => $title,
 			'$category'     => $category,
@@ -160,9 +171,9 @@ class Compose extends BaseModule
 			'$group_deny'   => implode(',', $group_deny_list),
 
 			'$jotplugins'   => $jotplugins,
-			'$sourceapp'    => L10n::t($a->sourcename),
+			'$sourceapp'    => DI::l10n()->t($a->sourcename),
 			'$rand_num'     => Crypto::randomDigits(12),
-			'$acl_selector'  => ACL::getFullSelectorHTML($a->page, $a->user, $doesFederate, [
+			'$acl_selector'  => ACL::getFullSelectorHTML(DI::page(), $a->user, $doesFederate, [
 				'allow_cid' => $contact_allow_list,
 				'allow_gid' => $group_allow_list,
 				'deny_cid'  => $contact_deny_list,

@@ -39,7 +39,7 @@ They are initialized with an array of data, depending on the tyle of the field.
 
 All of these take an array holding the values, e.g. for a one line text input field, which is required and should be used to type email addesses use something along the lines of:
 
-		'$adminmail' => array('adminmail', L10n::t('Site administrator email address'), $adminmail, L10n::t('Your account email address must match this in order to use the web admin panel.'), 'required', '', 'email'),
+		'$adminmail' => array('adminmail', DI::l10n()->t('Site administrator email address'), $adminmail, DI::l10n()->t('Your account email address must match this in order to use the web admin panel.'), 'required', '', 'email'),
 
 To evaluate the input value, you can then use the $_POST array, more precisely the $_POST['adminemail'] variable.
 
@@ -178,14 +178,3 @@ Field parameter:
 2. Current text for the box,
 3. Help text for the input box.
 4. if set to "required" modern browser will check that this input box is filled when submitting the form,
-
-### field_yesno.tpl
-
-A button that has two states *yes* or *no*.
-Field parameter:
-
-0. Name of the input field,
-1. Label for the button,
-2. Current value,
-3. Help text for the button
-4. if set to an array of two values, these two will be used, otherwise "off" and "on".

@@ -1,16 +1,32 @@
 <?php
 /**
- * @file src/Worker/Notifier.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Worker;
 
-use Friendica\BaseObject;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\APContact;
 use Friendica\Model\Contact;
 use Friendica\Model\Conversation;
@@ -24,7 +40,6 @@ use Friendica\Protocol\ActivityPub;
 use Friendica\Protocol\Diaspora;
 use Friendica\Protocol\OStatus;
 use Friendica\Protocol\Salmon;
-use Friendica\Util\ACLFormatter;
 
 require_once 'include/items.php';
 
@@ -41,7 +56,7 @@ class Notifier
 {
 	public static function execute($cmd, $target_id)
 	{
-		$a = BaseObject::getApp();
+		$a = DI::app();
 
 		Logger::info('Invoked', ['cmd' => $cmd, 'target' => $target_id]);
 
@@ -72,12 +87,9 @@ class Notifier
 					'APDelivery', $cmd, $target_id, $inbox, $uid);
 			}
 		} elseif ($cmd == Delivery::SUGGESTION) {
-			$suggest = DBA::selectFirst('fsuggest', ['uid', 'cid'], ['id' => $target_id]);
-			if (!DBA::isResult($suggest)) {
-				return;
-			}
-			$uid = $suggest['uid'];
-			$recipients[] = $suggest['cid'];
+			$suggest = DI::fsuggest()->getById($target_id);
+			$uid = $suggest->uid;
+			$recipients[] = $suggest->cid;
 		} elseif ($cmd == Delivery::REMOVAL) {
 			return self::notifySelfRemoval($target_id, $a->queue['priority'], $a->queue['created']);
 		} elseif ($cmd == Delivery::RELOCATION) {
@@ -139,6 +151,8 @@ class Notifier
 		// If this is a public conversation, notify the feed hub
 		$public_message = true;
 
+		$unlisted = false;
+
 		// Do a PuSH
 		$push_notify = false;
 
@@ -171,6 +185,8 @@ class Notifier
 				Logger::info('Threaded comment', ['diaspora_delivery' => (int)$diaspora_delivery]);
 			}
 
+			$unlisted = $target_item['private'] == Item::UNLISTED;
+
 			// This is IMPORTANT!!!!
 
 			// We will only send a "notify owner to relay" or followup message if the referenced post
@@ -180,7 +196,7 @@ class Notifier
 			// if $parent['wall'] == 1 we will already have the parent message in our array
 			// and we will relay the whole lot.
 
-			$localhost = str_replace('www.','',$a->getHostName());
+			$localhost = str_replace('www.','', DI::baseUrl()->getHostname());
 			if (strpos($localhost,':')) {
 				$localhost = substr($localhost,0,strpos($localhost,':'));
 			}
@@ -233,8 +249,7 @@ class Notifier
 
 				Logger::info('Followup', ['target' => $target_id, 'guid' => $target_item['guid'], 'to' => $parent['contact-id']]);
 
-				//if (!$target_item['private'] && $target_item['wall'] &&
-				if (!$target_item['private'] &&
+				if (($target_item['private'] != Item::PRIVATE) &&
 					(strlen($target_item['allow_cid'].$target_item['allow_gid'].
 						$target_item['deny_cid'].$target_item['deny_gid']) == 0))
 					$push_notify = true;
@@ -278,8 +293,7 @@ class Notifier
 					$public_message = false; // private recipients, not public
 				}
 
-				/** @var ACLFormatter $aclFormatter */
-				$aclFormatter = BaseObject::getClass(ACLFormatter::class);
+				$aclFormatter = DI::aclFormatter();
 
 				$allow_people = $aclFormatter->expand($parent['allow_cid']);
 				$allow_groups = Group::expand($uid, $aclFormatter->expand($parent['allow_gid']),true);
@@ -319,7 +333,7 @@ class Notifier
 				// If this is a public message and pubmail is set on the parent, include all your email contacts
 				if (
 					function_exists('imap_open')
-					&& !Config::get('system','imap_disabled')
+					&& !DI::config()->get('system','imap_disabled')
 					&& $public_message
 					&& intval($target_item['pubmail'])
 				) {
@@ -399,7 +413,7 @@ class Notifier
 		if ($public_message && !in_array($cmd, [Delivery::MAIL, Delivery::SUGGESTION]) && !$followup) {
 			$relay_list = [];
 
-			if ($diaspora_delivery) {
+			if ($diaspora_delivery && !$unlisted) {
 				$batch_delivery = true;
 
 				$relay_list_stmt = DBA::p(
@@ -445,6 +459,11 @@ class Notifier
 
 			if (DBA::isResult($r)) {
 				foreach ($r as $rr) {
+					// Ensure that local contacts are delivered via DFRN
+					if (Contact::isLocal($rr['url'])) {
+						$contact['network'] = Protocol::DFRN;
+					}
+
 					if (!empty($rr['addr']) && ($rr['network'] == Protocol::ACTIVITYPUB) && !DBA::exists('fcontact', ['addr' => $rr['addr']])) {
 						Logger::info('Contact is AP omly', ['target' => $target_id, 'contact' => $rr['url']]);
 						continue;
@@ -490,6 +509,11 @@ class Notifier
 
 		// delivery loop
 		while ($contact = DBA::fetch($delivery_contacts_stmt)) {
+			// Ensure that local contacts are delivered via DFRN
+			if (Contact::isLocal($contact['url'])) {
+				$contact['network'] = Protocol::DFRN;
+			}
+
 			if (!empty($contact['addr']) && ($contact['network'] == Protocol::ACTIVITYPUB) && !DBA::exists('fcontact', ['addr' => $contact['addr']])) {
 				Logger::info('Contact is AP omly', ['target' => $target_id, 'contact' => $contact['url']]);
 				continue;
@@ -542,7 +566,7 @@ class Notifier
 		$url_recipients = array_filter($url_recipients);
 		// send salmon slaps to mentioned remote tags (@foo@example.com) in OStatus posts
 		// They are especially used for notifications to OStatus users that don't follow us.
-		if (!Config::get('system', 'dfrn_only') && count($url_recipients) && ($public_message || $push_notify) && !empty($target_item)) {
+		if (!DI::config()->get('system', 'dfrn_only') && count($url_recipients) && ($public_message || $push_notify) && !empty($target_item)) {
 			$slap = OStatus::salmon($target_item, $owner);
 			foreach ($url_recipients as $url) {
 				Logger::log('Salmon delivery of item ' . $target_id . ' to ' . $url);
@@ -631,7 +655,7 @@ class Notifier
 		}
 
 		// Skip DFRN when the item will be (forcefully) delivered via AP
-		if (Config::get('debug', 'total_ap_delivery') && ($contact['network'] == Protocol::DFRN) && !empty(APContact::getByURL($contact['url'], false))) {
+		if (DI::config()->get('debug', 'total_ap_delivery') && ($contact['network'] == Protocol::DFRN) && !empty(APContact::getByURL($contact['url'], false))) {
 			return true;
 		}
 

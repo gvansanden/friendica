@@ -1,9 +1,29 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\src\App;
 
 use Friendica\App;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\L10n;
 use Friendica\LegacyModule;
 use Friendica\Module\HTTPException\PageNotFound;
 use Friendica\Module\WellKnown\HostMeta;
@@ -149,10 +169,13 @@ class ModuleTest extends DatabaseTest
 	 */
 	public function testModuleClass($assert, string $name, string $command, bool $privAdd)
 	{
-		$config = \Mockery::mock(Configuration::class);
+		$config = \Mockery::mock(IConfig::class);
 		$config->shouldReceive('get')->with('config', 'private_addons', false)->andReturn($privAdd)->atMost()->once();
 
-		$router = (new App\Router([]))->loadRoutes(include __DIR__ . '/../../../static/routes.config.php');
+		$l10n = \Mockery::mock(L10n::class);
+		$l10n->shouldReceive('t')->andReturnUsing(function ($args) { return $args; });
+
+		$router = (new App\Router([], $l10n))->loadRoutes(include __DIR__ . '/../../../static/routes.config.php');
 
 		$module = (new App\Module($name))->determineClass(new App\Arguments('', $command), $router, $config);
 

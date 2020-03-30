@@ -1,15 +1,31 @@
 <?php
 /**
- * @file src/Render/FriendicaSmartyEngine.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Render;
 
 use Friendica\Core\Hook;
+use Friendica\DI;
 
 /**
  * Smarty implementation of the Friendica template engine interface
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class FriendicaSmartyEngine implements ITemplateEngine
 {
@@ -32,7 +48,7 @@ class FriendicaSmartyEngine implements ITemplateEngine
 			$s = new FriendicaSmarty();
 		}
 
-		$r['$APP'] = \get_app();
+		$r['$APP'] = DI::app();
 
 		// "middleware": inject variables into templates
 		$arr = [
@@ -54,7 +70,7 @@ class FriendicaSmartyEngine implements ITemplateEngine
 
 	public function getTemplateFile($file, $root = '')
 	{
-		$a = \get_app();
+		$a = DI::app();
 		$template = new FriendicaSmarty();
 
 		// Make sure $root ends with a slash /

@@ -1,8 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\WellKnown;
 
 use Friendica\BaseModule;
+use Friendica\DI;
 use Friendica\Model\Search;
 
 /**
@@ -13,8 +33,7 @@ class XSocialRelay extends BaseModule
 {
 	public static function rawContent(array $parameters = [])
 	{
-		$app = self::getApp();
-		$config = $app->getConfig();
+		$config = DI::config();
 
 		$subscribe = $config->get('system', 'relay_subscribe', false);
 
@@ -49,10 +68,10 @@ class XSocialRelay extends BaseModule
 			'tags'      => $tagList,
 			'protocols' => [
 				'diaspora' => [
-					'receive' => $app->getBaseURL() . '/receive/public'
+					'receive' => DI::baseUrl()->get() . '/receive/public'
 				],
 				'dfrn'     => [
-					'receive' => $app->getBaseURL() . '/dfrn_notify'
+					'receive' => DI::baseUrl()->get() . '/dfrn_notify'
 				]
 			]
 		];

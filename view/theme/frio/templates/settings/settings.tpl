@@ -4,7 +4,7 @@
 
 	{{$nickname_block nofilter}}
 
-	<form action="settings" id="settings-form" method="post" autocomplete="off" >
+	<form action="settings" id="settings-form" method="post" autocomplete="off" enctype="multipart/form-data">
 		<input type='hidden' name='form_security_token' value='{{$form_security_token}}'>
 
 		{{* We organize the settings in collapsable panel-groups *}}
@@ -89,39 +89,17 @@
 
 						{{$hide_wall nofilter}}
 
+						{{$unlisted nofilter}}
+
+						{{$accessiblephotos nofilter}}
+
 						{{$blockwall nofilter}}
 
 						{{$blocktags nofilter}}
 
-						{{$suggestme nofilter}}
-
 						{{$unkmail nofilter}}
 
 						{{include file="field_input.tpl" field=$cntunkmail}}
-
-						{{include file="field_input.tpl" field=$expire.days}}
-
-						<div id="settings-advanced-expire">
-							<a id="advanced-expire-menu" title="{{$expire.advanced}}" data-toggle="modal" data-target="#aeModal">{{$expire.label}}</a>
-
-							{{* The modal for advanced-expire *}}
-							<div class="modal" id="aeModal">
-								<div class="modal-dialog">
-									<div class="modal-content">
-										<div class="modal-header">
-											<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-											<h4 class="modal-title">{{$expire.advanced}}</h4>
-										</div>
-										<div class="modal-body">
-											{{include file="field_yesno.tpl" field=$expire.items}}
-											{{include file="field_yesno.tpl" field=$expire.notes}}
-											{{include file="field_yesno.tpl" field=$expire.starred}}
-											{{include file="field_yesno.tpl" field=$expire.network_only}}
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
 
 						{{* Block for setting default permissions *}}
 						<div id="settings-default-perms" class="settings-default-perms">
@@ -144,9 +122,35 @@
 							</div>
 						</div>
 						<br/>
-						<div class="clear"></div>
 
 						{{$group_select nofilter}}
+
+						<div class="form-group pull-right settings-submit-wrapper" >
+							<button type="submit" name="submit" class="btn btn-primary" value="{{$submit}}">{{$submit}}</button>
+						</div>
+						<div class="clear"></div>
+
+					</div>
+				</div>
+			</div>
+
+			<div class="panel">
+				<div class="section-subtitle-wrapper" role="tab" id="expire-settings">
+					<h4>
+						<a class="accordion-toggle collapsed" data-toggle="collapse" data-parent="#settings" href="#expire-settings-collapse" aria-expanded="false" aria-controls="expire-settings-collapse">
+							{{$expire.label}}
+						</a>
+					</h4>
+				</div>
+				<div id="expire-settings-collapse" class="panel-collapse collapse" role="tabpanel" aria-labelledby="expire-settings">
+					<div class="section-content-tools-wrapper">
+
+						{{include file="field_input.tpl" field=$expire.days}}
+
+						{{include file="field_checkbox.tpl" field=$expire.items}}
+						{{include file="field_checkbox.tpl" field=$expire.notes}}
+						{{include file="field_checkbox.tpl" field=$expire.starred}}
+						{{include file="field_checkbox.tpl" field=$expire.network_only}}
 
 						<div class="form-group pull-right settings-submit-wrapper" >
 							<button type="submit" name="submit" class="btn btn-primary" value="{{$submit}}">{{$submit}}</button>
@@ -169,7 +173,7 @@
 					<div class="section-content-tools-wrapper">
 						<div id="settings-notifications">
 
-							<div id="settings-notify-desc"><h4>{{$lbl_not}}</h4></div>
+							<div id="settings-notification-desc"><h4>{{$lbl_not}}</h4></div>
 
 							<div class="group">
 								{{include file="field_intcheckbox.tpl" field=$notify1}}
@@ -192,47 +196,36 @@
 							</div>
 							*}}
 
-							{{include file="field_yesno.tpl" field=$desktop_notifications}}
+							{{include file="field_checkbox.tpl" field=$desktop_notifications}}
 							<script type="text/javascript">
 								(function(){
-									var elm = $("#id_{{$desktop_notifications.0}}_onoff");
-									var ckbox = $("#id_{{$desktop_notifications.0}}");
+									let $notificationField = $("#div_id_{{$desktop_notifications.0}}");
+									let $notificationCheckbox = $("#id_{{$desktop_notifications.0}}");
 
 									if (getNotificationPermission() === 'granted') {
-										ckbox.val(1);
-										elm.find(".off").addClass("hidden");
-										elm.find(".on").removeClass("hidden");
+										$notificationCheckbox.prop('checked', true);
 									}
 									if (getNotificationPermission() === null) {
-										elm.parent(".field.yesno").hide();
+										$notificationField.hide();
 									}
 
-									$("#id_{{$desktop_notifications.0}}_onoff").on("click", function(e){
-
+									$notificationCheckbox.on('change', function(e){
 										if (Notification.permission === 'granted') {
-											localStorage.setItem('notification-permissions', ckbox.val()==1 ? 'granted' : 'denied');
+											localStorage.setItem('notification-permissions', $notificationCheckbox.prop('checked') ? 'granted' : 'denied');
 										} else if (Notification.permission === 'denied') {
 											localStorage.setItem('notification-permissions', 'denied');
 
-											ckbox.val(0);
-											elm.find(".on").addClass("hidden");
-											elm.find(".off").removeClass("hidden");
-
+											$notificationCheckbox.prop('checked', false);
 										} else if (Notification.permission === 'default') {
 											Notification.requestPermission(function(choice) {
 												if (choice === 'granted') {
-													localStorage.setItem('notification-permissions', ckbox.val()==1 ? 'granted' : 'denied');
-
+													localStorage.setItem('notification-permissions', $notificationCheckbox.prop('checked') ? 'granted' : 'denied');
 												} else {
 													localStorage.setItem('notification-permissions', 'denied');
-													ckbox.val(0);
-													elm.find(".on").addClass("hidden");
-													elm.find(".off").removeClass("hidden");
+													$notificationCheckbox.prop('checked', false);
 												}
 											});
 										}
-
-										//console.log(getNotificationPermission());
 									})
 								})();
 							</script>

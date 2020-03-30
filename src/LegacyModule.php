@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica;
 
@@ -27,7 +46,7 @@ class LegacyModule extends BaseModule
 	public static function setModuleFile($file_path)
 	{
 		if (!is_readable($file_path)) {
-			throw new \Exception(Core\L10n::t('Legacy module file not found: %s', $file_path));
+			throw new \Exception(DI::l10n()->t('Legacy module file not found: %s', $file_path));
 		}
 
 		self::$moduleName = basename($file_path, '.php');
@@ -67,7 +86,7 @@ class LegacyModule extends BaseModule
 		$function_name = static::$moduleName . '_' . $function_suffix;
 
 		if (\function_exists($function_name)) {
-			$a = self::getApp();
+			$a = DI::app();
 			return $function_name($a);
 		} else {
 			return parent::{$function_suffix}($parameters);

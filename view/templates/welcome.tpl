@@ -22,15 +22,15 @@
 		<h4>{{$profile nofilter}}</h4>
 		<ul>
 			<li>
-				<a target="newmember" href="profile_photo">{{$profile_photo_link}}</a><br />
+				<a target="newmember" href="settings/profile/photo">{{$profile_photo_link}}</a><br />
 				{{$profile_photo_txt nofilter}}
 			</li>
 			<li>
-				<a target="newmember" href="profiles">{{$profiles_link}}</a><br />
+				<a target="newmember" href="settings/profile">{{$profiles_link}}</a><br />
 				{{$profiles_txt nofilter}}
 			</li>
 			<li>
-				<a target="newmember" href="profiles">{{$profiles_keywords_link}}</a><br />
+				<a target="newmember" href="settings/profile">{{$profiles_keywords_link}}</a><br />
 				{{$profiles_keywords_txt nofilter}}
 			</li>
 		</ul>

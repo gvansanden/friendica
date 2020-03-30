@@ -1,9 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core;
 
 use Friendica\App;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -15,7 +34,7 @@ use Psr\Log\LoggerInterface;
  *         - Using an process-id per node
  *         - Using memory locks for multi-node locking (redis, memcached, ..)
  */
-final class Process
+class Process
 {
 	/**
 	 * @var LoggerInterface
@@ -28,7 +47,7 @@ final class Process
 	private $mode;
 
 	/**
-	 * @var Configuration
+	 * @var IConfig
 	 */
 	private $config;
 
@@ -37,7 +56,7 @@ final class Process
 	 */
 	private $basePath;
 
-	public function __construct(LoggerInterface $logger, App\Mode $mode, Configuration $config, string $basepath)
+	public function __construct(LoggerInterface $logger, App\Mode $mode, IConfig $config, string $basepath)
 	{
 		$this->logger   = $logger;
 		$this->mode     = $mode;
@@ -46,7 +65,7 @@ final class Process
 	}
 
 	/**
-	 * @brief Checks if the maximum number of database processes is reached
+	 * Checks if the maximum number of database processes is reached
 	 *
 	 * @return bool Is the limit reached?
 	 */
@@ -86,7 +105,7 @@ final class Process
 	}
 
 	/**
-	 * @brief Checks if the minimal memory is reached
+	 * Checks if the minimal memory is reached
 	 *
 	 * @return bool Is the memory limit reached?
 	 */
@@ -130,7 +149,7 @@ final class Process
 	}
 
 	/**
-	 * @brief Checks if the maximum load is reached
+	 * Checks if the maximum load is reached
 	 *
 	 * @return bool Is the load reached?
 	 */

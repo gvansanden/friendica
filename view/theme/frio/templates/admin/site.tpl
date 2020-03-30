@@ -18,7 +18,7 @@
 		});
 	});
 </script>
-<link rel="stylesheet" href="view/theme/frio/css/mod_admin.css" type="text/css" media="screen"/>
+<link rel="stylesheet" href="view/theme/frio/css/mod_admin.css?v={{$smarty.const.FRIENDICA_VERSION}}" type="text/css" media="screen"/>
 
 <div id='adminpage' class="adminpage generic-page-wrapper">
 	<h1>{{$title}} - {{$page}}</h1>
@@ -213,6 +213,7 @@
 				<div id="admin-settings-contacts-collapse" class="panel-collapse collapse" role="tabpanel" aria-labelledby="admin-settings-cocontactsrporate">
 
 					{{include file="field_checkbox.tpl" field=$poco_completion}}
+					{{include file="field_select.tpl" field=$gcontact_discovery}}
 					{{include file="field_input.tpl" field=$poco_requery_days}}
 					{{include file="field_select.tpl" field=$poco_discovery}}
 					{{include file="field_select.tpl" field=$poco_discovery_since}}

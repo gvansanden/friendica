@@ -1,17 +1,22 @@
 <?php
-
-use Dice\Dice;
-use Friendica\App;
-use Friendica\Core\Cache;
-use Friendica\Core\Config;
-use Friendica\Core\L10n\L10n;
-use Friendica\Core\Lock\ILock;
-use Friendica\Database\Database;
-use Friendica\Factory;
-use Friendica\Util;
-use Psr\Log\LoggerInterface;
-
 /**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  * The configuration defines "complex" dependencies inside Friendica
  * So this classes shouldn't be simple or their dependencies are already defined here.
  *
@@ -27,6 +32,23 @@ use Psr\Log\LoggerInterface;
  *   - $a = new ClassA($creationPassedVariable);
  *
  */
+
+use Dice\Dice;
+use Friendica\App;
+use Friendica\Core\Cache;
+use Friendica\Core\Config;
+use Friendica\Core\L10n;
+use Friendica\Core\Lock\ILock;
+use Friendica\Core\Process;
+use Friendica\Core\Session\ISession;
+use Friendica\Core\StorageManager;
+use Friendica\Database\Database;
+use Friendica\Factory;
+use Friendica\Model\Storage\IStorage;
+use Friendica\Model\User\Cookie;
+use Friendica\Util;
+use Psr\Log\LoggerInterface;
+
 return [
 	'*'                             => [
 		// marks all class result as shared for other creations, so there's just
@@ -43,45 +65,45 @@ return [
 			$_SERVER
 		]
 	],
-	Util\BasePath::class            => [
+	Util\BasePath::class         => [
 		'constructParams' => [
 			dirname(__FILE__, 2),
 			$_SERVER
 		]
 	],
-	Util\ConfigFileLoader::class    => [
+	Util\ConfigFileLoader::class => [
 		'shared'          => true,
 		'constructParams' => [
 			[Dice::INSTANCE => '$basepath'],
 		],
 	],
-	Config\Cache\ConfigCache::class => [
+	Config\Cache::class          => [
 		'instanceOf' => Factory\ConfigFactory::class,
 		'call'       => [
 			['createCache', [], Dice::CHAIN_CALL],
 		],
 	],
-	App\Mode::class                 => [
+	App\Mode::class              => [
 		'call' => [
 			['determineRunMode', [true, $_SERVER], Dice::CHAIN_CALL],
 			['determine', [], Dice::CHAIN_CALL],
 		],
 	],
-	Config\Configuration::class     => [
+	Config\IConfig::class                   => [
 		'instanceOf' => Factory\ConfigFactory::class,
 		'call'       => [
 			['createConfig', [], Dice::CHAIN_CALL],
 		],
 	],
-	Config\PConfiguration::class    => [
+	\Friendica\Core\PConfig\IPConfig::class => [
 		'instanceOf' => Factory\ConfigFactory::class,
 		'call'       => [
 			['createPConfig', [], Dice::CHAIN_CALL],
 		]
 	],
-	Database::class                 => [
+	Database::class                         => [
 		'constructParams' => [
-			[DICE::INSTANCE => \Psr\Log\NullLogger::class],
+			[Dice::INSTANCE => \Psr\Log\NullLogger::class],
 			$_SERVER,
 		],
 	],
@@ -161,7 +183,7 @@ return [
 			['determineModule', [], Dice::CHAIN_CALL],
 		],
 	],
-	Friendica\Core\Process::class => [
+	Process::class => [
 		'constructParams' => [
 			[Dice::INSTANCE => '$basepath'],
 		],
@@ -177,6 +199,24 @@ return [
 	L10n::class => [
 		'constructParams' => [
 			$_SERVER, $_GET
+		],
+	],
+	ISession::class => [
+		'instanceOf' => Factory\SessionFactory::class,
+		'call' => [
+			['createSession', [$_SERVER], Dice::CHAIN_CALL],
+			['start', [], Dice::CHAIN_CALL],
+		],
+	],
+	Cookie::class => [
+		'constructParams' => [
+			$_SERVER, $_COOKIE
+		],
+	],
+	IStorage::class => [
+		'instanceOf' => StorageManager::class,
+		'call' => [
+			['getBackend', [], Dice::CHAIN_CALL],
 		],
 	],
 ];

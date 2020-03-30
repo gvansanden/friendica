@@ -1,17 +1,29 @@
 <?php
-
 /**
- * @file src/Network/FKOAuthDataStore.php
- * OAuth server
- * Based on oauth2-php <http://code.google.com/p/oauth2-php/>
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  */
 
 namespace Friendica\Network;
 
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Util\Strings;
 use OAuthConsumer;
 use OAuthDataStore;
@@ -21,7 +33,7 @@ define('REQUEST_TOKEN_DURATION', 300);
 define('ACCESS_TOKEN_DURATION', 31536000);
 
 /**
- * @brief OAuthDataStore class
+ * OAuthDataStore class
  */
 class FKOAuthDataStore extends OAuthDataStore
 {
@@ -151,7 +163,7 @@ class FKOAuthDataStore extends OAuthDataStore
 		$ret = null;
 
 		// get user for this verifier
-		$uverifier = Config::get("oauth", $verifier);
+		$uverifier = DI::config()->get("oauth", $verifier);
 		Logger::log(__function__ . ":" . $verifier . "," . $uverifier);
 
 		if (is_null($verifier) || ($uverifier !== false)) {
@@ -177,7 +189,7 @@ class FKOAuthDataStore extends OAuthDataStore
 		DBA::delete('tokens', ['id' => $token->key]);
 
 		if (!is_null($ret) && !is_null($uverifier)) {
-			Config::delete("oauth", $verifier);
+			DI::config()->delete("oauth", $verifier);
 		}
 
 		return $ret;

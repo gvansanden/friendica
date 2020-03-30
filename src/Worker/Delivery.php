@@ -1,16 +1,30 @@
 <?php
 /**
- * @file src/Worker/Delivery.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Worker;
 
-use Friendica\BaseObject;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model;
 use Friendica\Protocol\DFRN;
 use Friendica\Protocol\Diaspora;
@@ -20,7 +34,7 @@ use Friendica\Util\Strings;
 use Friendica\Util\Network;
 use Friendica\Core\Worker;
 
-class Delivery extends BaseObject
+class Delivery
 {
 	const MAIL          = 'mail';
 	const SUGGESTION    = 'suggest';
@@ -140,7 +154,7 @@ class Delivery extends BaseObject
 			// if $parent['wall'] == 1 we will already have the parent message in our array
 			// and we will relay the whole lot.
 
-			$localhost = self::getApp()->getHostName();
+			$localhost = DI::baseUrl()->getHostname();
 			if (strpos($localhost, ':')) {
 				$localhost = substr($localhost, 0, strpos($localhost, ':'));
 			}
@@ -162,7 +176,7 @@ class Delivery extends BaseObject
 				&& empty($parent['allow_gid'])
 				&& empty($parent['deny_cid'])
 				&& empty($parent['deny_gid'])
-				&& !$parent["private"]) {
+				&& ($parent["private"] != Model\Item::PRIVATE)) {
 				$public_message = true;
 			}
 		}
@@ -196,6 +210,11 @@ class Delivery extends BaseObject
 		// This is done since the uri wouldn't match (Diaspora doesn't transmit it)
 		if (!empty($parent) && !empty($thr_parent) && in_array(Protocol::DIASPORA, [$parent['network'], $thr_parent['network']])) {
 			$contact['network'] = Protocol::DIASPORA;
+		}
+
+		// Ensure that local contacts are delivered locally
+		if (Model\Contact::isLocal($contact['url'])) {
+			$contact['network'] = Protocol::DFRN;
 		}
 
 		Logger::notice('Delivering', ['cmd' => $cmd, 'target' => $target_id, 'followup' => $followup, 'network' => $contact['network']]);
@@ -236,7 +255,7 @@ class Delivery extends BaseObject
 	}
 
 	/**
-	 * @brief Deliver content via DFRN
+	 * Deliver content via DFRN
 	 *
 	 * @param string  $cmd            Command
 	 * @param array   $contact        Contact record of the receiver
@@ -288,11 +307,8 @@ class Delivery extends BaseObject
 
 		Logger::debug('Notifier entry: ' . $contact["url"] . ' ' . (($target_item['guid'] ?? '') ?: $target_item['id']) . ' entry: ' . $atom);
 
-		$basepath =  implode('/', array_slice(explode('/', $contact['url']), 0, 3));
-
 		// perform local delivery if we are on the same site
-
-		if (Strings::compareLink($basepath, System::baseUrl())) {
+		if (Model\Contact::isLocal($contact['url'])) {
 			$condition = ['nurl' => Strings::normaliseLink($contact['url']), 'self' => true];
 			$target_self = DBA::selectFirst('contact', ['uid'], $condition);
 			if (!DBA::isResult($target_self)) {
@@ -388,7 +404,7 @@ class Delivery extends BaseObject
 	}
 
 	/**
-	 * @brief Deliver content via Diaspora
+	 * Deliver content via Diaspora
 	 *
 	 * @param string  $cmd            Command
 	 * @param array   $contact        Contact record of the receiver
@@ -414,7 +430,7 @@ class Delivery extends BaseObject
 
 		Logger::notice('Deliver via Diaspora', ['target' => $target_item['id'], 'guid' => $target_item['guid'], 'to' => $loc]);
 
-		if (Config::get('system', 'dfrn_only') || !Config::get('system', 'diaspora_enabled')) {
+		if (DI::config()->get('system', 'dfrn_only') || !DI::config()->get('system', 'diaspora_enabled')) {
 			return;
 		}
 
@@ -483,7 +499,7 @@ class Delivery extends BaseObject
 	}
 
 	/**
-	 * @brief Deliver content via mail
+	 * Deliver content via mail
 	 *
 	 * @param string $cmd         Command
 	 * @param array  $contact     Contact record of the receiver
@@ -495,7 +511,7 @@ class Delivery extends BaseObject
 	 */
 	private static function deliverMail($cmd, $contact, $owner, $target_item, $thr_parent)
 	{
-		if (Config::get('system','dfrn_only')) {
+		if (DI::config()->get('system','dfrn_only')) {
 			return;
 		}
 
@@ -536,7 +552,7 @@ class Delivery extends BaseObject
 			$reply_to = $mailacct['reply_to'];
 		}
 
-		$subject  = ($target_item['title'] ? Email::encodeHeader($target_item['title'], 'UTF-8') : L10n::t("\x28no subject\x29"));
+		$subject  = ($target_item['title'] ? Email::encodeHeader($target_item['title'], 'UTF-8') : DI::l10n()->t("\x28no subject\x29"));
 
 		// only expose our real email address to true friends
 
@@ -548,7 +564,7 @@ class Delivery extends BaseObject
 				$headers  = 'From: ' . Email::encodeHeader($local_user['username'],'UTF-8') . ' <' . $local_user['email'] . '>' . "\n";
 			}
 		} else {
-			$headers  = 'From: '. Email::encodeHeader($local_user['username'], 'UTF-8') . ' <noreply@' . self::getApp()->getHostName() . '>' . "\n";
+			$headers  = 'From: '. Email::encodeHeader($local_user['username'], 'UTF-8') . ' <noreply@' . DI::baseUrl()->getHostname() . '>' . "\n";
 		}
 
 		$headers .= 'Message-Id: <' . Email::iri2msgid($target_item['uri']) . '>' . "\n";

@@ -1,11 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Content\Nav;
 use Friendica\Content\Text\Markdown;
-use Friendica\Core\L10n;
+use Friendica\DI;
 use Friendica\Network\HTTPException;
 use Friendica\Util\Strings;
 
@@ -21,8 +40,8 @@ class Help extends BaseModule
 		$text = '';
 		$filename = '';
 
-		$a = self::getApp();
-		$config = $a->getConfig();
+		$a = DI::app();
+		$config = DI::config();
 		$lang = $config->get('system', 'language');
 
 		// @TODO: Replace with parameter from router
@@ -35,21 +54,21 @@ class Help extends BaseModule
 					$path .= '/';
 				}
 
-				$path .= $a->getArgumentValue($x);
+				$path .= DI::args()->get($x);
 			}
 			$title = basename($path);
 			$filename = $path;
 			$text = self::loadDocFile('doc/' . $path . '.md', $lang);
-			$a->page['title'] = L10n::t('Help:') . ' ' . str_replace('-', ' ', Strings::escapeTags($title));
+			DI::page()['title'] = DI::l10n()->t('Help:') . ' ' . str_replace('-', ' ', Strings::escapeTags($title));
 		}
 
 		$home = self::loadDocFile('doc/Home.md', $lang);
 		if (!$text) {
 			$text = $home;
 			$filename = "Home";
-			$a->page['title'] = L10n::t('Help');
+			DI::page()['title'] = DI::l10n()->t('Help');
 		} else {
-			$a->page['aside'] = Markdown::convert($home, false);
+			DI::page()['aside'] = Markdown::convert($home, false);
 		}
 
 		if (!strlen($text)) {
@@ -66,34 +85,32 @@ class Help extends BaseModule
 			$idNum = [0, 0, 0, 0, 0, 0, 0];
 			foreach ($lines as &$line) {
 				$matches = [];
-				foreach ($lines as &$line) {
-					if (preg_match('#<h([1-6])>([^<]+?)</h\1>#i', $line, $matches)) {
-						$level = $matches[1];
-						$anchor = urlencode($matches[2]);
-						if ($level < $lastLevel) {
-							for ($k = $level; $k < $lastLevel; $k++) {
-								$toc .= "</ul></li>";
-							}
-
-							for ($k = $level + 1; $k < count($idNum); $k++) {
-								$idNum[$k] = 0;
-							}
+				if (preg_match('#<h([1-6])>([^<]+?)</h\1>#i', $line, $matches)) {
+					$level = $matches[1];
+					$anchor = urlencode($matches[2]);
+					if ($level < $lastLevel) {
+						for ($k = $level; $k < $lastLevel; $k++) {
+							$toc .= "</ul></li>";
 						}
 
-						if ($level > $lastLevel) {
-							$toc .= "<li><ul>";
+						for ($k = $level + 1; $k < count($idNum); $k++) {
+							$idNum[$k] = 0;
 						}
-
-						$idNum[$level] ++;
-
-						$href = $a->getBaseURL() . "/help/{$filename}#{$anchor}";
-						$toc .= "<li><a href=\"{$href}\">" . strip_tags($line) . "</a></li>";
-						$id = implode("_", array_slice($idNum, 1, $level));
-						$line = "<a name=\"{$id}\"></a>" . $line;
-						$line = "<a name=\"{$anchor}\"></a>" . $line;
-
-						$lastLevel = $level;
 					}
+
+					if ($level > $lastLevel) {
+						$toc .= "<li><ul>";
+					}
+
+					$idNum[$level] ++;
+
+					$href = DI::baseUrl()->get() . "/help/{$filename}#{$anchor}";
+					$toc .= "<li><a href=\"{$href}\">" . strip_tags($line) . "</a></li>";
+					$id = implode("_", array_slice($idNum, 1, $level));
+					$line = "<a name=\"{$id}\"></a>" . $line;
+					$line = "<a name=\"{$anchor}\"></a>" . $line;
+
+					$lastLevel = $level;
 				}
 			}
 
@@ -103,7 +120,7 @@ class Help extends BaseModule
 
 			$html = implode("\n", $lines);
 
-			$a->page['aside'] = '<div class="help-aside-wrapper widget"><div id="toc-wrapper">' . $toc . '</div>' . $a->page['aside'] . '</div>';
+			DI::page()['aside'] = '<div class="help-aside-wrapper widget"><div id="toc-wrapper">' . $toc . '</div>' . DI::page()['aside'] . '</div>';
 		}
 
 		return $html;

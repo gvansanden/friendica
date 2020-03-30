@@ -1,22 +1,37 @@
 <?php
 /**
- * @file src/Model/Group.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Model;
 
 use Friendica\BaseModule;
-use Friendica\BaseObject;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
+use Friendica\DI;
 
 /**
- * @brief functions for interacting with the group database table
+ * functions for interacting with the group database table
  */
-class Group extends BaseObject
+class Group
 {
 	const FOLLOWERS = '~';
 	const MUTUALS = '&';
@@ -51,7 +66,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Create a new contact group
+	 * Create a new contact group
 	 *
 	 * Note: If we found a deleted group with the same name, we restore it
 	 *
@@ -74,7 +89,7 @@ class Group extends BaseObject
 				$group = DBA::selectFirst('group', ['deleted'], ['id' => $gid]);
 				if (DBA::isResult($group) && $group['deleted']) {
 					DBA::update('group', ['deleted' => 0], ['id' => $gid]);
-					notice(L10n::t('A deleted group with this name was revived. Existing item permissions <strong>may</strong> apply to this group and any future members. If this is not what you intended, please create another group with a different name.') . EOL);
+					notice(DI::l10n()->t('A deleted group with this name was revived. Existing item permissions <strong>may</strong> apply to this group and any future members. If this is not what you intended, please create another group with a different name.') . EOL);
 				}
 				return true;
 			}
@@ -102,7 +117,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Get a list of group ids a contact belongs to
+	 * Get a list of group ids a contact belongs to
 	 *
 	 * @param int $cid
 	 * @return array
@@ -118,11 +133,21 @@ class Group extends BaseObject
 		}
 		DBA::close($stmt);
 
+		// Meta-groups
+		$contact = Contact::getById($cid, ['rel']);
+		if ($contact['rel'] == Contact::FOLLOWER || $contact['rel'] == Contact::FRIEND) {
+			$return[] = self::FOLLOWERS;
+		}
+
+		if ($contact['rel'] == Contact::FRIEND) {
+			$return[] = self::MUTUALS;
+		}
+
 		return $return;
 	}
 
 	/**
-	 * @brief count unread group items
+	 * count unread group items
 	 *
 	 * Count unread items of each groups of the local user
 	 *
@@ -153,7 +178,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Get the group id for a user/name couple
+	 * Get the group id for a user/name couple
 	 *
 	 * Returns false if no group has been found.
 	 *
@@ -177,7 +202,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Mark a group as deleted
+	 * Mark a group as deleted
 	 *
 	 * @param int $gid
 	 * @return boolean
@@ -227,7 +252,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief      Mark a group as deleted based on its name
+	 * Mark a group as deleted based on its name
 	 *
 	 * @param int    $uid
 	 * @param string $name
@@ -249,7 +274,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Adds a contact to a group
+	 * Adds a contact to a group
 	 *
 	 * @param int $gid
 	 * @param int $cid
@@ -274,7 +299,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Removes a contact from a group
+	 * Removes a contact from a group
 	 *
 	 * @param int $gid
 	 * @param int $cid
@@ -293,7 +318,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief      Removes a contact from a group based on its name
+	 * Removes a contact from a group based on its name
 	 *
 	 * @param int    $uid
 	 * @param string $name
@@ -313,7 +338,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Returns the combined list of contact ids from a group id list
+	 * Returns the combined list of contact ids from a group id list
 	 *
 	 * @param int     $uid
 	 * @param array   $group_ids
@@ -385,14 +410,14 @@ class Group extends BaseObject
 		DBA::close($stmt);
 
 		if ($check_dead) {
-			Contact::pruneUnavailable($return);
+			$return = Contact::pruneUnavailable($return);
 		}
 
 		return $return;
 	}
 
 	/**
-	 * @brief Returns a templated group selection list
+	 * Returns a templated group selection list
 	 *
 	 * @param int    $uid
 	 * @param int    $gid   An optional pre-selected group
@@ -423,7 +448,7 @@ class Group extends BaseObject
 		Logger::info('Got groups', $display_groups);
 
 		if ($label == '') {
-			$label = L10n::t('Default privacy group for new contacts');
+			$label = DI::l10n()->t('Default privacy group for new contacts');
 		}
 
 		$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('group_selection.tpl'), [
@@ -434,7 +459,7 @@ class Group extends BaseObject
 	}
 
 	/**
-	 * @brief Create group sidebar widget
+	 * Create group sidebar widget
 	 *
 	 * @param string $every
 	 * @param string $each
@@ -455,7 +480,7 @@ class Group extends BaseObject
 
 		$display_groups = [
 			[
-				'text' => L10n::t('Everybody'),
+				'text' => DI::l10n()->t('Everybody'),
 				'id' => 0,
 				'selected' => (($group_id === 'everyone') ? 'group-selected' : ''),
 				'href' => $every,
@@ -474,7 +499,7 @@ class Group extends BaseObject
 			if ($editmode == 'full') {
 				$groupedit = [
 					'href' => 'group/' . $group['id'],
-					'title' => L10n::t('edit'),
+					'title' => DI::l10n()->t('edit'),
 				];
 			} else {
 				$groupedit = null;
@@ -499,17 +524,17 @@ class Group extends BaseObject
 
 		$tpl = Renderer::getMarkupTemplate('group_side.tpl');
 		$o = Renderer::replaceMacros($tpl, [
-			'$add' => L10n::t('add'),
-			'$title' => L10n::t('Groups'),
+			'$add' => DI::l10n()->t('add'),
+			'$title' => DI::l10n()->t('Groups'),
 			'$groups' => $display_groups,
 			'newgroup' => $editmode == 'extended' || $editmode == 'full' ? 1 : '',
 			'grouppage' => 'group/',
-			'$edittext' => L10n::t('Edit group'),
-			'$ungrouped' => $every === 'contact' ? L10n::t('Contacts not in any group') : '',
+			'$edittext' => DI::l10n()->t('Edit group'),
+			'$ungrouped' => $every === 'contact' ? DI::l10n()->t('Contacts not in any group') : '',
 			'$ungrouped_selected' => (($group_id === 'none') ? 'group-selected' : ''),
-			'$createtext' => L10n::t('Create a new group'),
-			'$creategroup' => L10n::t('Group Name: '),
-			'$editgroupstext' => L10n::t('Edit groups'),
+			'$createtext' => DI::l10n()->t('Create a new group'),
+			'$creategroup' => DI::l10n()->t('Group Name: '),
+			'$editgroupstext' => DI::l10n()->t('Edit groups'),
 			'$form_security_token' => BaseModule::getFormSecurityToken('group_edit'),
 		]);
 

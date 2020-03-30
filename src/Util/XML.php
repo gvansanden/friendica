@@ -1,7 +1,24 @@
 <?php
 /**
- * @file src/Util/XML.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Util;
 
 use DOMXPath;
@@ -10,12 +27,12 @@ use Friendica\Core\System;
 use SimpleXMLElement;
 
 /**
- * @brief This class contain methods to work with XML data
+ * This class contain methods to work with XML data
  */
 class XML
 {
 	/**
-	 * @brief Creates an XML structure out of a given array
+	 * Creates an XML structure out of a given array
 	 *
 	 * @param array  $array         The array of the XML structure that will be generated
 	 * @param object $xml           The createdXML will be returned by reference
@@ -114,7 +131,7 @@ class XML
 	}
 
 	/**
-	 * @brief Copies an XML object
+	 * Copies an XML object
 	 *
 	 * @param object $source      The XML source
 	 * @param object $target      The XML target
@@ -134,7 +151,7 @@ class XML
 	}
 
 	/**
-	 * @brief Create an XML element
+	 * Create an XML element
 	 *
 	 * @param \DOMDocument $doc        XML root
 	 * @param string       $element    XML element name
@@ -156,7 +173,7 @@ class XML
 	}
 
 	/**
-	 * @brief Create an XML and append it to the parent object
+	 * Create an XML and append it to the parent object
 	 *
 	 * @param \DOMDocument $doc        XML root
 	 * @param object $parent     parent object
@@ -172,7 +189,7 @@ class XML
 	}
 
 	/**
-	 * @brief Convert an XML document to a normalised, case-corrected array
+	 * Convert an XML document to a normalised, case-corrected array
 	 *   used by webfinger
 	 *
 	 * @param object  $xml_element     The XML document
@@ -223,7 +240,7 @@ class XML
 	}
 
 	/**
-	 * @brief Convert the given XML text to an array in the XML structure.
+	 * Convert the given XML text to an array in the XML structure.
 	 *
 	 * Xml::toArray() will convert the given XML text to an array in the XML structure.
 	 * Link: http://www.bin-co.com/php/scripts/xml2array/
@@ -401,7 +418,7 @@ class XML
 	}
 
 	/**
-	 * @brief Delete a node in a XML object
+	 * Delete a node in a XML object
 	 *
 	 * @param \DOMDocument $doc  XML document
 	 * @param string $node Node name

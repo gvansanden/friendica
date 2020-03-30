@@ -1,9 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\src\Util;
 
-use Friendica\Core\Config\Cache\ConfigCache;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\Cache;
+use Friendica\Core\Config\IConfig;
 use Friendica\Test\MockedTest;
 use Friendica\Util\Profiler;
 use Mockery\MockInterface;
@@ -28,7 +47,7 @@ class ProfilerTest extends MockedTest
 	 */
 	public function testSetUp()
 	{
-		$configCache = \Mockery::mock(ConfigCache::class);
+		$configCache = \Mockery::mock(Cache::class);
 		$configCache->shouldReceive('get')
 		            ->withAnyArgs()
 		            ->andReturn(true)
@@ -103,7 +122,7 @@ class ProfilerTest extends MockedTest
 	 */
 	public function testSaveTimestamp($timestamp, $name, array $functions)
 	{
-		$configCache = \Mockery::mock(ConfigCache::class);
+		$configCache = \Mockery::mock(Cache::class);
 		$configCache->shouldReceive('get')
 		            ->withAnyArgs()
 		            ->andReturn(true)
@@ -124,7 +143,7 @@ class ProfilerTest extends MockedTest
 	 */
 	public function testReset($timestamp, $name, array $functions)
 	{
-		$configCache = \Mockery::mock(ConfigCache::class);
+		$configCache = \Mockery::mock(Cache::class);
 		$configCache->shouldReceive('get')
 		            ->withAnyArgs()
 		            ->andReturn(true)
@@ -187,7 +206,7 @@ class ProfilerTest extends MockedTest
 			->shouldReceive('info')
 			->once();
 
-		$configCache = \Mockery::mock(ConfigCache::class);
+		$configCache = \Mockery::mock(Cache::class);
 		$configCache->shouldReceive('get')
 		            ->withAnyArgs()
 		            ->andReturn(true)
@@ -218,7 +237,7 @@ class ProfilerTest extends MockedTest
 	 */
 	public function testEnableDisable()
 	{
-		$configCache = \Mockery::mock(ConfigCache::class);
+		$configCache = \Mockery::mock(Cache::class);
 		$configCache->shouldReceive('get')
 		            ->with('system', 'profiler')
 		            ->andReturn(true)
@@ -235,7 +254,7 @@ class ProfilerTest extends MockedTest
 
 		$profiler->saveTimestamp(time(), 'network', 'test1');
 
-		$config = \Mockery::mock(Configuration::class);
+		$config = \Mockery::mock(IConfig::class);
 		$config->shouldReceive('get')
 		            ->with('system', 'profiler')
 		            ->andReturn(false)

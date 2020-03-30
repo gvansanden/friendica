@@ -1,18 +1,34 @@
 <?php
 /**
- * @file src/Core/Addon.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Core;
 
-use Friendica\BaseObject;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Util\Strings;
 
 /**
  * Some functions to handle addons
  */
-class Addon extends BaseObject
+class Addon
 {
 	/**
 	 * The addon sub-directory
@@ -45,7 +61,7 @@ class Addon extends BaseObject
 					list($tmp, $addon) = array_map('trim', explode('/', $file));
 					$info = self::getInfo($addon);
 
-					if (Config::get('system', 'show_unsupported_addons')
+					if (DI::config()->get('system', 'show_unsupported_addons')
 						|| strtolower($info['status']) != 'unsupported'
 						|| self::isEnabled($addon)
 					) {
@@ -83,7 +99,7 @@ class Addon extends BaseObject
 
 
 	/**
-	 * @brief Synchronize addons:
+	 * Synchronize addons:
 	 *
 	 * system.addon contains a comma-separated list of names
 	 * of addons which are used on this system.
@@ -96,41 +112,12 @@ class Addon extends BaseObject
 	 */
 	public static function loadAddons()
 	{
-		$installed_addons = [];
-
-		$r = DBA::select('addon', [], ['installed' => 1]);
-		if (DBA::isResult($r)) {
-			$installed_addons = DBA::toArray($r);
-		}
-
-		$addons = Config::get('system', 'addon');
-		$addons_arr = [];
-
-		if ($addons) {
-			$addons_arr = explode(',', str_replace(' ', '', $addons));
-		}
-
-		self::$addons = $addons_arr;
-
-		$installed_arr = [];
-
-		foreach ($installed_addons as $addon) {
-			if (!self::isEnabled($addon['name'])) {
-				self::uninstall($addon['name']);
-			} else {
-				$installed_arr[] = $addon['name'];
-			}
-		}
-
-		foreach (self::$addons as $p) {
-			if (!in_array($p, $installed_arr)) {
-				self::install($p);
-			}
-		}
+		$installed_addons = DBA::selectToArray('addon', ['name'], ['installed' => true]);
+		self::$addons = array_column($installed_addons, 'name');
 	}
 
 	/**
-	 * @brief uninstalls an addon.
+	 * uninstalls an addon.
 	 *
 	 * @param string $addon name of the addon
 	 * @return void
@@ -152,12 +139,10 @@ class Addon extends BaseObject
 		DBA::delete('hook', ['file' => 'addon/' . $addon . '/' . $addon . '.php']);
 
 		unset(self::$addons[array_search($addon, self::$addons)]);
-
-		Addon::saveEnabledList();
 	}
 
 	/**
-	 * @brief installs an addon.
+	 * installs an addon.
 	 *
 	 * @param string $addon name of the addon
 	 * @return bool
@@ -177,7 +162,7 @@ class Addon extends BaseObject
 		@include_once('addon/' . $addon . '/' . $addon . '.php');
 		if (function_exists($addon . '_install')) {
 			$func = $addon . '_install';
-			$func(self::getApp());
+			$func(DI::app());
 
 			$addon_admin = (function_exists($addon . "_addon_admin") ? 1 : 0);
 
@@ -196,8 +181,6 @@ class Addon extends BaseObject
 				self::$addons[] = $addon;
 			}
 
-			Addon::saveEnabledList();
-
 			return true;
 		} else {
 			Logger::error("Addon {addon}: {action} failed", ['action' => 'install', 'addon' => $addon]);
@@ -210,46 +193,33 @@ class Addon extends BaseObject
 	 */
 	public static function reload()
 	{
-		$addons = Config::get('system', 'addon');
-		if (strlen($addons)) {
-			$r = DBA::select('addon', [], ['installed' => 1]);
-			if (DBA::isResult($r)) {
-				$installed = DBA::toArray($r);
-			} else {
-				$installed = [];
+		$addons = DBA::selectToArray('addon', [], ['installed' => true]);
+
+		foreach ($addons as $addon) {
+			$addonname = Strings::sanitizeFilePathItem(trim($addon['name']));
+			$fname = 'addon/' . $addonname . '/' . $addonname . '.php';
+			$t = @filemtime($fname);
+			if (!file_exists($fname) || ($addon['timestamp'] == $t)) {
+				continue;
 			}
 
-			$addon_list = explode(',', $addons);
+			Logger::notice("Addon {addon}: {action}", ['action' => 'reload', 'addon' => $addon['name']]);
+			@include_once($fname);
 
-			foreach ($addon_list as $addon) {
-				$addon = Strings::sanitizeFilePathItem(trim($addon));
-				$fname = 'addon/' . $addon . '/' . $addon . '.php';
-				if (file_exists($fname)) {
-					$t = @filemtime($fname);
-					foreach ($installed as $i) {
-						if (($i['name'] == $addon) && ($i['timestamp'] != $t)) {
-
-							Logger::notice("Addon {addon}: {action}", ['action' => 'reload', 'addon' => $i['name']]);
-							@include_once($fname);
-
-							if (function_exists($addon . '_uninstall')) {
-								$func = $addon . '_uninstall';
-								$func(self::getApp());
-							}
-							if (function_exists($addon . '_install')) {
-								$func = $addon . '_install';
-								$func(self::getApp());
-							}
-							DBA::update('addon', ['timestamp' => $t], ['id' => $i['id']]);
-						}
-					}
-				}
+			if (function_exists($addonname . '_uninstall')) {
+				$func = $addonname . '_uninstall';
+				$func(DI::app());
 			}
+			if (function_exists($addonname . '_install')) {
+				$func = $addonname . '_install';
+				$func(DI::app());
+			}
+			DBA::update('addon', ['timestamp' => $t], ['id' => $addon['id']]);
 		}
 	}
 
 	/**
-	 * @brief Parse addon comment in search of addon infos.
+	 * Parse addon comment in search of addon infos.
 	 *
 	 * like
 	 * \code
@@ -267,7 +237,7 @@ class Addon extends BaseObject
 	 */
 	public static function getInfo($addon)
 	{
-		$a = self::getApp();
+		$a = DI::app();
 
 		$addon = Strings::sanitizeFilePathItem($addon);
 
@@ -286,7 +256,7 @@ class Addon extends BaseObject
 
 		$stamp1 = microtime(true);
 		$f = file_get_contents("addon/$addon/$addon.php");
-		$a->getProfiler()->saveTimestamp($stamp1, "file", System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, "file", System::callstack());
 
 		$r = preg_match("|/\*.*\*/|msU", $f, $m);
 
@@ -339,16 +309,6 @@ class Addon extends BaseObject
 	public static function getEnabledList()
 	{
 		return self::$addons;
-	}
-
-	/**
-	 * Saves the current enabled addon list in the system.addon config key
-	 *
-	 * @return boolean
-	 */
-	public static function saveEnabledList()
-	{
-		return Config::set('system', 'addon', implode(',', self::$addons));
 	}
 
 	/**

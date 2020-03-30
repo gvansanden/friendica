@@ -1,21 +1,40 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Admin\Addons;
 
 use Friendica\Content\Text\Markdown;
 use Friendica\Core\Addon;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Module\BaseAdminModule;
+use Friendica\DI;
+use Friendica\Module\BaseAdmin;
 use Friendica\Util\Strings;
 
-class Details extends BaseAdminModule
+class Details extends BaseAdmin
 {
 	public static function post(array $parameters = [])
 	{
 		parent::post($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		if ($a->argc > 2) {
 			// @TODO: Replace with parameter from router
@@ -28,18 +47,18 @@ class Details extends BaseAdminModule
 					$func($a);
 				}
 
-				$a->internalRedirect('admin/addons/' . $addon);
+				DI::baseUrl()->redirect('admin/addons/' . $addon);
 			}
 		}
 
-		$a->internalRedirect('admin/addons');
+		DI::baseUrl()->redirect('admin/addons');
 	}
 
 	public static function content(array $parameters = [])
 	{
 		parent::content($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		$addons_admin = Addon::getAdminList();
 
@@ -48,9 +67,9 @@ class Details extends BaseAdminModule
 			$addon = $a->argv[2];
 			$addon = Strings::sanitizeFilePathItem($addon);
 			if (!is_file("addon/$addon/$addon.php")) {
-				notice(L10n::t('Addon not found.'));
+				notice(DI::l10n()->t('Addon not found.'));
 				Addon::uninstall($addon);
-				$a->internalRedirect('admin/addons');
+				DI::baseUrl()->redirect('admin/addons');
 			}
 
 			if (($_GET['action'] ?? '') == 'toggle') {
@@ -59,24 +78,22 @@ class Details extends BaseAdminModule
 				// Toggle addon status
 				if (Addon::isEnabled($addon)) {
 					Addon::uninstall($addon);
-					info(L10n::t('Addon %s disabled.', $addon));
+					info(DI::l10n()->t('Addon %s disabled.', $addon));
 				} else {
 					Addon::install($addon);
-					info(L10n::t('Addon %s enabled.', $addon));
+					info(DI::l10n()->t('Addon %s enabled.', $addon));
 				}
 
-				Addon::saveEnabledList();
-
-				$a->internalRedirect('admin/addons/' . $addon);
+				DI::baseUrl()->redirect('admin/addons/' . $addon);
 			}
 
 			// display addon details
 			if (Addon::isEnabled($addon)) {
 				$status = 'on';
-				$action = L10n::t('Disable');
+				$action = DI::l10n()->t('Disable');
 			} else {
 				$status = 'off';
-				$action = L10n::t('Enable');
+				$action = DI::l10n()->t('Enable');
 			}
 
 			$readme = null;
@@ -96,18 +113,18 @@ class Details extends BaseAdminModule
 			$t = Renderer::getMarkupTemplate('admin/addons/details.tpl');
 
 			return Renderer::replaceMacros($t, [
-				'$title' => L10n::t('Administration'),
-				'$page' => L10n::t('Addons'),
-				'$toggle' => L10n::t('Toggle'),
-				'$settings' => L10n::t('Settings'),
-				'$baseurl' => $a->getBaseURL(true),
+				'$title' => DI::l10n()->t('Administration'),
+				'$page' => DI::l10n()->t('Addons'),
+				'$toggle' => DI::l10n()->t('Toggle'),
+				'$settings' => DI::l10n()->t('Settings'),
+				'$baseurl' => DI::baseUrl()->get(true),
 
 				'$addon' => $addon,
 				'$status' => $status,
 				'$action' => $action,
 				'$info' => Addon::getInfo($addon),
-				'$str_author' => L10n::t('Author: '),
-				'$str_maintainer' => L10n::t('Maintainer: '),
+				'$str_author' => DI::l10n()->t('Author: '),
+				'$str_maintainer' => DI::l10n()->t('Maintainer: '),
 
 				'$admin_form' => $admin_form,
 				'$function' => 'addons',
@@ -118,6 +135,6 @@ class Details extends BaseAdminModule
 			]);
 		}
 
-		$a->internalRedirect('admin/addons');
+		DI::baseUrl()->redirect('admin/addons');
 	}
 }

@@ -1,14 +1,34 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
+use Friendica\Model\Notify\Type;
 use Friendica\Model\User;
 use Friendica\Network\HTTPException\ForbiddenException;
 
@@ -24,7 +44,7 @@ class Delegation extends BaseModule
 		}
 
 		$uid = local_user();
-		$orig_record = self::getApp()->user;
+		$orig_record = DI::app()->user;
 
 		if (Session::get('submanage')) {
 			$user = User::getById(Session::get('submanage'));
@@ -79,7 +99,7 @@ class Delegation extends BaseModule
 
 		Session::clear();
 
-		Session::setAuthenticatedForUser(self::getApp(), $user, true, true);
+		DI::auth()->setForUser(DI::app(), $user, true, true);
 
 		if ($limited_id) {
 			Session::set('submanage', $original_id);
@@ -88,17 +108,17 @@ class Delegation extends BaseModule
 		$ret = [];
 		Hook::callAll('home_init', $ret);
 
-		self::getApp()->internalRedirect('profile/' . self::getApp()->user['nickname']);
+		DI::baseUrl()->redirect('profile/' . DI::app()->user['nickname']);
 		// NOTREACHED
 	}
 
 	public static function content(array $parameters = [])
 	{
 		if (!local_user()) {
-			throw new ForbiddenException(L10n::t('Permission denied.'));
+			throw new ForbiddenException(DI::l10n()->t('Permission denied.'));
 		}
 
-		$identities = self::getApp()->identities;
+		$identities = DI::app()->identities;
 
 		//getting additinal information for each identity
 		foreach ($identities as $key => $identity) {
@@ -109,9 +129,9 @@ class Delegation extends BaseModule
 
 			$identities[$key]['thumb'] = $thumb['thumb'];
 
-			$identities[$key]['selected'] = ($identity['nickname'] === self::getApp()->user['nickname']);
+			$identities[$key]['selected'] = ($identity['nickname'] === DI::app()->user['nickname']);
 
-			$condition = ["`uid` = ? AND `msg` != '' AND NOT (`type` IN (?, ?)) AND NOT `seen`", $identity['uid'], NOTIFY_INTRO, NOTIFY_MAIL];
+			$condition = ["`uid` = ? AND `msg` != '' AND NOT (`type` IN (?, ?)) AND NOT `seen`", $identity['uid'], Type::INTRO, Type::MAIL];
 			$params = ['distinct' => true, 'expression' => 'parent'];
 			$notifications = DBA::count('notify', $condition, $params);
 
@@ -124,11 +144,11 @@ class Delegation extends BaseModule
 		}
 
 		$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('delegation.tpl'), [
-			'$title'      => L10n::t('Manage Identities and/or Pages'),
-			'$desc'       => L10n::t('Toggle between different identities or community/group pages which share your account details or which you have been granted "manage" permissions'),
-			'$choose'     => L10n::t('Select an identity to manage: '),
+			'$title'      => DI::l10n()->t('Manage Identities and/or Pages'),
+			'$desc'       => DI::l10n()->t('Toggle between different identities or community/group pages which share your account details or which you have been granted "manage" permissions'),
+			'$choose'     => DI::l10n()->t('Select an identity to manage: '),
 			'$identities' => $identities,
-			'$submit'     => L10n::t('Submit'),
+			'$submit'     => DI::l10n()->t('Submit'),
 		]);
 
 		return $o;

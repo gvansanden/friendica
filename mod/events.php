@@ -1,26 +1,40 @@
 <?php
 /**
- * @file mod/events.php
- * @brief The events module
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * The events module
  */
 
 use Friendica\App;
-use Friendica\BaseObject;
 use Friendica\Content\Nav;
 use Friendica\Content\Widget\CalendarExport;
 use Friendica\Core\ACL;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Core\Theme;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Event;
 use Friendica\Model\Item;
-use Friendica\Model\Profile;
-use Friendica\Module\Login;
-use Friendica\Util\ACLFormatter;
+use Friendica\Model\User;
+use Friendica\Module\BaseProfile;
+use Friendica\Module\Security\Login;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Strings;
 use Friendica\Util\Temporal;
@@ -38,13 +52,13 @@ function events_init(App $a)
 		return;
 	}
 
-	if (empty($a->page['aside'])) {
-		$a->page['aside'] = '';
+	if (empty(DI::page()['aside'])) {
+		DI::page()['aside'] = '';
 	}
 
 	$cal_widget = CalendarExport::getHTML();
 
-	$a->page['aside'] .= $cal_widget;
+	DI::page()['aside'] .= $cal_widget;
 
 	return;
 }
@@ -118,21 +132,21 @@ function events_post(App $a)
 	$onerror_path = 'events/' . $action . '?' . http_build_query($params, null, null, PHP_QUERY_RFC3986);
 
 	if (strcmp($finish, $start) < 0 && !$nofinish) {
-		notice(L10n::t('Event can not end before it has started.') . EOL);
+		notice(DI::l10n()->t('Event can not end before it has started.') . EOL);
 		if (intval($_REQUEST['preview'])) {
-			echo L10n::t('Event can not end before it has started.');
+			echo DI::l10n()->t('Event can not end before it has started.');
 			exit();
 		}
-		$a->internalRedirect($onerror_path);
+		DI::baseUrl()->redirect($onerror_path);
 	}
 
 	if (!$summary || ($start === DBA::NULL_DATETIME)) {
-		notice(L10n::t('Event title and start time are required.') . EOL);
+		notice(DI::l10n()->t('Event title and start time are required.') . EOL);
 		if (intval($_REQUEST['preview'])) {
-			echo L10n::t('Event title and start time are required.');
+			echo DI::l10n()->t('Event title and start time are required.');
 			exit();
 		}
-		$a->internalRedirect($onerror_path);
+		DI::baseUrl()->redirect($onerror_path);
 	}
 
 	$share = intval($_POST['share'] ?? 0);
@@ -150,8 +164,7 @@ function events_post(App $a)
 
 	if ($share) {
 
-		/** @var ACLFormatter $aclFormatter */
-		$aclFormatter = BaseObject::getClass(ACLFormatter::class);
+		$aclFormatter = DI::aclFormatter();
 
 		$str_group_allow   = $aclFormatter->toString($_POST['group_allow'] ?? '');
 		$str_contact_allow = $aclFormatter->toString($_POST['contact_allow'] ?? '');
@@ -206,18 +219,18 @@ function events_post(App $a)
 		Worker::add(PRIORITY_HIGH, "Notifier", Delivery::POST, $item_id);
 	}
 
-	$a->internalRedirect('events');
+	DI::baseUrl()->redirect('events');
 }
 
 function events_content(App $a)
 {
 	if (!local_user()) {
-		notice(L10n::t('Permission denied.') . EOL);
+		notice(DI::l10n()->t('Permission denied.') . EOL);
 		return Login::form();
 	}
 
 	if ($a->argc == 1) {
-		$_SESSION['return_path'] = $a->cmd;
+		$_SESSION['return_path'] = DI::args()->getCommand();
 	}
 
 	if (($a->argc > 2) && ($a->argv[1] === 'ignore') && intval($a->argv[2])) {
@@ -244,7 +257,7 @@ function events_content(App $a)
 	$i18n = Event::getStrings();
 
 	$htpl = Renderer::getMarkupTemplate('event_head.tpl');
-	$a->page['htmlhead'] .= Renderer::replaceMacros($htpl, [
+	DI::page()['htmlhead'] .= Renderer::replaceMacros($htpl, [
 		'$module_url' => '/events',
 		'$modparams' => 1,
 		'$i18n' => $i18n,
@@ -254,7 +267,7 @@ function events_content(App $a)
 	$tabs = '';
 	// tabs
 	if ($a->theme_events_in_profile) {
-		$tabs = Profile::getTabs($a, 'events', true);
+		$tabs = BaseProfile::getTabsHTML($a, 'events', true);
 	}
 
 	$mode = 'view';
@@ -350,7 +363,7 @@ function events_content(App $a)
 			foreach ($r as $rr) {
 				$j = $rr['adjust'] ? DateTimeFormat::local($rr['start'], 'j') : DateTimeFormat::utc($rr['start'], 'j');
 				if (empty($links[$j])) {
-					$links[$j] = System::baseUrl() . '/' . $a->cmd . '#link-' . $j;
+					$links[$j] = DI::baseUrl() . '/' . DI::args()->getCommand() . '#link-' . $j;
 				}
 			}
 		}
@@ -386,27 +399,27 @@ function events_content(App $a)
 		}
 
 		// ACL blocks are loaded in modals in frio
-		$a->page->registerFooterScript(Theme::getPathForFile('asset/typeahead.js/dist/typeahead.bundle.js'));
-		$a->page->registerFooterScript(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput.js'));
-		$a->page->registerStylesheet(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput.css'));
-		$a->page->registerStylesheet(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput-typeahead.css'));
+		DI::page()->registerFooterScript(Theme::getPathForFile('asset/typeahead.js/dist/typeahead.bundle.js'));
+		DI::page()->registerFooterScript(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput.js'));
+		DI::page()->registerStylesheet(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput.css'));
+		DI::page()->registerStylesheet(Theme::getPathForFile('js/friendica-tagsinput/friendica-tagsinput-typeahead.css'));
 
 		$o = Renderer::replaceMacros($tpl, [
 			'$tabs'      => $tabs,
-			'$title'     => L10n::t('Events'),
-			'$view'      => L10n::t('View'),
-			'$new_event' => [System::baseUrl() . '/events/new', L10n::t('Create New Event'), '', ''],
-			'$previous'  => [System::baseUrl() . '/events/$prevyear/$prevmonth', L10n::t('Previous'), '', ''],
-			'$next'      => [System::baseUrl() . '/events/$nextyear/$nextmonth', L10n::t('Next'), '', ''],
+			'$title'     => DI::l10n()->t('Events'),
+			'$view'      => DI::l10n()->t('View'),
+			'$new_event' => [DI::baseUrl() . '/events/new', DI::l10n()->t('Create New Event'), '', ''],
+			'$previous'  => [DI::baseUrl() . '/events/$prevyear/$prevmonth', DI::l10n()->t('Previous'), '', ''],
+			'$next'      => [DI::baseUrl() . '/events/$nextyear/$nextmonth', DI::l10n()->t('Next'), '', ''],
 			'$calendar'  => Temporal::getCalendarTable($y, $m, $links, ' eventcal'),
 
 			'$events'    => $events,
 
-			'$today' => L10n::t('today'),
-			'$month' => L10n::t('month'),
-			'$week'  => L10n::t('week'),
-			'$day'   => L10n::t('day'),
-			'$list'  => L10n::t('list'),
+			'$today' => DI::l10n()->t('today'),
+			'$month' => DI::l10n()->t('month'),
+			'$week'  => DI::l10n()->t('week'),
+			'$day'   => DI::l10n()->t('day'),
+			'$list'  => DI::l10n()->t('list'),
 		]);
 
 		if (!empty($_GET['id'])) {
@@ -429,15 +442,23 @@ function events_content(App $a)
 
 	// Passed parameters overrides anything found in the DB
 	if (in_array($mode, ['edit', 'new', 'copy'])) {
+		$share_checked = '';
+		$share_disabled = '';
+
 		if (empty($orig_event)) {
-			$orig_event = [];
+			$orig_event = User::getById(local_user(), ['allow_cid', 'allow_gid', 'deny_cid', 'deny_gid']);;
+		} elseif ($orig_event['allow_cid'] !== '<' . local_user() . '>'
+			|| $orig_event['allow_gid']
+			|| $orig_event['deny_cid']
+			|| $orig_event['deny_gid']) {
+			$share_checked = ' checked="checked" ';
 		}
 
 		// In case of an error the browser is redirected back here, with these parameters filled in with the previous values
 		if (!empty($_REQUEST['nofinish']))    {$orig_event['nofinish']    = $_REQUEST['nofinish'];}
 		if (!empty($_REQUEST['adjust']))      {$orig_event['adjust']      = $_REQUEST['adjust'];}
 		if (!empty($_REQUEST['summary']))     {$orig_event['summary']     = $_REQUEST['summary'];}
-		if (!empty($_REQUEST['description'])) {$orig_event['description'] = $_REQUEST['description'];}
+		if (!empty($_REQUEST['desc']))        {$orig_event['desc']        = $_REQUEST['desc'];}
 		if (!empty($_REQUEST['location']))    {$orig_event['location']    = $_REQUEST['location'];}
 		if (!empty($_REQUEST['start']))       {$orig_event['start']       = $_REQUEST['start'];}
 		if (!empty($_REQUEST['finish']))      {$orig_event['finish']      = $_REQUEST['finish'];}
@@ -445,27 +466,15 @@ function events_content(App $a)
 		$n_checked = (!empty($orig_event['nofinish']) ? ' checked="checked" ' : '');
 		$a_checked = (!empty($orig_event['adjust'])   ? ' checked="checked" ' : '');
 
-		$t_orig = !empty($orig_event) ? $orig_event['summary']  : '';
-		$d_orig = !empty($orig_event) ? $orig_event['desc']     : '';
-		$l_orig = !empty($orig_event) ? $orig_event['location'] : '';
+		$t_orig = $orig_event['summary']  ?? '';
+		$d_orig = $orig_event['desc']     ?? '';
+		$l_orig = $orig_event['location'] ?? '';
 		$eid = !empty($orig_event) ? $orig_event['id']  : 0;
 		$cid = !empty($orig_event) ? $orig_event['cid'] : 0;
 		$uri = !empty($orig_event) ? $orig_event['uri'] : '';
 
-		$sh_disabled = '';
-		$sh_checked = '';
-
-		if (!empty($orig_event)
-			&& ($orig_event['allow_cid'] !== '<' . local_user() . '>'
-			|| $orig_event['allow_gid']
-			|| $orig_event['deny_cid']
-			|| $orig_event['deny_gid']))
-		{
-			$sh_checked = ' checked="checked" ';
-		}
-
 		if ($cid || $mode === 'edit') {
-			$sh_disabled = 'disabled="disabled"';
+			$share_disabled = 'disabled="disabled"';
 		}
 
 		$sdt = !empty($orig_event) ? $orig_event['start']  : 'now';
@@ -491,7 +500,7 @@ function events_content(App $a)
 		$fminute = !empty($orig_event) ? DateTimeFormat::convert($fdt, $tz, 'UTC', 'i') : '00';
 
 		if (!$cid && in_array($mode, ['new', 'copy'])) {
-			$acl = ACL::getFullSelectorHTML($a->page, $a->user, false, ACL::getDefaultUserPermissions($orig_event));
+			$acl = ACL::getFullSelectorHTML(DI::page(), $a->user, false, ACL::getDefaultUserPermissions($orig_event));
 		} else {
 			$acl = '';
 		}
@@ -506,19 +515,19 @@ function events_content(App $a)
 		$tpl = Renderer::getMarkupTemplate('event_form.tpl');
 
 		$o .= Renderer::replaceMacros($tpl, [
-			'$post' => System::baseUrl() . '/events',
+			'$post' => DI::baseUrl() . '/events',
 			'$eid'  => $eid,
 			'$cid'  => $cid,
 			'$uri'  => $uri,
 
-			'$title' => L10n::t('Event details'),
-			'$desc' => L10n::t('Starting date and Title are required.'),
-			'$s_text' => L10n::t('Event Starts:') . ' <span class="required" title="' . L10n::t('Required') . '">*</span>',
+			'$title' => DI::l10n()->t('Event details'),
+			'$desc' => DI::l10n()->t('Starting date and Title are required.'),
+			'$s_text' => DI::l10n()->t('Event Starts:') . ' <span class="required" title="' . DI::l10n()->t('Required') . '">*</span>',
 			'$s_dsel' => Temporal::getDateTimeField(
 				new DateTime(),
 				DateTime::createFromFormat('Y', intval($syear) + 5),
 				DateTime::createFromFormat('Y-m-d H:i', "$syear-$smonth-$sday $shour:$sminute"),
-				L10n::t('Event Starts:'),
+				DI::l10n()->t('Event Starts:'),
 				'start_text',
 				true,
 				true,
@@ -526,39 +535,39 @@ function events_content(App $a)
 				'',
 				true
 			),
-			'$n_text' => L10n::t('Finish date/time is not known or not relevant'),
+			'$n_text' => DI::l10n()->t('Finish date/time is not known or not relevant'),
 			'$n_checked' => $n_checked,
-			'$f_text' => L10n::t('Event Finishes:'),
+			'$f_text' => DI::l10n()->t('Event Finishes:'),
 			'$f_dsel' => Temporal::getDateTimeField(
 				new DateTime(),
 				DateTime::createFromFormat('Y', intval($fyear) + 5),
 				DateTime::createFromFormat('Y-m-d H:i', "$fyear-$fmonth-$fday $fhour:$fminute"),
-				L10n::t('Event Finishes:'),
+				DI::l10n()->t('Event Finishes:'),
 				'finish_text',
 				true,
 				true,
 				'start_text'
 			),
-			'$a_text' => L10n::t('Adjust for viewer timezone'),
+			'$a_text' => DI::l10n()->t('Adjust for viewer timezone'),
 			'$a_checked' => $a_checked,
-			'$d_text' => L10n::t('Description:'),
+			'$d_text' => DI::l10n()->t('Description:'),
 			'$d_orig' => $d_orig,
-			'$l_text' => L10n::t('Location:'),
+			'$l_text' => DI::l10n()->t('Location:'),
 			'$l_orig' => $l_orig,
-			'$t_text' => L10n::t('Title:') . ' <span class="required" title="' . L10n::t('Required') . '">*</span>',
+			'$t_text' => DI::l10n()->t('Title:') . ' <span class="required" title="' . DI::l10n()->t('Required') . '">*</span>',
 			'$t_orig' => $t_orig,
-			'$summary' => ['summary', L10n::t('Title:'), $t_orig, '', '*'],
-			'$sh_text' => L10n::t('Share this event'),
-			'$share' => ['share', L10n::t('Share this event'), $sh_checked, '', $sh_disabled],
-			'$sh_checked' => $sh_checked,
-			'$nofinish' => ['nofinish', L10n::t('Finish date/time is not known or not relevant'), $n_checked],
-			'$adjust' => ['adjust', L10n::t('Adjust for viewer timezone'), $a_checked],
-			'$preview' => L10n::t('Preview'),
+			'$summary' => ['summary', DI::l10n()->t('Title:'), $t_orig, '', '*'],
+			'$sh_text' => DI::l10n()->t('Share this event'),
+			'$share' => ['share', DI::l10n()->t('Share this event'), $share_checked, '', $share_disabled],
+			'$sh_checked' => $share_checked,
+			'$nofinish' => ['nofinish', DI::l10n()->t('Finish date/time is not known or not relevant'), $n_checked],
+			'$adjust' => ['adjust', DI::l10n()->t('Adjust for viewer timezone'), $a_checked],
+			'$preview' => DI::l10n()->t('Preview'),
 			'$acl' => $acl,
-			'$submit' => L10n::t('Submit'),
-			'$basic' => L10n::t('Basic'),
-			'$advanced' => L10n::t('Advanced'),
-			'$permissions' => L10n::t('Permissions'),
+			'$submit' => DI::l10n()->t('Submit'),
+			'$basic' => DI::l10n()->t('Basic'),
+			'$advanced' => DI::l10n()->t('Advanced'),
+			'$permissions' => DI::l10n()->t('Permissions'),
 		]);
 
 		return $o;
@@ -574,11 +583,11 @@ function events_content(App $a)
 		}
 
 		if (Item::exists(['id' => $ev[0]['itemid']])) {
-			notice(L10n::t('Failed to remove event') . EOL);
+			notice(DI::l10n()->t('Failed to remove event') . EOL);
 		} else {
-			info(L10n::t('Event removed') . EOL);
+			info(DI::l10n()->t('Event removed') . EOL);
 		}
 
-		$a->internalRedirect('events');
+		DI::baseUrl()->redirect('events');
 	}
 }

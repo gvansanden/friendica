@@ -1,22 +1,35 @@
 <?php
 /**
- * @file src/Protocol/OStatus.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Protocol;
 
 use DOMDocument;
 use DOMXPath;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Cache;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
-use Friendica\Core\Lock;
+use Friendica\Core\Cache\Duration;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\APContact;
 use Friendica\Model\Contact;
 use Friendica\Model\Conversation;
@@ -24,8 +37,6 @@ use Friendica\Model\GContact;
 use Friendica\Model\Item;
 use Friendica\Model\User;
 use Friendica\Network\Probe;
-use Friendica\Object\Image;
-use Friendica\Protocol\ActivityNamespace;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Images;
 use Friendica\Util\Network;
@@ -37,7 +48,7 @@ require_once 'mod/share.php';
 require_once 'include/api.php';
 
 /**
- * @brief This class contain functions for the OStatus protocol
+ * This class contain functions for the OStatus protocol
  */
 class OStatus
 {
@@ -45,7 +56,7 @@ class OStatus
 	private static $conv_list = [];
 
 	/**
-	 * @brief Fetches author data
+	 * Fetches author data
 	 *
 	 * @param DOMXPath $xpath     The xpath object
 	 * @param object   $context   The xml context of the author details
@@ -236,7 +247,7 @@ class OStatus
 			$gcid = GContact::update($contact);
 
 			GContact::link($gcid, $contact["uid"], $contact["id"]);
-		} elseif ($contact["network"] != Protocol::DFRN) {
+		} elseif (empty($contact["network"]) || ($contact["network"] != Protocol::DFRN)) {
 			$contact = [];
 		}
 
@@ -244,7 +255,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Fetches author data from a given XML string
+	 * Fetches author data from a given XML string
 	 *
 	 * @param string $xml      The XML
 	 * @param array  $importer user record of the importing user
@@ -281,7 +292,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Read attributes from element
+	 * Read attributes from element
 	 *
 	 * @param object $element Element object
 	 *
@@ -299,7 +310,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Imports an XML string containing OStatus elements
+	 * Imports an XML string containing OStatus elements
 	 *
 	 * @param string $xml      The XML
 	 * @param array  $importer user record of the importing user
@@ -315,7 +326,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Internal feed processing
+	 * Internal feed processing
 	 *
 	 * @param string  $xml        The XML
 	 * @param array   $importer   user record of the importing user
@@ -496,7 +507,7 @@ class OStatus
 
 					if (!$valid) {
 						// If not, then it depends on this setting
-						$valid = ((self::$itemlist[0]['uid'] == 0) || !PConfig::get(self::$itemlist[0]['uid'], 'system', 'accept_only_sharer', false));
+						$valid = ((self::$itemlist[0]['uid'] == 0) || !DI::pConfig()->get(self::$itemlist[0]['uid'], 'system', 'accept_only_sharer', false));
 						if ($valid) {
 							Logger::log("Item with uri ".self::$itemlist[0]['uri']." will be imported due to the system settings.", Logger::DEBUG);
 						}
@@ -541,9 +552,9 @@ class OStatus
 							Logger::log("Item with uri ".$item["uri"]." is from a blocked contact.", Logger::DEBUG);
 						} else {
 							// We are having duplicated entries. Hopefully this solves it.
-							if (Lock::acquire('ostatus_process_item_insert')) {
+							if (DI::lock()->acquire('ostatus_process_item_insert')) {
 								$ret = Item::insert($item);
-								Lock::release('ostatus_process_item_insert');
+								DI::lock()->release('ostatus_process_item_insert');
 								Logger::log("Item with uri ".$item["uri"]." for user ".$importer["uid"].' stored. Return value: '.$ret);
 							} else {
 								$ret = Item::insert($item);
@@ -574,13 +585,13 @@ class OStatus
 			return;
 		}
 
-		Item::delete($condition);
+		Item::markForDeletion($condition);
 
 		Logger::log('Deleted item with uri '.$item['uri'].' for user '.$item['uid']);
 	}
 
 	/**
-	 * @brief Processes the XML for a post
+	 * Processes the XML for a post
 	 *
 	 * @param DOMXPath $xpath    The xpath object
 	 * @param object   $entry    The xml entry that is processed
@@ -648,7 +659,7 @@ class OStatus
 							$item['tag'] = '';
 						}
 
-						$item['tag'] .= '#[url=' . System::baseUrl() . '/search?tag=' . $term . ']' . $term . '[/url]';
+						$item['tag'] .= '#[url=' . DI::baseUrl() . '/search?tag=' . $term . ']' . $term . '[/url]';
 					}
 				}
 			}
@@ -729,7 +740,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Fetch the conversation for posts
+	 * Fetch the conversation for posts
 	 *
 	 * @param string $conversation     The link to the conversation
 	 * @param string $conversation_uri The conversation in "uri" format
@@ -791,7 +802,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Store a feed in several conversation entries
+	 * Store a feed in several conversation entries
 	 *
 	 * @param string $xml              The feed
 	 * @param string $conversation     conversation
@@ -872,7 +883,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Fetch the own post so that it can be stored later
+	 * Fetch the own post so that it can be stored later
 	 *
 	 * We want to store the original data for later processing.
 	 * This function is meant for cases where we process a feed with multiple entries.
@@ -911,7 +922,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Fetch related posts and processes them
+	 * Fetch related posts and processes them
 	 *
 	 * @param string $related     The link to the related item
 	 * @param string $related_uri The related item in "uri" format
@@ -1020,7 +1031,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Processes the XML for a repeated post
+	 * Processes the XML for a repeated post
 	 *
 	 * @param DOMXPath $xpath    The xpath object
 	 * @param object   $entry    The xml entry that is processed
@@ -1089,7 +1100,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Processes links in the XML
+	 * Processes links in the XML
 	 *
 	 * @param object $links The xml data that contain links
 	 * @param array  $item  The item array
@@ -1159,7 +1170,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Create an url out of an uri
+	 * Create an url out of an uri
 	 *
 	 * @param string $href URI in the format "parameter1:parameter1:..."
 	 *
@@ -1191,7 +1202,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Checks if the current post is a reshare
+	 * Checks if the current post is a reshare
 	 *
 	 * @param array $item The item array of thw post
 	 *
@@ -1208,7 +1219,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Cleans the body of a post if it contains picture links
+	 * Cleans the body of a post if it contains picture links
 	 *
 	 * @param string $body The body
 	 *
@@ -1246,7 +1257,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds the header elements to the XML document
+	 * Adds the header elements to the XML document
 	 *
 	 * @param DOMDocument $doc       XML document
 	 * @param array       $owner     Contact data of the poster
@@ -1274,14 +1285,14 @@ class OStatus
 		$selfUri = '/feed/' . $owner["nick"] . '/';
 		switch ($filter) {
 			case 'activity':
-				$title = L10n::t('%s\'s timeline', $owner['name']);
+				$title = DI::l10n()->t('%s\'s timeline', $owner['name']);
 				$selfUri .= $filter;
 				break;
 			case 'posts':
-				$title = L10n::t('%s\'s posts', $owner['name']);
+				$title = DI::l10n()->t('%s\'s posts', $owner['name']);
 				break;
 			case 'comments':
-				$title = L10n::t('%s\'s comments', $owner['name']);
+				$title = DI::l10n()->t('%s\'s comments', $owner['name']);
 				$selfUri .= $filter;
 				break;
 		}
@@ -1292,9 +1303,9 @@ class OStatus
 
 		$attributes = ["uri" => "https://friendi.ca", "version" => FRIENDICA_VERSION . "-" . DB_UPDATE_VERSION];
 		XML::addElement($doc, $root, "generator", FRIENDICA_PLATFORM, $attributes);
-		XML::addElement($doc, $root, "id", System::baseUrl() . "/profile/" . $owner["nick"]);
+		XML::addElement($doc, $root, "id", DI::baseUrl() . "/profile/" . $owner["nick"]);
 		XML::addElement($doc, $root, "title", $title);
-		XML::addElement($doc, $root, "subtitle", sprintf("Updates from %s on %s", $owner["name"], Config::get('config', 'sitename')));
+		XML::addElement($doc, $root, "subtitle", sprintf("Updates from %s on %s", $owner["name"], DI::config()->get('config', 'sitename')));
 		XML::addElement($doc, $root, "logo", $owner["photo"]);
 		XML::addElement($doc, $root, "updated", DateTimeFormat::utcNow(DateTimeFormat::ATOM));
 
@@ -1305,23 +1316,23 @@ class OStatus
 		XML::addElement($doc, $root, "link", "", $attributes);
 
 		/// @TODO We have to find out what this is
-		/// $attributes = array("href" => System::baseUrl()."/sup",
+		/// $attributes = array("href" => DI::baseUrl()."/sup",
 		///		"rel" => "http://api.friendfeed.com/2008/03#sup",
 		///		"type" => "application/json");
 		/// XML::addElement($doc, $root, "link", "", $attributes);
 
 		self::hublinks($doc, $root, $owner["nick"]);
 
-		$attributes = ["href" => System::baseUrl() . "/salmon/" . $owner["nick"], "rel" => "salmon"];
+		$attributes = ["href" => DI::baseUrl() . "/salmon/" . $owner["nick"], "rel" => "salmon"];
 		XML::addElement($doc, $root, "link", "", $attributes);
 
-		$attributes = ["href" => System::baseUrl() . "/salmon/" . $owner["nick"], "rel" => "http://salmon-protocol.org/ns/salmon-replies"];
+		$attributes = ["href" => DI::baseUrl() . "/salmon/" . $owner["nick"], "rel" => "http://salmon-protocol.org/ns/salmon-replies"];
 		XML::addElement($doc, $root, "link", "", $attributes);
 
-		$attributes = ["href" => System::baseUrl() . "/salmon/" . $owner["nick"], "rel" => "http://salmon-protocol.org/ns/salmon-mention"];
+		$attributes = ["href" => DI::baseUrl() . "/salmon/" . $owner["nick"], "rel" => "http://salmon-protocol.org/ns/salmon-mention"];
 		XML::addElement($doc, $root, "link", "", $attributes);
 
-		$attributes = ["href" => System::baseUrl() . $selfUri, "rel" => "self", "type" => "application/atom+xml"];
+		$attributes = ["href" => DI::baseUrl() . $selfUri, "rel" => "self", "type" => "application/atom+xml"];
 		XML::addElement($doc, $root, "link", "", $attributes);
 
 		if ($owner['account-type'] == Contact::TYPE_COMMUNITY) {
@@ -1335,7 +1346,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Add the link to the push hubs to the XML document
+	 * Add the link to the push hubs to the XML document
 	 *
 	 * @param DOMDocument $doc  XML document
 	 * @param object      $root XML root element where the hub links are added
@@ -1345,12 +1356,12 @@ class OStatus
 	 */
 	public static function hublinks(DOMDocument $doc, $root, $nick)
 	{
-		$h = System::baseUrl() . '/pubsubhubbub/'.$nick;
+		$h = DI::baseUrl() . '/pubsubhubbub/'.$nick;
 		XML::addElement($doc, $root, "link", "", ["href" => $h, "rel" => "hub"]);
 	}
 
 	/**
-	 * @brief Adds attachment data to the XML document
+	 * Adds attachment data to the XML document
 	 *
 	 * @param DOMDocument $doc  XML document
 	 * @param object      $root XML root element where the hub links are added
@@ -1388,7 +1399,7 @@ class OStatus
 				break;
 		}
 
-		if (!Config::get('system', 'ostatus_not_attach_preview') && ($siteinfo["type"] != "photo") && isset($siteinfo["image"])) {
+		if (!DI::config()->get('system', 'ostatus_not_attach_preview') && ($siteinfo["type"] != "photo") && isset($siteinfo["image"])) {
 			$imgdata = Images::getInfoFromURLCached($siteinfo["image"]);
 			if ($imgdata) {
 				$attributes = ["rel" => "enclosure",
@@ -1423,7 +1434,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds the author element to the XML document
+	 * Adds the author element to the XML document
 	 *
 	 * @param DOMDocument $doc          XML document
 	 * @param array       $owner        Contact data of the poster
@@ -1434,7 +1445,7 @@ class OStatus
 	 */
 	private static function addAuthor(DOMDocument $doc, array $owner, $show_profile = true)
 	{
-		$profile = DBA::selectFirst('profile', ['homepage', 'publish'], ['uid' => $owner['uid'], 'is-default' => true]);
+		$profile = DBA::selectFirst('profile', ['homepage', 'publish'], ['uid' => $owner['uid']]);
 		$author = $doc->createElement("author");
 		XML::addElement($doc, $author, "id", $owner["url"]);
 		if ($owner['account-type'] == User::ACCOUNT_TYPE_COMMUNITY) {
@@ -1491,7 +1502,7 @@ class OStatus
 				$author->appendChild($urls);
 			}
 
-			XML::addElement($doc, $author, "followers", "", ["url" => System::baseUrl() . "/profile/" . $owner["nick"] . "/contacts/followers"]);
+			XML::addElement($doc, $author, "followers", "", ["url" => DI::baseUrl() . "/profile/" . $owner["nick"] . "/contacts/followers"]);
 			XML::addElement($doc, $author, "statusnet:profile_info", "", ["local_id" => $owner["uid"]]);
 
 			if ($profile["publish"]) {
@@ -1509,7 +1520,7 @@ class OStatus
 	 */
 
 	/**
-	 * @brief Returns the given activity if present - otherwise returns the "post" activity
+	 * Returns the given activity if present - otherwise returns the "post" activity
 	 *
 	 * @param array $item Data of the item that is to be posted
 	 *
@@ -1525,7 +1536,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Returns the given object type if present - otherwise returns the "note" object type
+	 * Returns the given object type if present - otherwise returns the "note" object type
 	 *
 	 * @param array $item Data of the item that is to be posted
 	 *
@@ -1541,7 +1552,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds an entry element to the XML document
+	 * Adds an entry element to the XML document
 	 *
 	 * @param DOMDocument $doc       XML document
 	 * @param array       $item      Data of the item that is to be posted
@@ -1576,7 +1587,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds a source entry to the XML document
+	 * Adds a source entry to the XML document
 	 *
 	 * @param DOMDocument $doc     XML document
 	 * @param array       $contact Array of the contact that is added
@@ -1598,7 +1609,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Fetches contact data from the contact or the gcontact table
+	 * Fetches contact data from the contact or the gcontact table
 	 *
 	 * @param string $url   URL of the contact
 	 * @param array  $owner Contact data of the poster
@@ -1651,7 +1662,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds an entry element with reshared content
+	 * Adds an entry element with reshared content
 	 *
 	 * @param DOMDocument $doc           XML document
 	 * @param array       $item          Data of the item that is to be posted
@@ -1671,7 +1682,7 @@ class OStatus
 
 		$entry = self::entryHeader($doc, $owner, $item, $toplevel);
 
-		$condition = ['uid' => $owner["uid"], 'guid' => $repeated_guid, 'private' => false,
+		$condition = ['uid' => $owner["uid"], 'guid' => $repeated_guid, 'private' => [Item::PUBLIC, Item::UNLISTED],
 			'network' => [Protocol::DFRN, Protocol::DIASPORA, Protocol::OSTATUS]];
 		$repeated_item = Item::selectFirst([], $condition);
 		if (!DBA::isResult($repeated_item)) {
@@ -1717,7 +1728,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds an entry element with a "like"
+	 * Adds an entry element with a "like"
 	 *
 	 * @param DOMDocument $doc      XML document
 	 * @param array       $item     Data of the item that is to be posted
@@ -1756,7 +1767,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds the person object element to the XML document
+	 * Adds the person object element to the XML document
 	 *
 	 * @param DOMDocument $doc     XML document
 	 * @param array       $owner   Contact data of the poster
@@ -1801,7 +1812,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds a follow/unfollow entry element
+	 * Adds a follow/unfollow entry element
 	 *
 	 * @param DOMDocument $doc      XML document
 	 * @param array       $item     Data of the follow/unfollow message
@@ -1816,7 +1827,7 @@ class OStatus
 	{
 		$item["id"] = $item["parent"] = 0;
 		$item["created"] = $item["edited"] = date("c");
-		$item["private"] = true;
+		$item["private"] = Item::PRIVATE;
 
 		$contact = Probe::uri($item['follow']);
 
@@ -1836,17 +1847,17 @@ class OStatus
 		}
 
 		if ($item['verb'] == Activity::FOLLOW) {
-			$message = L10n::t('%s is now following %s.');
-			$title = L10n::t('following');
+			$message = DI::l10n()->t('%s is now following %s.');
+			$title = DI::l10n()->t('following');
 			$action = "subscription";
 		} else {
-			$message = L10n::t('%s stopped following %s.');
-			$title = L10n::t('stopped following');
+			$message = DI::l10n()->t('%s stopped following %s.');
+			$title = DI::l10n()->t('stopped following');
 			$action = "unfollow";
 		}
 
 		$item["uri"] = $item['parent-uri'] = $item['thr-parent']
-				= 'tag:'.get_app()->getHostName().
+				= 'tag:' . DI::baseUrl()->getHostname().
 				','.date('Y-m-d').':'.$action.':'.$owner['uid'].
 				':person:'.$connect_id.':'.$item['created'];
 
@@ -1865,7 +1876,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds a regular entry element
+	 * Adds a regular entry element
 	 *
 	 * @param DOMDocument $doc       XML document
 	 * @param array       $item      Data of the item that is to be posted
@@ -1905,7 +1916,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds a header element to the XML document
+	 * Adds a header element to the XML document
 	 *
 	 * @param DOMDocument $doc      XML document
 	 * @param array       $owner    Contact data of the poster
@@ -1946,7 +1957,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds elements to the XML document
+	 * Adds elements to the XML document
 	 *
 	 * @param DOMDocument $doc       XML document
 	 * @param \DOMElement $entry     Entry element where the content is added
@@ -1979,7 +1990,7 @@ class OStatus
 		XML::addElement($doc, $entry, "content", $body, ["type" => "html"]);
 
 		XML::addElement($doc, $entry, "link", "", ["rel" => "alternate", "type" => "text/html",
-								"href" => System::baseUrl()."/display/".$item["guid"]]
+								"href" => DI::baseUrl()."/display/".$item["guid"]]
 		);
 
 		if (!$feed_mode && $complete && ($item["id"] > 0)) {
@@ -1995,7 +2006,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Adds the elements at the foot of an entry to the XML document
+	 * Adds the elements at the foot of an entry to the XML document
 	 *
 	 * @param DOMDocument $doc       XML document
 	 * @param object      $entry     The entry element where the elements are added
@@ -2023,7 +2034,7 @@ class OStatus
 			} else {
 				$mentioned[$parent["author-link"]] = $parent["author-link"];
 				$mentioned[$parent["owner-link"]] = $parent["owner-link"];
-				$parent_plink = System::baseUrl()."/display/".$parent["guid"];
+				$parent_plink = DI::baseUrl()."/display/".$parent["guid"];
 			}
 
 			$attributes = [
@@ -2109,7 +2120,7 @@ class OStatus
 			]);
 		}
 
-		if (!$item["private"] && !$feed_mode) {
+		if (($item['private'] != Item::PRIVATE) && !$feed_mode) {
 			XML::addElement($doc, $entry, "link", "", ["rel" => "ostatus:attention",
 									"href" => "http://activityschema.org/collection/public"]);
 			XML::addElement($doc, $entry, "link", "", ["rel" => "mentioned",
@@ -2159,8 +2170,6 @@ class OStatus
 	 * Updates the provided last_update parameter if the result comes from the
 	 * cache or it is empty
 	 *
-	 * @brief Creates the XML feed for a given nickname
-	 *
 	 * @param string  $owner_nick  Nickname of the feed owner
 	 * @param string  $last_update Date of the last update
 	 * @param integer $max_items   Number of maximum items to fetch
@@ -2187,7 +2196,7 @@ class OStatus
 
 		// Don't cache when the last item was posted less then 15 minutes ago (Cache duration)
 		if ((time() - strtotime($owner['last-item'])) < 15*60) {
-			$result = Cache::get($cachekey);
+			$result = DI::cache()->get($cachekey);
 			if (!$nocache && !is_null($result)) {
 				Logger::log('Feed duration: ' . number_format(microtime(true) - $stamp, 3) . ' - ' . $owner_nick . ' - ' . $filter . ' - ' . $previous_created . ' (cached)', Logger::DEBUG);
 				$last_update = $result['last_update'];
@@ -2203,8 +2212,8 @@ class OStatus
 		$authorid = Contact::getIdForURL($owner["url"], 0, true);
 
 		$condition = ["`uid` = ? AND `received` > ? AND NOT `deleted`
-			AND NOT `private` AND `visible` AND `wall` AND `parent-network` IN (?, ?)",
-			$owner["uid"], $check_date, Protocol::OSTATUS, Protocol::DFRN];
+			AND `private` != ? AND `visible` AND `wall` AND `parent-network` IN (?, ?)",
+			$owner["uid"], $check_date, Item::PRIVATE, Protocol::OSTATUS, Protocol::DFRN];
 
 		if ($filter === 'comments') {
 			$condition[0] .= " AND `object-type` = ? ";
@@ -2233,7 +2242,7 @@ class OStatus
 		$root = self::addHeader($doc, $owner, $filter, $feed_mode);
 
 		foreach ($items as $item) {
-			if (Config::get('system', 'ostatus_debug')) {
+			if (DI::config()->get('system', 'ostatus_debug')) {
 				$item['body'] .= '🍼';
 			}
 
@@ -2248,7 +2257,7 @@ class OStatus
 		$feeddata = trim($doc->saveXML());
 
 		$msg = ['feed' => $feeddata, 'last_update' => $last_update];
-		Cache::set($cachekey, $msg, Cache::QUARTER_HOUR);
+		DI::cache()->set($cachekey, $msg, Duration::QUARTER_HOUR);
 
 		Logger::log('Feed duration: ' . number_format(microtime(true) - $stamp, 3) . ' - ' . $owner_nick . ' - ' . $filter . ' - ' . $previous_created, Logger::DEBUG);
 
@@ -2256,7 +2265,7 @@ class OStatus
 	}
 
 	/**
-	 * @brief Creates the XML for a salmon message
+	 * Creates the XML for a salmon message
 	 *
 	 * @param array $item  Data of the item that is to be posted
 	 * @param array $owner Contact data of the poster
@@ -2270,7 +2279,7 @@ class OStatus
 		$doc = new DOMDocument('1.0', 'utf-8');
 		$doc->formatOutput = true;
 
-		if (Config::get('system', 'ostatus_debug')) {
+		if (DI::config()->get('system', 'ostatus_debug')) {
 			$item['body'] .= '🐟';
 		}
 

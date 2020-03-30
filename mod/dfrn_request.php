@@ -1,11 +1,23 @@
 <?php
-
 /**
- * @file mod/dfrn_request.php
- * @brief Module: dfrn_request
+ * @copyright Copyright (C) 2020, Friendica
  *
- * Purpose: Handles communication associated with the issuance of
- * friend requests.
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ *Handles communication associated with the issuance of friend requests.
  *
  * @see PDF with dfrn specs: https://github.com/friendica/friendica/blob/master/spec/dfrn2.pdf
  *    You also find a graphic which describes the confirmation process at
@@ -13,19 +25,20 @@
  */
 
 use Friendica\App;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
+use Friendica\Core\Search;
 use Friendica\Core\System;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Group;
+use Friendica\Model\Notify\Type;
 use Friendica\Model\Profile;
 use Friendica\Model\User;
-use Friendica\Module\Login;
+use Friendica\Module\Security\Login;
 use Friendica\Network\Probe;
 use Friendica\Protocol\Activity;
 use Friendica\Util\DateTimeFormat;
@@ -62,13 +75,13 @@ function dfrn_request_init(App $a)
  */
 function dfrn_request_post(App $a)
 {
-	if (($a->argc != 2) || (!count($a->profile))) {
-		Logger::log('Wrong count of argc or profiles: argc=' . $a->argc . ',profile()=' . count($a->profile));
+	if ($a->argc != 2 || empty($a->profile)) {
+		Logger::log('Wrong count of argc or profiles: argc=' . $a->argc . ', profile()=' . count($a->profile ?? []));
 		return;
 	}
 
 	if (!empty($_POST['cancel'])) {
-		$a->internalRedirect();
+		DI::baseUrl()->redirect();
 	}
 
 	/*
@@ -97,7 +110,7 @@ function dfrn_request_post(App $a)
 				if (DBA::isResult($r)) {
 					if (strlen($r[0]['dfrn-id'])) {
 						// We don't need to be here. It has already happened.
-						notice(L10n::t("This introduction has already been accepted.") . EOL);
+						notice(DI::l10n()->t("This introduction has already been accepted.") . EOL);
 						return;
 					} else {
 						$contact_record = $r[0];
@@ -115,18 +128,18 @@ function dfrn_request_post(App $a)
 					$parms = Probe::profile($dfrn_url);
 
 					if (!count($parms)) {
-						notice(L10n::t('Profile location is not valid or does not contain profile information.') . EOL);
+						notice(DI::l10n()->t('Profile location is not valid or does not contain profile information.') . EOL);
 						return;
 					} else {
 						if (empty($parms['fn'])) {
-							notice(L10n::t('Warning: profile location has no identifiable owner name.') . EOL);
+							notice(DI::l10n()->t('Warning: profile location has no identifiable owner name.') . EOL);
 						}
 						if (empty($parms['photo'])) {
-							notice(L10n::t('Warning: profile location has no profile photo.') . EOL);
+							notice(DI::l10n()->t('Warning: profile location has no profile photo.') . EOL);
 						}
 						$invalid = Probe::validDfrn($parms);
 						if ($invalid) {
-							notice(L10n::tt("%d required parameter was not found at the given location", "%d required parameters were not found at the given location", $invalid) . EOL);
+							notice(DI::l10n()->tt("%d required parameter was not found at the given location", "%d required parameters were not found at the given location", $invalid) . EOL);
 							return;
 						}
 					}
@@ -164,7 +177,7 @@ function dfrn_request_post(App $a)
 				}
 
 				if ($r) {
-					info(L10n::t("Introduction complete.") . EOL);
+					info(DI::l10n()->t("Introduction complete.") . EOL);
 				}
 
 				$r = q("SELECT `id`, `network` FROM `contact` WHERE `uid` = %d AND `url` = '%s' AND `site-pubkey` = '%s' LIMIT 1",
@@ -194,14 +207,14 @@ function dfrn_request_post(App $a)
 				}
 
 				// (ignore reply, nothing we can do it failed)
-				$a->internalRedirect($forward_path);
+				DI::baseUrl()->redirect($forward_path);
 				return; // NOTREACHED
 			}
 		}
 
 		// invalid/bogus request
-		notice(L10n::t('Unrecoverable protocol error.') . EOL);
-		$a->internalRedirect();
+		notice(DI::l10n()->t('Unrecoverable protocol error.') . EOL);
+		DI::baseUrl()->redirect();
 		return; // NOTREACHED
 	}
 
@@ -226,8 +239,8 @@ function dfrn_request_post(App $a)
 	 * in $a->argv[1] and we should have their complete info in $a->profile.
 	 *
 	 */
-	if (!(is_array($a->profile) && count($a->profile))) {
-		notice(L10n::t('Profile unavailable.') . EOL);
+	if (empty($a->profile['uid'])) {
+		notice(DI::l10n()->t('Profile unavailable.') . EOL);
 		return;
 	}
 
@@ -248,9 +261,9 @@ function dfrn_request_post(App $a)
 				intval($uid)
 			);
 			if (DBA::isResult($r) && count($r) > $maxreq) {
-				notice(L10n::t('%s has received too many connection requests today.', $a->profile['name']) . EOL);
-				notice(L10n::t('Spam protection measures have been invoked.') . EOL);
-				notice(L10n::t('Friends are advised to please try again in 24 hours.') . EOL);
+				notice(DI::l10n()->t('%s has received too many connection requests today.', $a->profile['name']) . EOL);
+				notice(DI::l10n()->t('Spam protection measures have been invoked.') . EOL);
+				notice(DI::l10n()->t('Friends are advised to please try again in 24 hours.') . EOL);
 				return;
 			}
 		}
@@ -274,7 +287,7 @@ function dfrn_request_post(App $a)
 
 		$url = trim($_POST['dfrn_url']);
 		if (!strlen($url)) {
-			notice(L10n::t("Invalid locator") . EOL);
+			notice(DI::l10n()->t("Invalid locator") . EOL);
 			return;
 		}
 
@@ -310,10 +323,10 @@ function dfrn_request_post(App $a)
 
 			if (DBA::isResult($ret)) {
 				if (strlen($ret[0]['issued-id'])) {
-					notice(L10n::t('You have already introduced yourself here.') . EOL);
+					notice(DI::l10n()->t('You have already introduced yourself here.') . EOL);
 					return;
 				} elseif ($ret[0]['rel'] == Contact::FRIEND) {
-					notice(L10n::t('Apparently you are already friends with %s.', $a->profile['name']) . EOL);
+					notice(DI::l10n()->t('Apparently you are already friends with %s.', $a->profile['name']) . EOL);
 					return;
 				} else {
 					$contact_record = $ret[0];
@@ -333,38 +346,38 @@ function dfrn_request_post(App $a)
 			} else {
 				$url = Network::isUrlValid($url);
 				if (!$url) {
-					notice(L10n::t('Invalid profile URL.') . EOL);
-					$a->internalRedirect($a->cmd);
+					notice(DI::l10n()->t('Invalid profile URL.') . EOL);
+					DI::baseUrl()->redirect(DI::args()->getCommand());
 					return; // NOTREACHED
 				}
 
 				if (!Network::isUrlAllowed($url)) {
-					notice(L10n::t('Disallowed profile URL.') . EOL);
-					$a->internalRedirect($a->cmd);
+					notice(DI::l10n()->t('Disallowed profile URL.') . EOL);
+					DI::baseUrl()->redirect(DI::args()->getCommand());
 					return; // NOTREACHED
 				}
 
 				if (Network::isUrlBlocked($url)) {
-					notice(L10n::t('Blocked domain') . EOL);
-					$a->internalRedirect($a->cmd);
+					notice(DI::l10n()->t('Blocked domain') . EOL);
+					DI::baseUrl()->redirect(DI::args()->getCommand());
 					return; // NOTREACHED
 				}
 
 				$parms = Probe::profile(($hcard) ? $hcard : $url);
 
 				if (!count($parms)) {
-					notice(L10n::t('Profile location is not valid or does not contain profile information.') . EOL);
-					$a->internalRedirect($a->cmd);
+					notice(DI::l10n()->t('Profile location is not valid or does not contain profile information.') . EOL);
+					DI::baseUrl()->redirect(DI::args()->getCommand());
 				} else {
 					if (empty($parms['fn'])) {
-						notice(L10n::t('Warning: profile location has no identifiable owner name.') . EOL);
+						notice(DI::l10n()->t('Warning: profile location has no identifiable owner name.') . EOL);
 					}
 					if (empty($parms['photo'])) {
-						notice(L10n::t('Warning: profile location has no profile photo.') . EOL);
+						notice(DI::l10n()->t('Warning: profile location has no profile photo.') . EOL);
 					}
 					$invalid = Probe::validDfrn($parms);
 					if ($invalid) {
-						notice(L10n::tt("%d required parameter was not found at the given location", "%d required parameters were not found at the given location", $invalid) . EOL);
+						notice(DI::l10n()->tt("%d required parameter was not found at the given location", "%d required parameters were not found at the given location", $invalid) . EOL);
 
 						return;
 					}
@@ -412,7 +425,7 @@ function dfrn_request_post(App $a)
 				}
 			}
 			if ($r === false) {
-				notice(L10n::t('Failed to update contact record.') . EOL);
+				notice(DI::l10n()->t('Failed to update contact record.') . EOL);
 				return;
 			}
 
@@ -432,11 +445,11 @@ function dfrn_request_post(App $a)
 
 			// This notice will only be seen by the requestor if the requestor and requestee are on the same server.
 			if (!$failed) {
-				info(L10n::t('Your introduction has been sent.') . EOL);
+				info(DI::l10n()->t('Your introduction has been sent.') . EOL);
 			}
 
 			// "Homecoming" - send the requestor back to their site to record the introduction.
-			$dfrn_url = bin2hex($a->getBaseURL() . '/profile/' . $nickname);
+			$dfrn_url = bin2hex(DI::baseUrl()->get() . '/profile/' . $nickname);
 			$aes_allow = ((function_exists('openssl_encrypt')) ? 1 : 0);
 
 			System::externalRedirect($parms['dfrn-request'] . "?dfrn_url=$dfrn_url"
@@ -454,15 +467,9 @@ function dfrn_request_post(App $a)
 			// Diaspora needs the uri in the format user@domain.tld
 			// Diaspora will support the remote subscription in a future version
 			if ($network == Protocol::DIASPORA) {
-				$uri = $nickname . '@' . $a->getHostName();
-
-				if ($a->getURLPath()) {
-					$uri .= '/' . $a->getURLPath();
-				}
-
-				$uri = urlencode($uri);
+				$uri = urlencode($a->profile['addr']);
 			} else {
-				$uri = 'profile/' . $nickname;
+				$uri = urlencode($a->profile['url']);
 			}
 
 			$url = str_replace('{uri}', $uri, $url);
@@ -470,7 +477,7 @@ function dfrn_request_post(App $a)
 			// NOTREACHED
 			// END $network != Protocol::PHANTOM
 		} else {
-			notice(L10n::t("Remote subscription can't be done for your network. Please subscribe directly on your system.") . EOL);
+			notice(DI::l10n()->t("Remote subscription can't be done for your network. Please subscribe directly on your system.") . EOL);
 			return;
 		}
 	} return;
@@ -486,7 +493,7 @@ function dfrn_request_content(App $a)
 	// to send us to the post section to record the introduction.
 	if (!empty($_GET['dfrn_url'])) {
 		if (!local_user()) {
-			info(L10n::t("Please login to confirm introduction.") . EOL);
+			info(DI::l10n()->t("Please login to confirm introduction.") . EOL);
 			/* setup the return URL to come back to this page if they use openid */
 			return Login::form();
 		}
@@ -494,7 +501,7 @@ function dfrn_request_content(App $a)
 		// Edge case, but can easily happen in the wild. This person is authenticated,
 		// but not as the person who needs to deal with this request.
 		if ($a->user['nickname'] != $a->argv[1]) {
-			notice(L10n::t("Incorrect identity currently logged in. Please login to <strong>this</strong> profile.") . EOL);
+			notice(DI::l10n()->t("Incorrect identity currently logged in. Please login to <strong>this</strong> profile.") . EOL);
 			return Login::form();
 		}
 
@@ -508,7 +515,7 @@ function dfrn_request_content(App $a)
 			$_POST["confirm_key"] = $confirm_key;
 			$_POST["localconfirm"] = 1;
 			$_POST["hidden-contact"] = 0;
-			$_POST["submit"] = L10n::t('Confirm');
+			$_POST["submit"] = DI::l10n()->t('Confirm');
 
 			dfrn_request_post($a);
 
@@ -519,11 +526,11 @@ function dfrn_request_content(App $a)
 		$o = Renderer::replaceMacros($tpl, [
 			'$dfrn_url' => $dfrn_url,
 			'$aes_allow' => (($aes_allow) ? '<input type="hidden" name="aes_allow" value="1" />' : "" ),
-			'$hidethem' => L10n::t('Hide this contact'),
+			'$hidethem' => DI::l10n()->t('Hide this contact'),
 			'$confirm_key' => $confirm_key,
-			'$welcome' => L10n::t('Welcome home %s.', $a->user['username']),
-			'$please' => L10n::t('Please confirm your introduction/connection request to %s.', $dfrn_url),
-			'$submit' => L10n::t('Confirm'),
+			'$welcome' => DI::l10n()->t('Welcome home %s.', $a->user['username']),
+			'$please' => DI::l10n()->t('Please confirm your introduction/connection request to %s.', $dfrn_url),
+			'$submit' => DI::l10n()->t('Confirm'),
 			'$uid' => $_SESSION['uid'],
 			'$nickname' => $a->user['nickname'],
 			'dfrn_rawurl' => $_GET['dfrn_url']
@@ -552,14 +559,14 @@ function dfrn_request_content(App $a)
 
 				if (!$auto_confirm) {
 					notification([
-						'type'         => NOTIFY_INTRO,
+						'type'         => Type::INTRO,
 						'notify_flags' => $r[0]['notify-flags'],
 						'language'     => $r[0]['language'],
 						'to_name'      => $r[0]['username'],
 						'to_email'     => $r[0]['email'],
 						'uid'          => $r[0]['uid'],
-						'link'         => System::baseUrl() . '/notifications/intros',
-						'source_name'  => ((strlen(stripslashes($r[0]['name']))) ? stripslashes($r[0]['name']) : L10n::t('[Name Withheld]')),
+						'link'         => DI::baseUrl() . '/notifications/intros',
+						'source_name'  => ((strlen(stripslashes($r[0]['name']))) ? stripslashes($r[0]['name']) : DI::l10n()->t('[Name Withheld]')),
 						'source_link'  => $r[0]['url'],
 						'source_photo' => $r[0]['photo'],
 						'verb'         => Activity::REQ_FRIEND,
@@ -594,9 +601,9 @@ function dfrn_request_content(App $a)
 		exit();
 	} else {
 		// Normal web request. Display our user's introduction form.
-		if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
-			if (!Config::get('system', 'local_block')) {
-				notice(L10n::t('Public access denied.') . EOL);
+		if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
+			if (!DI::config()->get('system', 'local_block')) {
+				notice(DI::l10n()->t('Public access denied.') . EOL);
 				return;
 			}
 		}
@@ -609,17 +616,17 @@ function dfrn_request_content(App $a)
 		} elseif (!empty($_GET['address'])) {
 			$myaddr = $_GET['address'];
 		} elseif (local_user()) {
-			if (strlen($a->getURLPath())) {
-				$myaddr = System::baseUrl() . '/profile/' . $a->user['nickname'];
+			if (strlen(DI::baseUrl()->getUrlPath())) {
+				$myaddr = DI::baseUrl() . '/profile/' . $a->user['nickname'];
 			} else {
-				$myaddr = $a->user['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+				$myaddr = $a->user['nickname'] . '@' . substr(DI::baseUrl(), strpos(DI::baseUrl(), '://') + 3);
 			}
 		} else {
 			// last, try a zrl
 			$myaddr = Profile::getMyURL();
 		}
 
-		$target_addr = $a->profile['nickname'] . '@' . substr(System::baseUrl(), strpos(System::baseUrl(), '://') + 3);
+		$target_addr = $a->profile['nickname'] . '@' . substr(DI::baseUrl(), strpos(DI::baseUrl(), '://') + 3);
 
 		/* The auto_request form only has the profile address
 		 * because nobody is going to read the comments and
@@ -631,28 +638,21 @@ function dfrn_request_content(App $a)
 			$tpl = Renderer::getMarkupTemplate('auto_request.tpl');
 		}
 
-		$page_desc = L10n::t("Please enter your 'Identity Address' from one of the following supported communications networks:");
-
-		$invite_desc = L10n::t('If you are not yet a member of the free social web, <a href="%s">follow this link to find a public Friendica site and join us today</a>.', get_server() . '/servers');
-
 		$o = Renderer::replaceMacros($tpl, [
-			'$header' => L10n::t('Friend/Connection Request'),
-			'$desc' => L10n::t('Examples: jojo@demo.friendica.com, http://demo.friendica.com/profile/jojo, testuser@gnusocial.de'),
-			'$pls_answer' => L10n::t('Please answer the following:'),
-			'$does_know_you' => ['knowyou', L10n::t('Does %s know you?', $a->profile['name']), false, '', [L10n::t('No'), L10n::t('Yes')]],
-			'$add_note' => L10n::t('Add a personal note:'),
-			'$page_desc' => $page_desc,
-			'$friendica' => L10n::t('Friendica'),
-			'$statusnet' => L10n::t("GNU Social \x28Pleroma, Mastodon\x29"),
-			'$diaspora' => L10n::t("Diaspora \x28Socialhome, Hubzilla\x29"),
-			'$diasnote' => L10n::t(' - please do not use this form.  Instead, enter %s into your Diaspora search bar.', $target_addr),
-			'$your_address' => L10n::t('Your Identity Address:'),
-			'$invite_desc' => $invite_desc,
-			'$submit' => L10n::t('Submit Request'),
-			'$cancel' => L10n::t('Cancel'),
-			'$nickname' => $a->argv[1],
-			'$name' => $a->profile['name'],
-			'$myaddr' => $myaddr
+			'$header'        => DI::l10n()->t('Friend/Connection Request'),
+			'$page_desc'     => DI::l10n()->t('Enter your Webfinger address (user@domain.tld) or profile URL here. If this isn\'t supported by your system (for example it doesn\'t work with Diaspora), you have to subscribe to <strong>%s</strong> directly on your system', $target_addr),
+			'$invite_desc'   => DI::l10n()->t('If you are not yet a member of the free social web, <a href="%s">follow this link to find a public Friendica node and join us today</a>.', Search::getGlobalDirectory() . '/servers'),
+			'$your_address'  => DI::l10n()->t('Your Webfinger address or profile URL:'),
+			'$pls_answer'    => DI::l10n()->t('Please answer the following:'),
+			'$submit'        => DI::l10n()->t('Submit Request'),
+			'$cancel'        => DI::l10n()->t('Cancel'),
+
+			'$request'       => 'dfrn_request/' . $a->argv[1],
+			'$name'          => $a->profile['name'],
+			'$myaddr'        => $myaddr,
+
+			'$does_know_you' => ['knowyou', DI::l10n()->t('%s knows you', $a->profile['name'])],
+			'$addnote_field' => ['dfrn-request-message', DI::l10n()->t('Add a personal note:')],
 		]);
 		return $o;
 	}

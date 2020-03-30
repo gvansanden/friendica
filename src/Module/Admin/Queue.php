@@ -1,29 +1,48 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Admin;
 
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Database\DBA;
-use Friendica\Module\BaseAdminModule;
+use Friendica\DI;
+use Friendica\Module\BaseAdmin;
 use Friendica\Util\Arrays;
 use Friendica\Util\DateTimeFormat;
 
 /**
- * @brief Admin Inspect Queue Page
+ * Admin Inspect Queue Page
  *
  * Generates a page for the admin to have a look into the current queue of
  * worker jobs. Shown are the parameters for the job and its priority.
  *
  * @return string
  */
-class Queue extends BaseAdminModule
+class Queue extends BaseAdmin
 {
 	public static function content(array $parameters = [])
 	{
 		parent::content($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		// @TODO: Replace with parameter from router
 		$deferred = $a->argc > 2 && $a->argv[2] == 'deferred';
@@ -31,12 +50,12 @@ class Queue extends BaseAdminModule
 		// get jobs from the workerqueue table
 		if ($deferred) {
 			$condition = ["NOT `done` AND `retrial` > ?", 0];
-			$sub_title = L10n::t('Inspect Deferred Worker Queue');
-			$info = L10n::t("This page lists the deferred worker jobs. This are jobs that couldn't be executed at the first time.");
+			$sub_title = DI::l10n()->t('Inspect Deferred Worker Queue');
+			$info = DI::l10n()->t("This page lists the deferred worker jobs. This are jobs that couldn't be executed at the first time.");
 		} else {
 			$condition = ["NOT `done` AND `retrial` = ?", 0];
-			$sub_title = L10n::t('Inspect Worker Queue');
-			$info = L10n::t('This page lists the currently queued worker jobs. These jobs are handled by the worker cronjob you\'ve set up during install.');
+			$sub_title = DI::l10n()->t('Inspect Worker Queue');
+			$info = DI::l10n()->t('This page lists the currently queued worker jobs. These jobs are handled by the worker cronjob you\'ve set up during install.');
 		}
 
 		// @TODO Move to Model\WorkerQueue::getEntries()
@@ -53,13 +72,13 @@ class Queue extends BaseAdminModule
 
 		$t = Renderer::getMarkupTemplate('admin/queue.tpl');
 		return Renderer::replaceMacros($t, [
-			'$title' => L10n::t('Administration'),
+			'$title' => DI::l10n()->t('Administration'),
 			'$page' => $sub_title,
 			'$count' => count($r),
-			'$id_header' => L10n::t('ID'),
-			'$param_header' => L10n::t('Job Parameters'),
-			'$created_header' => L10n::t('Created'),
-			'$prio_header' => L10n::t('Priority'),
+			'$id_header' => DI::l10n()->t('ID'),
+			'$param_header' => DI::l10n()->t('Job Parameters'),
+			'$created_header' => DI::l10n()->t('Created'),
+			'$prio_header' => DI::l10n()->t('Priority'),
 			'$info' => $info,
 			'$entries' => $r,
 		]);

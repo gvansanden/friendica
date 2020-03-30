@@ -1,17 +1,34 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
-use Friendica\Core\Config\Cache\ConfigCache;
+use Friendica\Core\Config\Cache;
 use Friendica\Core\Update;
 use Friendica\Database\Database;
 use Friendica\Database\DBStructure;
 use RuntimeException;
 
 /**
- * @brief Performs database updates from the command line
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
+ * Performs database updates from the command line
  */
 class DatabaseStructure extends \Asika\SimpleConsole\Console
 {
@@ -22,7 +39,7 @@ class DatabaseStructure extends \Asika\SimpleConsole\Console
 	 */
 	private $dba;
 	/**
-	 * @var ConfigCache
+	 * @var Cache
 	 */
 	private $configCache;
 
@@ -48,7 +65,7 @@ HELP;
 		return $help;
 	}
 
-	public function __construct(Database $dba, ConfigCache $configCache, $argv = null)
+	public function __construct(Database $dba, Cache $configCache, $argv = null)
 	{
 		parent::__construct($argv);
 

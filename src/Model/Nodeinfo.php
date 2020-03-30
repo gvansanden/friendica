@@ -1,15 +1,34 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Model;
 
-use Friendica\BaseObject;
 use Friendica\Core\Addon;
 use Friendica\Database\DBA;
+use Friendica\DI;
 
 /**
  * Model interaction for the nodeinfo
  */
-class Nodeinfo extends BaseObject
+class Nodeinfo
 {
 	/**
 	 * Updates the info about the current node
@@ -18,27 +37,13 @@ class Nodeinfo extends BaseObject
 	 */
 	public static function update()
 	{
-		$app = self::getApp();
-		$config = $app->getConfig();
-		$logger = $app->getLogger();
+		$config = DI::config();
+		$logger = DI::logger();
 
 		// If the addon 'statistics_json' is enabled then disable it and activate nodeinfo.
 		if (Addon::isEnabled('statistics_json')) {
 			$config->set('system', 'nodeinfo', true);
-
-			$addon = 'statistics_json';
-			$addons = $config->get('system', 'addon');
-
-			if ($addons) {
-				$addons_arr = explode(',', str_replace(' ', '', $addons));
-
-				$idx = array_search($addon, $addons_arr);
-				if ($idx !== false) {
-					unset($addons_arr[$idx]);
-					Addon::uninstall($addon);
-					$config->set('system', 'addon', implode(', ', $addons_arr));
-				}
-			}
+			Addon::uninstall('statistics_json');
 		}
 
 		if (empty($config->get('system', 'nodeinfo'))) {
@@ -53,12 +58,15 @@ class Nodeinfo extends BaseObject
 
 		$logger->debug('user statistics', $userStats);
 
-		$local_posts = DBA::count('thread', ["`wall` AND NOT `deleted` AND `uid` != 0"]);
-		$config->set('nodeinfo', 'local_posts', $local_posts);
-		$logger->debug('thread statistics', ['local_posts' => $local_posts]);
-
-		$local_comments = DBA::count('item', ["`origin` AND `id` != `parent` AND NOT `deleted` AND `uid` != 0"]);
-		$config->set('nodeinfo', 'local_comments', $local_comments);
-		$logger->debug('item statistics', ['local_comments' => $local_comments]);
+		$items = DBA::p("SELECT COUNT(*) AS `total`, `gravity` FROM `item` WHERE `origin` AND NOT `deleted` AND `uid` != 0 AND `gravity` IN (?, ?) GROUP BY `gravity`",
+			GRAVITY_PARENT, GRAVITY_COMMENT);
+		while ($item = DBA::fetch($items)) {
+			if ($item['gravity'] == GRAVITY_PARENT) {
+				$config->set('nodeinfo', 'local_posts', $item['total']);
+			} elseif ($item['gravity'] == GRAVITY_COMMENT) {
+				$config->set('nodeinfo', 'local_comments', $item['total']);
+			}
+		}
+		DBA::close($items);
 	}
 }

@@ -1,17 +1,36 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Admin\Themes;
 
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Module\BaseAdminModule;
+use Friendica\DI;
+use Friendica\Module\BaseAdmin;
 use Friendica\Util\Strings;
 
-class Embed extends BaseAdminModule
+class Embed extends BaseAdmin
 {
 	public static function init(array $parameters = [])
 	{
-		$a = self::getApp();
+		$a = DI::app();
 
 		if ($a->argc > 2) {
 			// @TODO: Replace with parameter from router
@@ -27,7 +46,7 @@ class Embed extends BaseAdminModule
 	{
 		parent::post($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		if ($a->argc > 2) {
 			// @TODO: Replace with parameter from router
@@ -43,13 +62,13 @@ class Embed extends BaseAdminModule
 				}
 			}
 
-			info(L10n::t('Theme settings updated.'));
+			info(DI::l10n()->t('Theme settings updated.'));
 
-			if ($a->isAjax()) {
+			if (DI::mode()->isAjax()) {
 				return;
 			}
 
-			$a->internalRedirect('admin/themes/' . $theme . '/embed?mode=minimal');
+			DI::baseUrl()->redirect('admin/themes/' . $theme . '/embed?mode=minimal');
 		}
 	}
 
@@ -57,14 +76,14 @@ class Embed extends BaseAdminModule
 	{
 		parent::content($parameters);
 
-		$a = self::getApp();
+		$a = DI::app();
 
 		if ($a->argc > 2) {
 			// @TODO: Replace with parameter from router
 			$theme = $a->argv[2];
 			$theme = Strings::sanitizeFilePathItem($theme);
 			if (!is_dir("view/theme/$theme")) {
-				notice(L10n::t('Unknown theme.'));
+				notice(DI::l10n()->t('Unknown theme.'));
 				return '';
 			}
 

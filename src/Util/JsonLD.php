@@ -1,20 +1,38 @@
 <?php
 /**
- * @file src/Util/JsonLD.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Util;
 
-use Friendica\Core\Cache;
+use Friendica\Core\Cache\Duration;
 use Friendica\Core\Logger;
 use Exception;
+use Friendica\DI;
 
 /**
- * @brief This class contain methods to work with JsonLD data
+ * This class contain methods to work with JsonLD data
  */
 class JsonLD
 {
 	/**
-	 * @brief Loader for LD-JSON validation
+	 * Loader for LD-JSON validation
 	 *
 	 * @param $url
 	 *
@@ -39,18 +57,18 @@ class JsonLD
 			exit();
 		}
 
-		$result = Cache::get('documentLoader:' . $url);
+		$result = DI::cache()->get('documentLoader:' . $url);
 		if (!is_null($result)) {
 			return $result;
 		}
 
 		$data = jsonld_default_document_loader($url);
-		Cache::set('documentLoader:' . $url, $data, Cache::DAY);
+		DI::cache()->set('documentLoader:' . $url, $data, Duration::DAY);
 		return $data;
 	}
 
 	/**
-	 * @brief Normalises a given JSON array
+	 * Normalises a given JSON array
 	 *
 	 * @param array $json
 	 *
@@ -84,7 +102,7 @@ class JsonLD
 	}
 
 	/**
-	 * @brief Compacts a given JSON array
+	 * Compacts a given JSON array
 	 *
 	 * @param array $json
 	 *
@@ -104,7 +122,9 @@ class JsonLD
 			'ostatus' => (object)['@id' => 'http://ostatus.org#', '@type' => '@id'],
 			'dc' => (object)['@id' => 'http://purl.org/dc/terms/', '@type' => '@id'],
 			'toot' => (object)['@id' => 'http://joinmastodon.org/ns#', '@type' => '@id'],
-			'litepub' => (object)['@id' => 'http://litepub.social/ns#', '@type' => '@id']];
+			'litepub' => (object)['@id' => 'http://litepub.social/ns#', '@type' => '@id'],
+			'sc' => (object)['@id' => 'http://schema.org#', '@type' => '@id'],
+			'pt' => (object)['@id' => 'https://joinpeertube.org/ns#', '@type' => '@id']];
 
 		// Preparation for adding possibly missing content to the context
 		if (!empty($json['@context']) && is_string($json['@context'])) {
@@ -145,7 +165,7 @@ class JsonLD
 	}
 
 	/**
-	 * @brief Fetches an element array from a JSON array
+	 * Fetches an element array from a JSON array
 	 *
 	 * @param $array
 	 * @param $element
@@ -184,7 +204,7 @@ class JsonLD
 	}
 
 	/**
-	 * @brief Fetches an element from a JSON array
+	 * Fetches an element from a JSON array
 	 *
 	 * @param $array
 	 * @param $element

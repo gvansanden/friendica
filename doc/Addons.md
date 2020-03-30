@@ -104,7 +104,7 @@ function <addon>_install()
 
 function <addon>_head(App $a)
 {
-	$a->registerStylesheet(__DIR__ . '/relative/path/to/addon/stylesheet.css');
+	\Friendica\DI::page()->registerStylesheet(__DIR__ . '/relative/path/to/addon/stylesheet.css');
 }
 ```
 
@@ -126,7 +126,7 @@ function <addon>_install()
 
 function <addon>_footer(App $a)
 {
-	$a->registerFooterScript(__DIR__ . '/relative/path/to/addon/script.js');
+	\Friendica\DI::page()->registerFooterScript(__DIR__ . '/relative/path/to/addon/script.js');
 }
 ```
 
@@ -181,6 +181,8 @@ Put your tpl files in the *templates/* subfolder of your addon.
 In your code, like in the function addon_name_content(), load the template file and execute it passing needed values:
 
 ```php
+use Friendica\Core\Renderer;
+
 # load template file. first argument is the template name,
 # second is the addon path relative to friendica top folder
 $tpl = Renderer::getMarkupTemplate('mytemplate.tpl', __DIR__);
@@ -472,14 +474,14 @@ Here is a complete list of all hook callbacks with file locations (as of 24-Sep-
 
     Hook::callAll('init_1');
     Hook::callAll('app_menu', $arr);
-    Hook::callAll('page_content_top', $a->page['content']);
+    Hook::callAll('page_content_top', DI::page()['content']);
     Hook::callAll($a->module.'_mod_init', $placeholder);
     Hook::callAll($a->module.'_mod_init', $placeholder);
     Hook::callAll($a->module.'_mod_post', $_POST);
     Hook::callAll($a->module.'_mod_afterpost', $placeholder);
     Hook::callAll($a->module.'_mod_content', $arr);
     Hook::callAll($a->module.'_mod_aftercontent', $arr);
-    Hook::callAll('page_end', $a->page['content']);
+    Hook::callAll('page_end', DI::page()['content']);
 
 ### include/api.php
 
@@ -693,9 +695,6 @@ Here is a complete list of all hook callbacks with file locations (as of 24-Sep-
 ### src/Content/ContactSelector.php
 
     Hook::callAll('network_to_name', $nets);
-    Hook::callAll('gender_selector', $select);
-    Hook::callAll('sexpref_selector', $select);
-    Hook::callAll('marital_selector', $select);
 
 ### src/Content/OEmbed.php
 
@@ -703,8 +702,16 @@ Here is a complete list of all hook callbacks with file locations (as of 24-Sep-
 
 ### src/Content/Nav.php
 
-    Hook::callAll('page_header', $a->page['nav']);
+    Hook::callAll('page_header', DI::page()['nav']);
     Hook::callAll('nav_info', $nav);
+
+### src/Core/Authentication.php
+
+    Hook::callAll('logged_in', $a->user);
+    
+### src/Core/StorageManager
+
+    Hook::callAll('storage_instance', $data);
 
 ### src/Worker/Directory.php
 
@@ -716,7 +723,6 @@ Here is a complete list of all hook callbacks with file locations (as of 24-Sep-
 
 ### src/Module/Login.php
 
-    Hook::callAll('authenticate', $addon_auth);
     Hook::callAll('login_hook', $o);
 
 ### src/Module/Logout.php
@@ -740,6 +746,7 @@ Here is a complete list of all hook callbacks with file locations (as of 24-Sep-
 ### src/Core/Authentication.php
 
     Hook::callAll('logged_in', $a->user);
+    Hook::callAll('authenticate', $addon_auth);
 
 ### src/Core/Hook.php
 

@@ -1,7 +1,24 @@
 <?php
 /**
- * @file src/Protocol/ActivityPub.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Protocol;
 
 use Friendica\Util\JsonLD;
@@ -12,7 +29,8 @@ use Friendica\Model\User;
 use Friendica\Util\HTTPSignature;
 
 /**
- * @brief ActivityPub Protocol class
+ * ActivityPub Protocol class
+ *
  * The ActivityPub Protocol is a message exchange protocol defined by the W3C.
  * https://www.w3.org/TR/activitypub/
  * https://www.w3.org/TR/activitystreams-core/
@@ -173,7 +191,7 @@ class ActivityPub
 	 */
 	public static function fetchOutbox($url, $uid)
 	{
-		$data = self::fetchContent($url);
+		$data = self::fetchContent($url, $uid);
 		if (empty($data)) {
 			return;
 		}
@@ -193,6 +211,37 @@ class ActivityPub
 			$ldactivity = JsonLD::compact($activity);
 			ActivityPub\Receiver::processActivity($ldactivity, '', $uid, true);
 		}
+	}
+
+	/**
+	 * Fetch items from AP endpoints
+	 *
+	 * @param string $url  Address of the endpoint
+	 * @param integer $uid Optional user id
+	 * @return array Endpoint items
+	 */
+	public static function fetchItems(string $url, int $uid = 0)
+	{
+		$data = self::fetchContent($url, $uid);
+		if (empty($data)) {
+			return [];
+		}
+
+		if (!empty($data['orderedItems'])) {
+			$items = $data['orderedItems'];
+		} elseif (!empty($data['first']['orderedItems'])) {
+			$items = $data['first']['orderedItems'];
+		} elseif (!empty($data['first']) && is_string($data['first']) && ($data['first'] != $url)) {
+			return self::fetchItems($data['first'], $uid);
+		} else {
+			return [];
+		}
+
+		if (!empty($data['next']) && is_string($data['next'])) {
+			$items = array_merge($items, self::fetchItems($data['next'], $uid));
+		}
+
+		return $items;
 	}
 
 	/**

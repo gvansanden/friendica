@@ -1,20 +1,35 @@
 <?php
 /**
- * @file mod/wall_upload.php
- * @brief Module for uploading a picture to the profile wall
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Module for uploading a picture to the profile wall
  *
  * By default the picture will be stored in the photo album with the name Wall Photos.
  * You can specify a different album by adding an optional query string "album="
  * to the url
+ *
  */
 
 use Friendica\App;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\Session;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Photo;
 use Friendica\Model\User;
 use Friendica\Object\Image;
@@ -40,7 +55,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 
 			if (!DBA::isResult($r)) {
 				if ($r_json) {
-					echo json_encode(['error' => L10n::t('Invalid request.')]);
+					echo json_encode(['error' => DI::l10n()->t('Invalid request.')]);
 					exit();
 				}
 				return;
@@ -56,7 +71,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 		}
 	} else {
 		if ($r_json) {
-			echo json_encode(['error' => L10n::t('Invalid request.')]);
+			echo json_encode(['error' => DI::l10n()->t('Invalid request.')]);
 			exit();
 		}
 		return;
@@ -92,16 +107,16 @@ function wall_upload_post(App $a, $desktopmode = true)
 
 	if (!$can_post) {
 		if ($r_json) {
-			echo json_encode(['error' => L10n::t('Permission denied.')]);
+			echo json_encode(['error' => DI::l10n()->t('Permission denied.')]);
 			exit();
 		}
-		notice(L10n::t('Permission denied.') . EOL);
+		notice(DI::l10n()->t('Permission denied.') . EOL);
 		exit();
 	}
 
 	if (empty($_FILES['userfile']) && empty($_FILES['media'])) {
 		if ($r_json) {
-			echo json_encode(['error' => L10n::t('Invalid request.')]);
+			echo json_encode(['error' => DI::l10n()->t('Invalid request.')]);
 		}
 		exit();
 	}
@@ -152,10 +167,10 @@ function wall_upload_post(App $a, $desktopmode = true)
 
 	if ($src == "") {
 		if ($r_json) {
-			echo json_encode(['error' => L10n::t('Invalid request.')]);
+			echo json_encode(['error' => DI::l10n()->t('Invalid request.')]);
 			exit();
 		}
-		notice(L10n::t('Invalid request.').EOL);
+		notice(DI::l10n()->t('Invalid request.').EOL);
 		exit();
 	}
 
@@ -180,10 +195,10 @@ function wall_upload_post(App $a, $desktopmode = true)
 	Logger::log("File upload src: " . $src . " - filename: " . $filename .
 		" - size: " . $filesize . " - type: " . $filetype, Logger::DEBUG);
 
-	$maximagesize = Config::get('system', 'maximagesize');
+	$maximagesize = DI::config()->get('system', 'maximagesize');
 
 	if (($maximagesize) && ($filesize > $maximagesize)) {
-		$msg = L10n::t('Image exceeds size limit of %s', Strings::formatBytes($maximagesize));
+		$msg = DI::l10n()->t('Image exceeds size limit of %s', Strings::formatBytes($maximagesize));
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
@@ -197,7 +212,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 	$Image = new Image($imagedata, $filetype);
 
 	if (!$Image->isValid()) {
-		$msg = L10n::t('Unable to process image.');
+		$msg = DI::l10n()->t('Unable to process image.');
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
@@ -210,7 +225,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 	$Image->orient($src);
 	@unlink($src);
 
-	$max_length = Config::get('system', 'max_image_length');
+	$max_length = DI::config()->get('system', 'max_image_length');
 	if (!$max_length) {
 		$max_length = MAX_IMAGE_LENGTH;
 	}
@@ -228,7 +243,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 
 	// If we don't have an album name use the Wall Photos album
 	if (!strlen($album)) {
-		$album = L10n::t('Wall Photos');
+		$album = DI::l10n()->t('Wall Photos');
 	}
 
 	$defperm = '<' . $default_cid . '>';
@@ -236,7 +251,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 	$r = Photo::store($Image, $page_owner_uid, $visitor, $resource_id, $filename, $album, 0, 0, $defperm);
 
 	if (!$r) {
-		$msg = L10n::t('Image upload failed.');
+		$msg = DI::l10n()->t('Image upload failed.');
 		if ($r_json) {
 			echo json_encode(['error' => $msg]);
 		} else {
@@ -281,9 +296,9 @@ function wall_upload_post(App $a, $desktopmode = true)
 		$picture["width"]     = $r[0]["width"];
 		$picture["height"]    = $r[0]["height"];
 		$picture["type"]      = $r[0]["type"];
-		$picture["albumpage"] = System::baseUrl() . '/photos/' . $page_owner_nick . '/image/' . $resource_id;
-		$picture["picture"]   = System::baseUrl() . "/photo/{$resource_id}-0." . $Image->getExt();
-		$picture["preview"]   = System::baseUrl() . "/photo/{$resource_id}-{$smallest}." . $Image->getExt();
+		$picture["albumpage"] = DI::baseUrl() . '/photos/' . $page_owner_nick . '/image/' . $resource_id;
+		$picture["picture"]   = DI::baseUrl() . "/photo/{$resource_id}-0." . $Image->getExt();
+		$picture["preview"]   = DI::baseUrl() . "/photo/{$resource_id}-{$smallest}." . $Image->getExt();
 
 		if ($r_json) {
 			echo json_encode(['picture' => $picture]);
@@ -300,7 +315,7 @@ function wall_upload_post(App $a, $desktopmode = true)
 		exit();
 	}
 
-	echo  "\n\n" . '[url=' . System::baseUrl() . '/photos/' . $page_owner_nick . '/image/' . $resource_id . '][img]' . System::baseUrl() . "/photo/{$resource_id}-{$smallest}.".$Image->getExt()."[/img][/url]\n\n";
+	echo  "\n\n" . '[url=' . DI::baseUrl() . '/photos/' . $page_owner_nick . '/image/' . $resource_id . '][img]' . DI::baseUrl() . "/photo/{$resource_id}-{$smallest}.".$Image->getExt()."[/img][/url]\n\n";
 	exit();
 	// NOTREACHED
 }

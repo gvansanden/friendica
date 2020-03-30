@@ -1,32 +1,48 @@
 <?php
 /**
- * @file src/Core/Renderer.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Core;
 
 use Exception;
-use Friendica\BaseObject;
+use Friendica\DI;
 use Friendica\Render\FriendicaSmarty;
 use Friendica\Render\ITemplateEngine;
 
 /**
- * @brief This class handles Renderer related functions.
+ * This class handles Renderer related functions.
  */
-class Renderer extends BaseObject
+class Renderer
 {
 	/**
-	 * @brief An array of registered template engines ('name'=>'class name')
+	 * An array of registered template engines ('name'=>'class name')
 	 */
 	public static $template_engines = [];
 
 	/**
-	 * @brief An array of instanced template engines ('name'=>'instance')
+	 * An array of instanced template engines ('name'=>'instance')
 	 */
 	public static $template_engine_instance = [];
 
 	/**
-	 * @brief An array for all theme-controllable parameters
+	 * An array for all theme-controllable parameters
 	 *
 	 * Mostly unimplemented yet. Only options 'template_engine' and
 	 * beyond are used.
@@ -50,7 +66,7 @@ class Renderer extends BaseObject
 	];
 
 	/**
-	 * @brief This is our template processor
+	 * This is our template processor
 	 *
 	 * @param string|FriendicaSmarty $s    The string requiring macro substitution or an instance of FriendicaSmarty
 	 * @param array                  $vars Key value pairs (search => replace)
@@ -61,10 +77,9 @@ class Renderer extends BaseObject
 	public static function replaceMacros($s, array $vars = [])
 	{
 		$stamp1 = microtime(true);
-		$a = self::getApp();
 
 		// pass $baseurl to all templates if it isn't set
-		$vars = array_merge(['$baseurl' => $a->getBaseURL()], $vars);
+		$vars = array_merge(['$baseurl' => DI::baseUrl()->get()], $vars);
 
 		$t = self::getTemplateEngine();
 
@@ -75,13 +90,13 @@ class Renderer extends BaseObject
 			exit();
 		}
 
-		$a->getProfiler()->saveTimestamp($stamp1, "rendering", System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, "rendering", System::callstack());
 
 		return $output;
 	}
 
 	/**
-	 * @brief Load a given template $s
+	 * Load a given template $s
 	 *
 	 * @param string $s    Template to load.
 	 * @param string $root Optional.
@@ -92,7 +107,7 @@ class Renderer extends BaseObject
 	public static function getMarkupTemplate($s, $root = '')
 	{
 		$stamp1 = microtime(true);
-		$a = self::getApp();
+		$a = DI::app();
 		$t = self::getTemplateEngine();
 
 		try {
@@ -102,13 +117,13 @@ class Renderer extends BaseObject
 			exit();
 		}
 
-		$a->getProfiler()->saveTimestamp($stamp1, "file", System::callstack());
+		DI::profiler()->saveTimestamp($stamp1, "file", System::callstack());
 
 		return $template;
 	}
 
 	/**
-	 * @brief Register template engine class
+	 * Register template engine class
 	 *
 	 * @param string $class
 	 */
@@ -127,7 +142,7 @@ class Renderer extends BaseObject
 	}
 
 	/**
-	 * @brief Return template engine instance.
+	 * Return template engine instance.
 	 *
 	 * If $name is not defined, return engine defined by theme,
 	 * or default
@@ -154,7 +169,7 @@ class Renderer extends BaseObject
 	}
 
 	/**
-	 * @brief Returns the active template engine.
+	 * Returns the active template engine.
 	 *
 	 * @return string the active template engine
 	 */

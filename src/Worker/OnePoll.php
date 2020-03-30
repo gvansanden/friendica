@@ -1,16 +1,30 @@
 <?php
 /**
- * @file src/Worker/OnePoll.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Worker;
 
-use Friendica\BaseObject;
-use Friendica\Content\Text\BBCode;
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Item;
 use Friendica\Model\User;
@@ -40,14 +54,21 @@ class OnePoll
 			return;
 		}
 
-		if ($force) {
-			Contact::updateFromProbe($contact_id, '', true);
-		}
 
 		$contact = DBA::selectFirst('contact', [], ['id' => $contact_id]);
 		if (!DBA::isResult($contact)) {
 			Logger::log('Contact not found or cannot be used.');
 			return;
+		}
+
+		if (($contact['network'] != Protocol::MAIL) || $force) {
+			Contact::updateFromProbe($contact_id, '', $force);
+		}
+
+		// Special treatment for wrongly detected local contacts
+		if (!$force && ($contact['network'] != Protocol::DFRN) && Contact::isLocalById($contact_id)) {
+			Contact::updateFromProbe($contact_id, Protocol::DFRN, true);
+			$contact = DBA::selectFirst('contact', [], ['id' => $contact_id]);
 		}
 
 		if (($contact['network'] == Protocol::DFRN) && !Contact::isLegacyDFRNContact($contact)) {
@@ -82,7 +103,7 @@ class OnePoll
 		}
 
 		// Don't poll if polling is deactivated (But we poll feeds and mails anyway)
-		if (!in_array($protocol, [Protocol::FEED, Protocol::MAIL]) && Config::get('system', 'disable_polling')) {
+		if (!in_array($protocol, [Protocol::FEED, Protocol::MAIL]) && DI::config()->get('system', 'disable_polling')) {
 			Logger::log('Polling is disabled');
 
 			// set the last-update so we don't keep polling
@@ -113,7 +134,7 @@ class OnePoll
 		$xml = false;
 
 		if ($contact['subhub']) {
-			$poll_interval = Config::get('system', 'pushpoll_frequency', 3);
+			$poll_interval = DI::config()->get('system', 'pushpoll_frequency', 3);
 			$contact['priority'] = intval($poll_interval);
 			$hub_update = false;
 
@@ -214,7 +235,7 @@ class OnePoll
 	}
 
 	/**
-	 * @brief Updates a personal contact entry and the public contact entry
+	 * Updates a personal contact entry and the public contact entry
 	 *
 	 * @param array $contact The personal contact entry
 	 * @param array $fields  The fields that are updated
@@ -227,7 +248,7 @@ class OnePoll
 	}
 
 	/**
-	 * @brief Poll DFRN contacts
+	 * Poll DFRN contacts
 	 *
 	 * @param  array  $contact The personal contact entry
 	 * @param  string $updated The updated date
@@ -381,7 +402,7 @@ class OnePoll
 	}
 
 	/**
-	 * @brief Poll Feed/OStatus contacts
+	 * Poll Feed/OStatus contacts
 	 *
 	 * @param  array  $contact The personal contact entry
 	 * @param  string $protocol The used protocol of the contact
@@ -431,7 +452,7 @@ class OnePoll
 	}
 
 	/**
-	 * @brief Poll Mail contacts
+	 * Poll Mail contacts
 	 *
 	 * @param  array   $contact      The personal contact entry
 	 * @param  integer $importer_uid The UID of the importer
@@ -442,7 +463,7 @@ class OnePoll
 	{
 		Logger::log("Mail: Fetching for ".$contact['addr'], Logger::DEBUG);
 
-		$mail_disabled = ((function_exists('imap_open') && !Config::get('system', 'imap_disabled')) ? 0 : 1);
+		$mail_disabled = ((function_exists('imap_open') && !DI::config()->get('system', 'imap_disabled')) ? 0 : 1);
 		if ($mail_disabled) {
 			// set the last-update so we don't keep polling
 			self::updateContact($contact, ['last-update' => $updated]);
@@ -636,11 +657,11 @@ class OnePoll
 					$datarray['owner-avatar'] = $contact['photo'];
 
 					if ($datarray['parent-uri'] === $datarray['uri']) {
-						$datarray['private'] = 1;
+						$datarray['private'] = Item::PRIVATE;
 					}
 
-					if (!PConfig::get($importer_uid, 'system', 'allow_public_email_replies')) {
-						$datarray['private'] = 1;
+					if (!DI::pConfig()->get($importer_uid, 'system', 'allow_public_email_replies')) {
+						$datarray['private'] = Item::PRIVATE;
 						$datarray['allow_cid'] = '<' . $contact['id'] . '>';
 					}
 

@@ -1,29 +1,43 @@
 <?php
 /**
- * @file mod/videos.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 use Friendica\App;
 use Friendica\Content\Nav;
 use Friendica\Content\Pager;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
+use Friendica\Content\Text\BBCode;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Attach;
 use Friendica\Model\Contact;
-use Friendica\Model\Group;
 use Friendica\Model\Item;
 use Friendica\Model\Profile;
 use Friendica\Model\User;
-use Friendica\Protocol\DFRN;
+use Friendica\Module\BaseProfile;
 use Friendica\Util\Security;
 
 function videos_init(App $a)
 {
-	if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
+	if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
 		return;
 	}
 
@@ -46,25 +60,25 @@ function videos_init(App $a)
 
 		$account_type = Contact::getAccountType($profile);
 
-		$tpl = Renderer::getMarkupTemplate("widget/vcard.tpl");
+		$tpl = Renderer::getMarkupTemplate('widget/vcard.tpl');
 
 		$vcard_widget = Renderer::replaceMacros($tpl, [
 			'$name' => $profile['name'],
 			'$photo' => $profile['photo'],
 			'$addr' => $profile['addr'] ?? '',
 			'$account_type' => $account_type,
-			'$pdesc' => $profile['pdesc'] ?? '',
+			'$about' => BBCode::convert($profile['about'] ?? ''),
 		]);
 
 		// If not there, create 'aside' empty
-		if (!isset($a->page['aside'])) {
-			$a->page['aside'] = '';
+		if (!isset(DI::page()['aside'])) {
+			DI::page()['aside'] = '';
 		}
 
-		$a->page['aside'] .= $vcard_widget;
+		DI::page()['aside'] .= $vcard_widget;
 
 		$tpl = Renderer::getMarkupTemplate("videos_head.tpl");
-		$a->page['htmlhead'] .= Renderer::replaceMacros($tpl);
+		DI::page()['htmlhead'] .= Renderer::replaceMacros($tpl);
 	}
 
 	return;
@@ -75,7 +89,7 @@ function videos_post(App $a)
 	$owner_uid = $a->data['user']['uid'];
 
 	if (local_user() != $owner_uid) {
-		$a->internalRedirect('videos/' . $a->data['user']['nickname']);
+		DI::baseUrl()->redirect('videos/' . $a->data['user']['nickname']);
 	}
 
 	if (($a->argc == 2) && !empty($_POST['delete']) && !empty($_POST['id'])) {
@@ -92,11 +106,11 @@ function videos_post(App $a)
 			], local_user());
 		}
 
-		$a->internalRedirect('videos/' . $a->data['user']['nickname']);
+		DI::baseUrl()->redirect('videos/' . $a->data['user']['nickname']);
 		return; // NOTREACHED
 	}
 
-	$a->internalRedirect('videos/' . $a->data['user']['nickname']);
+	DI::baseUrl()->redirect('videos/' . $a->data['user']['nickname']);
 }
 
 function videos_content(App $a)
@@ -111,19 +125,19 @@ function videos_content(App $a)
 	// videos/name/video/xxxxx/edit
 
 
-	if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
-		notice(L10n::t('Public access denied.') . EOL);
+	if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
+		notice(DI::l10n()->t('Public access denied.') . EOL);
 		return;
 	}
 
 	if (empty($a->data['user'])) {
-		notice(L10n::t('No videos selected') . EOL );
+		notice(DI::l10n()->t('No videos selected') . EOL );
 		return;
 	}
 
 	//$phototypes = Photo::supportedTypes();
 
-	$_SESSION['video_return'] = $a->cmd;
+	$_SESSION['video_return'] = DI::args()->getCommand();
 
 	//
 	// Parse arguments
@@ -165,7 +179,7 @@ function videos_content(App $a)
 	}
 
 	if ($a->data['user']['hidewall'] && (local_user() != $owner_uid) && !$remote_contact) {
-		notice(L10n::t('Access to this item is restricted.') . EOL);
+		notice(DI::l10n()->t('Access to this item is restricted.') . EOL);
 		return;
 	}
 
@@ -175,7 +189,7 @@ function videos_content(App $a)
 
 	// tabs
 	$_is_owner = (local_user() && (local_user() == $owner_uid));
-	$o .= Profile::getTabs($a, 'videos', $_is_owner, $a->data['user']['nickname']);
+	$o .= BaseProfile::getTabsHTML($a, 'videos', $_is_owner, $a->data['user']['nickname']);
 
 	//
 	// dispatch request
@@ -211,7 +225,7 @@ function videos_content(App $a)
 		$total = count($r);
 	}
 
-	$pager = new Pager($a->query_string, 20);
+	$pager = new Pager(DI::l10n(), DI::args()->getQueryString(), 20);
 
 	$r = q("SELECT hash, ANY_VALUE(`id`) AS `id`, ANY_VALUE(`created`) AS `created`,
 		ANY_VALUE(`filename`) AS `filename`, ANY_VALUE(`filetype`) as `filetype`
@@ -234,15 +248,15 @@ function videos_content(App $a)
 
 			$videos[] = [
 				'id'       => $rr['id'],
-				'link'     => System::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/video/' . $rr['hash'],
-				'title'    => L10n::t('View Video'),
-				'src'      => System::baseUrl() . '/attach/' . $rr['id'] . '?attachment=0',
+				'link'     => DI::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/video/' . $rr['hash'],
+				'title'    => DI::l10n()->t('View Video'),
+				'src'      => DI::baseUrl() . '/attach/' . $rr['id'] . '?attachment=0',
 				'alt'      => $alt_e,
 				'mime'     => $rr['filetype'],
 				'album' => [
-					'link'  => System::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/album/' . bin2hex($rr['album']),
+					'link'  => DI::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/album/' . bin2hex($rr['album']),
 					'name'  => $name_e,
-					'alt'   => L10n::t('View Album'),
+					'alt'   => DI::l10n()->t('View Album'),
 				],
 			];
 		}
@@ -250,11 +264,11 @@ function videos_content(App $a)
 
 	$tpl = Renderer::getMarkupTemplate('videos_recent.tpl');
 	$o .= Renderer::replaceMacros($tpl, [
-		'$title'      => L10n::t('Recent Videos'),
+		'$title'      => DI::l10n()->t('Recent Videos'),
 		'$can_post'   => $can_post,
-		'$upload'     => [L10n::t('Upload New Videos'), System::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/upload'],
+		'$upload'     => [DI::l10n()->t('Upload New Videos'), DI::baseUrl() . '/videos/' . $a->data['user']['nickname'] . '/upload'],
 		'$videos'     => $videos,
-		'$delete_url' => (($can_post) ? System::baseUrl() . '/videos/' . $a->data['user']['nickname'] : false)
+		'$delete_url' => (($can_post) ? DI::baseUrl() . '/videos/' . $a->data['user']['nickname'] : false)
 	]);
 
 	$o .= $pager->renderFull($total);

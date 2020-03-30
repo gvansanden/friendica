@@ -1,11 +1,25 @@
 <?php
-
 /**
- * @file mod/network.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 use Friendica\App;
-use Friendica\BaseObject;
 use Friendica\Content\Feature;
 use Friendica\Content\ForumManager;
 use Friendica\Content\Nav;
@@ -13,21 +27,19 @@ use Friendica\Content\Pager;
 use Friendica\Content\Widget;
 use Friendica\Content\Text\HTML;
 use Friendica\Core\ACL;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Group;
 use Friendica\Model\Item;
 use Friendica\Model\Profile;
 use Friendica\Model\Term;
-use Friendica\Module\Login;
+use Friendica\Module\Security\Login;
 use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Proxy as ProxyUtils;
 use Friendica\Util\Strings;
@@ -35,7 +47,7 @@ use Friendica\Util\Strings;
 function network_init(App $a)
 {
 	if (!local_user()) {
-		notice(L10n::t('Permission denied.') . EOL);
+		notice(DI::l10n()->t('Permission denied.') . EOL);
 		return;
 	}
 
@@ -52,12 +64,9 @@ function network_init(App $a)
 		$group_id = 0;
 	}
 
-	/** @var DateTimeFormat $dtFormat */
-	$dtFormat = BaseObject::getClass(DateTimeFormat::class);
-
 	if ($a->argc > 1) {
 		for ($x = 1; $x < $a->argc; $x ++) {
-			if ($dtFormat->isYearMonth($a->argv[$x])) {
+			if (DI::dtFormat()->isYearMonthDay($a->argv[$x])) {
 				$is_a_date_query = true;
 				break;
 			}
@@ -66,14 +75,14 @@ function network_init(App $a)
 
 	// convert query string to array. remove friendica args
 	$query_array = [];
-	parse_str(parse_url($a->query_string, PHP_URL_QUERY), $query_array);
+	parse_str(parse_url(DI::args()->getQueryString(), PHP_URL_QUERY), $query_array);
 
 	// fetch last used network view and redirect if needed
 	if (!$is_a_date_query) {
 		$sel_nets = $_GET['nets'] ?? '';
 		$sel_tabs = network_query_get_sel_tab($a);
 		$sel_groups = network_query_get_sel_group($a);
-		$last_sel_tabs = PConfig::get(local_user(), 'network.view', 'tab.selected');
+		$last_sel_tabs = DI::pConfig()->get(local_user(), 'network.view', 'tab.selected');
 
 		$remember_tab = ($sel_tabs[0] === 'active' && is_array($last_sel_tabs) && $last_sel_tabs[0] !== 'active');
 
@@ -89,19 +98,11 @@ function network_init(App $a)
 			// last selected tab is _not_ '/network?order=activity'.
 			// and this isn't a date query
 
-			$tab_baseurls = [
-				'',     //all
-				'',     //postord
-				'',     //conv
-				'/new', //new
-				'',     //starred
-				'',     //bookmarked
-			];
 			$tab_args = [
 				'order=activity', //all
 				'order=post',     //postord
 				'conv=1',         //conv
-				'',               //new
+				'new=1',          //new
 				'star=1',         //starred
 				'bmark=1',        //bookmarked
 			];
@@ -109,8 +110,6 @@ function network_init(App $a)
 			$k = array_search('active', $last_sel_tabs);
 
 			if ($k != 3) {
-				$net_baseurl .= $tab_baseurls[$k];
-
 				// parse out tab queries
 				$dest_qa = [];
 				$dest_qs = $tab_args[$k];
@@ -131,20 +130,20 @@ function network_init(App $a)
 
 			$redir_url = ($net_queries ? $net_baseurl . '?' . $net_queries : $net_baseurl);
 
-			$a->internalRedirect($redir_url);
+			DI::baseUrl()->redirect($redir_url);
 		}
 	}
 
-	if (empty($a->page['aside'])) {
-		$a->page['aside'] = '';
+	if (empty(DI::page()['aside'])) {
+		DI::page()['aside'] = '';
 	}
 
-	$a->page['aside'] .= Group::sidebarWidget('network/0', 'network', 'standard', $group_id);
-	$a->page['aside'] .= ForumManager::widget(local_user(), $cid);
-	$a->page['aside'] .= Widget::postedByYear('network', local_user(), false);
-	$a->page['aside'] .= Widget::networks('network', $_GET['nets'] ?? '');
-	$a->page['aside'] .= Widget\SavedSearches::getHTML($a->query_string);
-	$a->page['aside'] .= Widget::fileAs('network', $_GET['file'] ?? '');
+	DI::page()['aside'] .= Group::sidebarWidget('network/0', 'network', 'standard', $group_id);
+	DI::page()['aside'] .= ForumManager::widget(local_user(), $cid);
+	DI::page()['aside'] .= Widget::postedByYear('network', local_user(), false);
+	DI::page()['aside'] .= Widget::networks('network', $_GET['nets'] ?? '');
+	DI::page()['aside'] .= Widget\SavedSearches::getHTML(DI::args()->getQueryString());
+	DI::page()['aside'] .= Widget::fileAs('network', $_GET['file'] ?? '');
 }
 
 /**
@@ -155,7 +154,7 @@ function network_init(App $a)
  *        '/network?order=activity' => $activity_active = 'active'
  *        '/network?order=post'     => $postord_active = 'active'
  *        '/network?conv=1',        => $conv_active = 'active'
- *        '/network/new',           => $new_active = 'active'
+ *        '/network?new=1',         => $new_active = 'active'
  *        '/network?star=1',        => $starred_active = 'active'
  *        '/network?bmark=1',       => $bookmarked_active = 'active'
  *
@@ -172,7 +171,7 @@ function network_query_get_sel_tab(App $a)
 	$conv_active = '';
 	$postord_active = '';
 
-	if (($a->argc > 1 && $a->argv[1] === 'new') || ($a->argc > 2 && $a->argv[2] === 'new')) {
+	if (!empty($_GET['new'])) {
 		$new_active = 'active';
 	}
 
@@ -214,7 +213,7 @@ function network_query_get_sel_group(App $a)
 }
 
 /**
- * @brief Sets the pager data and returns SQL
+ * Sets the pager data and returns SQL
  *
  * @param App     $a      The global App
  * @param Pager   $pager
@@ -229,14 +228,12 @@ function networkPager(App $a, Pager $pager, $update)
 		return ' LIMIT 100';
 	}
 
-	//  check if we serve a mobile device and get the user settings
-	//  accordingly
-	if ($a->is_mobile) {
-		$itemspage_network = PConfig::get(local_user(), 'system', 'itemspage_mobile_network');
-		$itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 20);
+	if (DI::mode()->isMobile()) {
+		$itemspage_network = DI::pConfig()->get(local_user(), 'system', 'itemspage_mobile_network',
+			DI::config()->get('system', 'itemspage_network_mobile'));
 	} else {
-		$itemspage_network = PConfig::get(local_user(), 'system', 'itemspage_network');
-		$itemspage_network = ((intval($itemspage_network)) ? $itemspage_network : 40);
+		$itemspage_network = DI::pConfig()->get(local_user(), 'system', 'itemspage_network',
+			DI::config()->get('system', 'itemspage_network'));
 	}
 
 	//  now that we have the user settings, see if the theme forces
@@ -251,7 +248,7 @@ function networkPager(App $a, Pager $pager, $update)
 }
 
 /**
- * @brief Sets items as seen
+ * Sets items as seen
  *
  * @param array $condition The array with the SQL condition
  * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -270,7 +267,7 @@ function networkSetSeen($condition)
 }
 
 /**
- * @brief Create the conversation HTML
+ * Create the conversation HTML
  *
  * @param App     $a      The global App
  * @param array   $items  Items of the conversation
@@ -292,10 +289,10 @@ function networkConversation(App $a, $items, Pager $pager, $mode, $update, $orde
 		$items = [];
 	}
 
-	$o = conversation($a, $items, $pager, $mode, $update, false, $ordering, local_user());
+	$o = conversation($a, $items, $mode, $update, false, $ordering, local_user());
 
 	if (!$update) {
-		if (PConfig::get(local_user(), 'system', 'infinite_scroll')) {
+		if (DI::pConfig()->get(local_user(), 'system', 'infinite_scroll')) {
 			$o .= HTML::scrollLoader();
 		} else {
 			$o .= $pager->renderMinimal(count($items));
@@ -312,24 +309,10 @@ function network_content(App $a, $update = 0, $parent = 0)
 	}
 
 	/// @TODO Is this really necessary? $a is already available to hooks
-	$arr = ['query' => $a->query_string];
+	$arr = ['query' => DI::args()->getQueryString()];
 	Hook::callAll('network_content_init', $arr);
 
-	$flat_mode = false;
-
-	if ($a->argc > 1) {
-		for ($x = 1; $x < $a->argc; $x ++) {
-			if ($a->argv[$x] === 'new') {
-				$flat_mode = true;
-			}
-		}
-	}
-
-	if (!empty($_GET['file'])) {
-		$flat_mode = true;
-	}
-
-	if ($flat_mode) {
+	if (!empty($_GET['new']) || !empty($_GET['file'])) {
 		$o = networkFlatView($a, $update);
 	} else {
 		$o = networkThreadedView($a, $update, $parent);
@@ -343,7 +326,7 @@ function network_content(App $a, $update = 0, $parent = 0)
 }
 
 /**
- * @brief Get the network content in flat view
+ * Get the network content in flat view
  *
  * @param App     $a      The global App
  * @param integer $update Used for the automatic reloading
@@ -377,7 +360,7 @@ function networkFlatView(App $a, $update = 0)
 			(strlen($a->user['allow_cid']) || strlen($a->user['allow_gid']) ||
 			strlen($a->user['deny_cid']) || strlen($a->user['deny_gid'])) ? 'lock' : 'unlock'),
 			'default_perms' => ACL::getDefaultUserPermissions($a->user),
-			'acl' => ACL::getFullSelectorHTML($a->page, $a->user, true),
+			'acl' => ACL::getFullSelectorHTML(DI::page(), $a->user, true),
 			'bang' => '',
 			'visitor' => 'block',
 			'profile_uid' => local_user(),
@@ -386,13 +369,13 @@ function networkFlatView(App $a, $update = 0)
 
 		$o .= status_editor($a, $x);
 
-		if (!Config::get('theme', 'hide_eventlist')) {
+		if (!DI::config()->get('theme', 'hide_eventlist')) {
 			$o .= Profile::getBirthdays();
 			$o .= Profile::getEventsReminderHTML();
 		}
 	}
 
-	$pager = new Pager($a->query_string);
+	$pager = new Pager(DI::l10n(), DI::args()->getQueryString());
 
 	networkPager($a, $pager, $update);
 
@@ -429,7 +412,7 @@ function networkFlatView(App $a, $update = 0)
 }
 
 /**
- * @brief Get the network content in threaded view
+ * Get the network content in threaded view
  *
  * @param  App     $a      The global App
  * @param  integer $update Used for the automatic reloading
@@ -465,12 +448,9 @@ function networkThreadedView(App $a, $update, $parent)
 
 	$default_permissions = [];
 
-	/** @var DateTimeFormat $dtFormat */
-	$dtFormat = BaseObject::getClass(DateTimeFormat::class);
-
 	if ($a->argc > 1) {
 		for ($x = 1; $x < $a->argc; $x ++) {
-			if ($dtFormat->isYearMonth($a->argv[$x])) {
+			if (DI::dtFormat()->isYearMonthDay($a->argv[$x])) {
 				if ($datequery) {
 					$datequery2 = Strings::escapeHtml($a->argv[$x]);
 				} else {
@@ -521,13 +501,6 @@ function networkThreadedView(App $a, $update, $parent)
 		$tabs = network_tabs($a);
 		$o .= $tabs;
 
-		if ($gid && ($t = Contact::getOStatusCountByGroupId($gid)) && !PConfig::get(local_user(), 'system', 'nowarn_insecure')) {
-			notice(L10n::tt("Warning: This group contains %s member from a network that doesn't allow non public messages.",
-				"Warning: This group contains %s members from a network that doesn't allow non public messages.",
-				$t) . EOL);
-			notice(L10n::t("Messages in this group won't be send to these receivers.").EOL);
-		}
-
 		Nav::setSelected('network');
 
 		$content = '';
@@ -554,7 +527,7 @@ function networkThreadedView(App $a, $update, $parent)
 			(strlen($a->user['allow_cid']) || strlen($a->user['allow_gid']) ||
 			strlen($a->user['deny_cid']) || strlen($a->user['deny_gid']))) ? 'lock' : 'unlock'),
 			'default_perms' => ACL::getDefaultUserPermissions($a->user),
-			'acl' => ACL::getFullSelectorHTML($a->page, $a->user, true, $default_permissions),
+			'acl' => ACL::getFullSelectorHTML(DI::page(), $a->user, true, $default_permissions),
 			'bang' => (($gid || $cid || $nets) ? '!' : ''),
 			'visitor' => 'block',
 			'profile_uid' => local_user(),
@@ -592,8 +565,8 @@ function networkThreadedView(App $a, $update, $parent)
 			if ($update) {
 				exit();
 			}
-			notice(L10n::t('No such group') . EOL);
-			$a->internalRedirect('network/0');
+			notice(DI::l10n()->t('No such group') . EOL);
+			DI::baseUrl()->redirect('network/0');
 			// NOTREACHED
 		}
 
@@ -613,11 +586,11 @@ function networkThreadedView(App $a, $update, $parent)
 			$sql_extra3 .= " OR (`thread`.`contact-id` = '$contact_str_self' AND `temp1`.`allow_gid` LIKE '" . Strings::protectSprintf('%<' . intval($gid) . '>%') . "' AND `temp1`.`private`))";
 		} else {
 			$sql_extra3 .= " AND false ";
-			info(L10n::t('Group is empty'));
+			info(DI::l10n()->t('Group is empty'));
 		}
 
 		$o = Renderer::replaceMacros(Renderer::getMarkupTemplate('section_title.tpl'), [
-			'$title' => L10n::t('Group: %s', $group['name'])
+			'$title' => DI::l10n()->t('Group: %s', $group['name'])
 		]) . $o;
 	} elseif ($cid) {
 		$fields = ['id', 'name', 'network', 'writable', 'nurl',
@@ -641,18 +614,14 @@ function networkThreadedView(App $a, $update, $parent)
 				'contacts' => $entries,
 				'id' => 'network',
 			]) . $o;
-
-			if ($contact['network'] === Protocol::OSTATUS && $contact['writable'] && !PConfig::get(local_user(),'system','nowarn_insecure')) {
-				notice(L10n::t('Private messages to this person are at risk of public disclosure.') . EOL);
-			}
 		} else {
-			notice(L10n::t('Invalid contact.') . EOL);
-			$a->internalRedirect('network');
+			notice(DI::l10n()->t('Invalid contact.') . EOL);
+			DI::baseUrl()->redirect('network');
 			// NOTREACHED
 		}
 	}
 
-	if (!$gid && !$cid && !$update && !Config::get('theme', 'hide_eventlist')) {
+	if (!$gid && !$cid && !$update && !DI::config()->get('theme', 'hide_eventlist')) {
 		$o .= Profile::getBirthdays();
 		$o .= Profile::getEventsReminderHTML();
 	}
@@ -687,7 +656,7 @@ function networkThreadedView(App $a, $update, $parent)
 		$sql_range = '';
 	}
 
-	$pager = new Pager($a->query_string);
+	$pager = new Pager(DI::l10n(), DI::args()->getQueryString());
 
 	$pager_sql = networkPager($a, $pager, $update);
 
@@ -735,7 +704,7 @@ function networkThreadedView(App $a, $update, $parent)
 		} else {
 			// Load all unseen items
 			$sql_extra4 = "`item`.`unseen`";
-			if (Config::get("system", "like_no_comment")) {
+			if (DI::config()->get("system", "like_no_comment")) {
 				$sql_extra4 .= " AND `item`.`gravity` IN (" . GRAVITY_PARENT . "," . GRAVITY_COMMENT . ")";
 			}
 			if ($order === 'post') {
@@ -800,7 +769,7 @@ function networkThreadedView(App $a, $update, $parent)
 
 		// When checking for updates we need to fetch from the newest date to the newest date before
 		// Only do this, when the last stored date isn't too long ago (10 times the update interval)
-		$browser_update = PConfig::get(local_user(), 'system', 'update_interval', 40000) / 1000;
+		$browser_update = DI::pConfig()->get(local_user(), 'system', 'update_interval', 40000) / 1000;
 
 		if (($browser_update > 0) && $update && !empty($_SESSION['network_last_date']) &&
 			(($bottom_limit < $_SESSION['network_last_date']) || ($top_limit == $bottom_limit)) &&
@@ -875,7 +844,7 @@ function networkThreadedView(App $a, $update, $parent)
 		$date_offset = $_GET['offset'];
 	}
 
-	$query_string = $a->query_string;
+	$query_string = DI::args()->getQueryString();
 	if ($date_offset && !preg_match('/[?&].offset=/', $query_string)) {
 		$query_string .= '&offset=' . urlencode($date_offset);
 	}
@@ -902,7 +871,7 @@ function networkThreadedView(App $a, $update, $parent)
 }
 
 /**
- * @brief Get the network tabs menu
+ * Get the network tabs menu
  *
  * @param App $a The global App
  * @return string Html of the networktab
@@ -912,7 +881,7 @@ function network_tabs(App $a)
 {
 	// item filter tabs
 	/// @TODO fix this logic, reduce duplication
-	/// $a->page['content'] .= '<div class="tabs-wrapper">';
+	/// DI::page()['content'] .= '<div class="tabs-wrapper">';
 	list($no_active, $all_active, $post_active, $conv_active, $new_active, $starred_active, $bookmarked_active) = network_query_get_sel_tab($a);
 
 	// if no tabs are selected, defaults to activitys
@@ -920,43 +889,48 @@ function network_tabs(App $a)
 		$all_active = 'active';
 	}
 
-	$cmd = $a->cmd;
+	$cmd = DI::args()->getCommand();
+
+	$def_param = [];
+	if (!empty($_GET['cid'])) {
+		$def_param['cid'] = $_GET['cid'];
+	}
 
 	// tabs
 	$tabs = [
 		[
-			'label'	=> L10n::t('Latest Activity'),
-			'url'	=> str_replace('/new', '', $cmd) . '?order=activity' . (!empty($_GET['cid']) ? '&cid=' . $_GET['cid'] : ''),
+			'label'	=> DI::l10n()->t('Latest Activity'),
+			'url'	=> $cmd . '?' . http_build_query(array_merge($def_param, ['order' => 'activity'])),
 			'sel'	=> $all_active,
-			'title'	=> L10n::t('Sort by latest activity'),
+			'title'	=> DI::l10n()->t('Sort by latest activity'),
 			'id'	=> 'activity-order-tab',
 			'accesskey' => 'e',
 		],
 		[
-			'label'	=> L10n::t('Latest Posts'),
-			'url'	=> str_replace('/new', '', $cmd) . '?order=post' . (!empty($_GET['cid']) ? '&cid=' . $_GET['cid'] : ''),
+			'label'	=> DI::l10n()->t('Latest Posts'),
+			'url'	=> $cmd . '?' . http_build_query(array_merge($def_param, ['order' => 'post'])),
 			'sel'	=> $post_active,
-			'title'	=> L10n::t('Sort by post received date'),
+			'title'	=> DI::l10n()->t('Sort by post received date'),
 			'id'	=> 'post-order-tab',
 			'accesskey' => 't',
 		],
 	];
 
 	$tabs[] = [
-		'label'	=> L10n::t('Personal'),
-		'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : '/?f=') . '&conv=1',
+		'label'	=> DI::l10n()->t('Personal'),
+		'url'	=> $cmd . '?' . http_build_query(array_merge($def_param, ['conv' => true])),
 		'sel'	=> $conv_active,
-		'title'	=> L10n::t('Posts that mention or involve you'),
+		'title'	=> DI::l10n()->t('Posts that mention or involve you'),
 		'id'	=> 'personal-tab',
 		'accesskey' => 'r',
 	];
 
 	if (Feature::isEnabled(local_user(), 'new_tab')) {
 		$tabs[] = [
-			'label'	=> L10n::t('New'),
-			'url'	=> 'network/new' . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : ''),
+			'label'	=> DI::l10n()->t('New'),
+			'url'	=> $cmd . '?' . http_build_query(array_merge($def_param, ['new' => true])),
 			'sel'	=> $new_active,
-			'title'	=> L10n::t('Activity Stream - by date'),
+			'title'	=> DI::l10n()->t('Activity Stream - by date'),
 			'id'	=> 'activitiy-by-date-tab',
 			'accesskey' => 'w',
 		];
@@ -964,27 +938,27 @@ function network_tabs(App $a)
 
 	if (Feature::isEnabled(local_user(), 'link_tab')) {
 		$tabs[] = [
-			'label'	=> L10n::t('Shared Links'),
-			'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : '/?f=') . '&bmark=1',
+			'label'	=> DI::l10n()->t('Shared Links'),
+			'url'	=> $cmd . '?' . http_build_query(array_merge($def_param, ['bmark' => true])),
 			'sel'	=> $bookmarked_active,
-			'title'	=> L10n::t('Interesting Links'),
+			'title'	=> DI::l10n()->t('Interesting Links'),
 			'id'	=> 'shared-links-tab',
 			'accesskey' => 'b',
 		];
 	}
 
 	$tabs[] = [
-		'label'	=> L10n::t('Starred'),
-		'url'	=> str_replace('/new', '', $cmd) . (!empty($_GET['cid']) ? '/?cid=' . $_GET['cid'] : '/?f=') . '&star=1',
+		'label'	=> DI::l10n()->t('Starred'),
+		'url'	=> $cmd . '?' . http_build_query(array_merge($def_param, ['star' => true])),
 		'sel'	=> $starred_active,
-		'title'	=> L10n::t('Favourite Posts'),
+		'title'	=> DI::l10n()->t('Favourite Posts'),
 		'id'	=> 'starred-posts-tab',
 		'accesskey' => 'm',
 	];
 
 	// save selected tab, but only if not in file mode
 	if (empty($_GET['file'])) {
-		PConfig::set(local_user(), 'network.view', 'tab.selected', [
+		DI::pConfig()->set(local_user(), 'network.view', 'tab.selected', [
 			$all_active, $post_active, $conv_active, $new_active, $starred_active, $bookmarked_active
 		]);
 	}
@@ -1019,7 +993,7 @@ function network_infinite_scroll_head(App $a, &$htmlhead)
 	 */
 	global $pager;
 
-	if (PConfig::get(local_user(), 'system', 'infinite_scroll')
+	if (DI::pConfig()->get(local_user(), 'system', 'infinite_scroll')
 		&& ($_GET['mode'] ?? '') != 'minimal'
 	) {
 		$tpl = Renderer::getMarkupTemplate('infinite_scroll_head.tpl');

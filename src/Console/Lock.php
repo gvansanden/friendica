@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
@@ -8,12 +27,10 @@ use Friendica\Core\Lock\ILock;
 use RuntimeException;
 
 /**
- * @brief tool to access the locks from the CLI
+ * tool to access the locks from the CLI
  *
  * With this script you can access the locks of your node from the CLI.
  * You can read current locks and set/remove locks.
- *
- * @author Philipp Holzer <admin@philipp.info>, Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class Lock extends \Asika\SimpleConsole\Console
 {
@@ -133,7 +150,7 @@ HELP;
 		if (count($this->args) >= 2) {
 			$lock = $this->getArgument(1);
 
-			if ($this->lock->releaseLock($lock, true)) {
+			if ($this->lock->release($lock, true)) {
 				$this->out(sprintf('Lock \'%s\' released.', $lock));
 			} else {
 				$this->out(sprintf('Couldn\'t release Lock \'%s\'', $lock));
@@ -156,11 +173,11 @@ HELP;
 			}
 
 			if (!empty($ttl) && !empty($timeout)) {
-				$result = $this->lock->acquireLock($lock, $timeout, $ttl);
+				$result = $this->lock->acquire($lock, $timeout, $ttl);
 			} elseif (!empty($timeout)) {
-				$result = $this->lock->acquireLock($lock, $timeout);
+				$result = $this->lock->acquire($lock, $timeout);
 			} else {
-				$result = $this->lock->acquireLock($lock);
+				$result = $this->lock->acquire($lock);
 			}
 
 			if ($result) {

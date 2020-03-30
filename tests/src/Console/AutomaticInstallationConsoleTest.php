@@ -1,16 +1,35 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\src\Console;
 
 use Dice\Dice;
 use Friendica\App;
-use Friendica\BaseObject;
 use Friendica\Console\AutomaticInstallation;
-use Friendica\Core\Config\Cache\ConfigCache;
+use Friendica\Core\Config\Cache;
 use Friendica\Core\Installer;
-use Friendica\Core\L10n\L10n;
+use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Database\Database;
+use Friendica\DI;
 use Friendica\Test\Util\DBAMockTrait;
 use Friendica\Test\Util\DBStructureMockTrait;
 use Friendica\Test\Util\RendererMockTrait;
@@ -37,7 +56,7 @@ class AutomaticInstallationConsoleTest extends ConsoleTest
 	private $assertFileDb;
 
 	/**
-	 * @var ConfigCache The configuration cache to check after each test
+	 * @var Cache The configuration cache to check after each test
 	 */
 	private $configCache;
 
@@ -77,9 +96,9 @@ class AutomaticInstallationConsoleTest extends ConsoleTest
 		           ->with(L10n::class)
 		           ->andReturn($l10nMock);
 
-		BaseObject::setDependencyInjection($this->dice);
+		DI::init($this->dice);
 
-		$this->configCache = new ConfigCache();
+		$this->configCache = new Cache();
 		$this->configCache->set('system', 'basepath', $this->root->url());
 		$this->configCache->set('config', 'php_path', trim(shell_exec('which php')));
 		$this->configCache->set('system', 'theme', 'smarty3');

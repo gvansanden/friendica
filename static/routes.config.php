@@ -1,17 +1,35 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Configuration for the default routes in Friendica
+ *
+ * The syntax is either
+ * - 'route' => [ Module::class , [ HTTPMethod(s) ] ]
+ * - 'group' => [ 'route' => [ Module::class, [ HTTPMethod(s) ] ]
+ *
+ * It's possible to create recursive groups
+ *
+ */
 
 use Friendica\App\Router as R;
 use Friendica\Module;
 
-/**
-* Configuration for the default routes in Friendica
-*
-* The syntax is either
-* - 'route' => [ Module::class , [ HTTPMethod(s) ] ]
-* - 'group' => [ 'route' => [ Module::class, [ HTTPMethod(s) ] ]
-*
-* It's possible to create recursive groups
-*/
 return [
 	'/' => [Module\Home::class, [R::GET]],
 
@@ -23,16 +41,21 @@ return [
 	],
 
 	'/2fa' => [
-		'[/]'       => [Module\TwoFactor\Verify::class,   [R::GET, R::POST]],
-		'/recovery' => [Module\TwoFactor\Recovery::class, [R::GET, R::POST]],
+		'[/]'       => [Module\Security\TwoFactor\Verify::class,   [R::GET, R::POST]],
+		'/recovery' => [Module\Security\TwoFactor\Recovery::class, [R::GET, R::POST]],
 	],
 
 	'/api' => [
 		'/v1' => [
+			'/custom_emojis'                     => [Module\Api\Mastodon\CustomEmojis::class,   [R::GET         ]],
 			'/follow_requests'                   => [Module\Api\Mastodon\FollowRequests::class, [R::GET         ]],
 			'/follow_requests/{id:\d+}/{action}' => [Module\Api\Mastodon\FollowRequests::class, [        R::POST]],
-			'/instance'                          => [Module\Api\Mastodon\Instance::class, [R::GET]],
-			'/instance/peers'                    => [Module\Api\Mastodon\Instance\Peers::class, [R::GET]],
+			'/instance'                          => [Module\Api\Mastodon\Instance::class,       [R::GET         ]],
+			'/instance/peers'                    => [Module\Api\Mastodon\Instance\Peers::class, [R::GET         ]],
+		],
+		'/friendica' => [
+			'/profile/show'                      => [Module\Api\Friendica\Profile\Show::class , [R::GET         ]],
+			'/events'                            => [Module\Api\Friendica\Events\Index::class , [R::GET         ]],
 		],
 	],
 
@@ -80,12 +103,16 @@ return [
 	'/attach/{item:\d+}'   => [Module\Attach::class,       [R::GET]],
 	'/babel'               => [Module\Debug\Babel::class,  [R::GET, R::POST]],
 	'/bookmarklet'         => [Module\Bookmarklet::class,  [R::GET]],
+
+	'/community[/{content}[/{accounttype}]]' => [Module\Conversation\Community::class, [R::GET]],
+
 	'/compose[/{type}]'    => [Module\Item\Compose::class, [R::GET, R::POST]],
 
 	'/contact'   => [
 		'[/]'                     => [Module\Contact::class,           [R::GET]],
 		'/{id:\d+}[/]'            => [Module\Contact::class,           [R::GET, R::POST]],
 		'/{id:\d+}/archive'       => [Module\Contact::class,           [R::GET]],
+		'/{id:\d+}/advanced'      => [Module\Contact\Advanced::class,  [R::GET, R::POST]],
 		'/{id:\d+}/block'         => [Module\Contact::class,           [R::GET]],
 		'/{id:\d+}/conversations' => [Module\Contact::class,           [R::GET]],
 		'/{id:\d+}/drop'          => [Module\Contact::class,           [R::GET]],
@@ -102,7 +129,8 @@ return [
 		'/hovercard'              => [Module\Contact\Hovercard::class, [R::GET]],
 	],
 
-	'/credits'   => [Module\Credits::class,          [R::GET]],
+	'/credits'               => [Module\Credits::class,        [R::GET]],
+
 	'/delegation'=> [Module\Delegation::class,       [R::GET, R::POST]],
 	'/dirfind'   => [Module\Search\Directory::class, [R::GET]],
 	'/directory' => [Module\Directory::class,        [R::GET]],
@@ -128,6 +156,8 @@ return [
 	'/following/{owner}' => [Module\Following::class,       [R::GET]],
 	'/friendica[/json]'  => [Module\Friendica::class,       [R::GET]],
 
+	'/fsuggest/{contact:\d+}' => [Module\FriendSuggest::class,  [R::GET, R::POST]],
+
 	'/group'              => [
 		'[/]'                        => [Module\Group::class, [R::GET, R::POST]],
 		'/{group:\d+}'               => [Module\Group::class, [R::GET, R::POST]],
@@ -139,11 +169,12 @@ return [
 		'/{group:\d+}/add/{contact:\d+}'    => [Module\Group::class, [R::GET, R::POST]],
 		'/{group:\d+}/remove/{contact:\d+}' => [Module\Group::class, [R::GET, R::POST]],
 	],
-	'/hashtag'            => [Module\Hashtag::class,      [R::GET]],
-	'/home'               => [Module\Home::class,         [R::GET]],
-	'/help[/{doc:.+}]'    => [Module\Help::class,         [R::GET]],
-	'/inbox[/{nickname}]' => [Module\Inbox::class,        [R::GET, R::POST]],
-	'/invite'             => [Module\Invite::class,       [R::GET, R::POST]],
+	'/hashtag'                    => [Module\Hashtag::class,   [R::GET]],
+	'/help[/{doc:.+}]'            => [Module\Help::class,      [R::GET]],
+	'/home'                       => [Module\Home::class,      [R::GET]],
+	'/hcard/{profile}[/{action}]' => [Module\HoverCard::class, [R::GET]],
+	'/inbox[/{nickname}]'         => [Module\Inbox::class,     [R::GET, R::POST]],
+	'/invite'                     => [Module\Invite::class,    [R::GET, R::POST]],
 
 	'/install'         => [
 		'[/]'                    => [Module\Install::class, [R::GET, R::POST]],
@@ -156,8 +187,8 @@ return [
 
 	'/like/{item:\d+}'    => [Module\Like::class,            [R::GET]],
 	'/localtime'          => [Module\Debug\Localtime::class, [R::GET, R::POST]],
-	'/login'              => [Module\Login::class,           [R::GET, R::POST]],
-	'/logout'             => [Module\Logout::class,          [R::GET, R::POST]],
+	'/login'              => [Module\Security\Login::class,  [R::GET, R::POST]],
+	'/logout'             => [Module\Security\Logout::class, [R::GET, R::POST]],
 	'/magic'              => [Module\Magic::class,           [R::GET]],
 	'/maintenance'        => [Module\Maintenance::class,     [R::GET]],
 	'/manifest'           => [Module\Manifest::class,        [R::GET]],
@@ -166,10 +197,25 @@ return [
 	'/nodeinfo/{version}' => [Module\NodeInfo::class,        [R::GET]],
 	'/nogroup'            => [Module\Group::class,           [R::GET]],
 
-	'/notify'         => [
-		'[/]'            => [Module\Notifications\Notify::class, [R::GET]],
-		'/view/{id:\d+}' => [Module\Notifications\Notify::class, [R::GET]],
-		'/mark/all'      => [Module\Notifications\Notify::class, [R::GET]],
+	'/noscrape' => [
+		'/{nick}'         => [Module\NoScrape::class, [R::GET]],
+		'/{profile}/view' => [Module\NoScrape::class, [R::GET]],
+	],
+
+	'/notifications' => [
+		'/network[/json]'    => [Module\Notifications\Notifications::class, [R::GET, R::POST]],
+		'/system[/json]'     => [Module\Notifications\Notifications::class, [R::GET, R::POST]],
+		'/personal[/json]'   => [Module\Notifications\Notifications::class, [R::GET, R::POST]],
+		'/home[/json]'       => [Module\Notifications\Notifications::class, [R::GET, R::POST]],
+		'/intros[/json]'     => [Module\Notifications\Introductions::class, [R::GET, R::POST]],
+		'/intros/all[/json]' => [Module\Notifications\Introductions::class, [R::GET, R::POST]],
+		'/intros/{contact:\d+}[/json]' => [Module\Notifications\Introductions::class, [R::GET, R::POST]],
+	],
+
+	'/notification'         => [
+		'[/]'       => [Module\Notifications\Notification::class, [R::GET]],
+		'/mark/all' => [Module\Notifications\Notification::class, [R::GET]],
+		'/{id:\d+}' => [Module\Notifications\Notification::class, [R::GET, R::POST]],
 	],
 	'/objects/{guid}' => [Module\Objects::class, [R::GET]],
 
@@ -178,9 +224,10 @@ return [
 		'/h2b'    => [Module\Oembed::class, [R::GET]],
 		'/{hash}' => [Module\Oembed::class, [R::GET]],
 	],
-	'/outbox/{owner}' => [Module\Outbox::class,     [R::GET]],
-	'/owa'            => [Module\Owa::class,        [R::GET]],
-	'/opensearch'     => [Module\OpenSearch::class, [R::GET]],
+	'/outbox/{owner}' => [Module\Outbox::class,          [R::GET]],
+	'/owa'            => [Module\Owa::class,             [R::GET]],
+	'/openid'         => [Module\Security\OpenID::class, [R::GET]],
+	'/opensearch'     => [Module\OpenSearch::class,      [R::GET]],
 
 	'/photo' => [
 		'/{name}'                    => [Module\Photo::class, [R::GET]],
@@ -193,10 +240,10 @@ return [
 	'/probe'             => [Module\Debug\Probe::class,  [R::GET]],
 
 	'/profile' => [
-		'/{nickname}'                                                 => [Module\Profile::class,          [R::GET]],
-		'/{nickname}/{to:\d{4}-\d{2}-\d{2}}/{from:\d{4}-\d{2}-\d{2}}' => [Module\Profile::class,          [R::GET]],
-		'/{nickname}/contacts[/{type}]'                               => [Module\Profile\Contacts::class, [R::GET]],
-		'/{profile:\d+}/view'                                         => [Module\Profile::class,          [R::GET]],
+		'/{nickname}'                                         => [Module\Profile\Index::class,    [R::GET]],
+		'/{nickname}/profile'                                 => [Module\Profile\Profile::class,  [R::GET]],
+		'/{nickname}/contacts[/{type}]'                       => [Module\Profile\Contacts::class, [R::GET]],
+		'/{nickname}/status[/{category}[/{date1}[/{date2}]]]' => [Module\Profile\Status::class,   [R::GET]],
 	],
 
 	'/proxy' => [
@@ -226,11 +273,18 @@ return [
 			'/verify'       => [Module\Settings\TwoFactor\Verify::class,      [R::GET, R::POST]],
 		],
 		'/delegation[/{action}/{user_id}]' => [Module\Settings\Delegation::class,       [R::GET, R::POST]],
+		'/display'                 => [Module\Settings\Display::class,             [R::GET, R::POST]],
+		'/profile' => [
+			'[/]'                  => [Module\Settings\Profile\Index::class,       [R::GET, R::POST]],
+			'/photo[/new]'         => [Module\Settings\Profile\Photo\Index::class, [R::GET, R::POST]],
+			'/photo/crop/{guid}'   => [Module\Settings\Profile\Photo\Crop::class,  [R::GET, R::POST]],
+		],
 		'/userexport[/{action}]' => [Module\Settings\UserExport::class,             [R::GET, R::POST]],
 	],
 
 	'/randprof'                      => [Module\RandomProfile::class,         [R::GET]],
 	'/register'                      => [Module\Register::class,              [R::GET, R::POST]],
+	'/remote_follow/{profile}'       => [Module\RemoteFollow::class,          [R::GET, R::POST]],
 	'/robots.txt'                    => [Module\RobotsTxt::class,             [R::GET]],
 	'/rsd.xml'                       => [Module\ReallySimpleDiscovery::class, [R::GET]],
 	'/smilies[/json]'                => [Module\Smilies::class,               [R::GET]],
@@ -238,8 +292,13 @@ return [
 	'/starred/{item:\d+}'            => [Module\Starred::class,               [R::GET]],
 	'/toggle_mobile'                 => [Module\ToggleMobile::class,          [R::GET]],
 	'/tos'                           => [Module\Tos::class,                   [R::GET]],
+
+	'/update_community[/{content}[/{accounttype}]]' => [Module\Update\Community::class, [R::GET]],
+	'/update_profile'                => [Module\Update\Profile::class,        [R::GET]],
+
 	'/view/theme/{theme}/style.pcss' => [Module\Theme::class,                 [R::GET]],
 	'/viewsrc/{item:\d+}'            => [Module\Debug\ItemBody::class,        [R::GET]],
 	'/webfinger'                     => [Module\Debug\WebFinger::class,       [R::GET]],
 	'/xrd'                           => [Module\Xrd::class,                   [R::GET]],
+	'/worker'                        => [Module\Worker::class,                [R::GET]],
 ];

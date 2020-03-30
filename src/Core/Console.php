@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core;
 
@@ -7,8 +26,6 @@ use Friendica;
 
 /**
  * Description of Console
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class Console extends \Asika\SimpleConsole\Console
 {
@@ -40,7 +57,7 @@ Commands:
 	autoinstall            Starts automatic installation of friendica based on values from htconfig.php
 	lock                   Edit site locks
 	maintenance            Set maintenance mode for this node
-	newpassword            Set a new password for a given user
+	user                   User management
 	php2po                 Generate a messages.po file from a strings.php file
 	po2php                 Generate a strings.php file from a messages.po file
 	typo                   Checks for parse errors in Friendica files
@@ -68,7 +85,7 @@ HELP;
 		'autoinstall'            => Friendica\Console\AutomaticInstallation::class,
 		'lock'                   => Friendica\Console\Lock::class,
 		'maintenance'            => Friendica\Console\Maintenance::class,
-		'newpassword'            => Friendica\Console\NewPassword::class,
+		'user'                   => Friendica\Console\User::class,
 		'php2po'                 => Friendica\Console\PhpToPo::class,
 		'po2php'                 => Friendica\Console\PoToPhp::class,
 		'typo'                   => Friendica\Console\Typo::class,
@@ -146,7 +163,7 @@ HELP;
 
 		$className = $this->subConsoles[$command];
 
-		Friendica\BaseObject::setDependencyInjection($this->dice);
+		Friendica\DI::init($this->dice);
 
 		/** @var Console $subconsole */
 		$subconsole = $this->dice->create($className, [$subargs]);

@@ -1,34 +1,45 @@
 <?php
 /**
- * @file src/Protocol/PortableContact.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+namespace Friendica\Protocol;
+
+use Exception;
+use Friendica\Content\Text\HTML;
+use Friendica\Core\Logger;
+use Friendica\Core\Protocol;
+use Friendica\Core\Worker;
+use Friendica\Database\DBA;
+use Friendica\DI;
+use Friendica\Model\GContact;
+use Friendica\Model\GServer;
+use Friendica\Util\DateTimeFormat;
+use Friendica\Util\Network;
+use Friendica\Util\Strings;
+
+/**
  *
  * @todo Move GNU Social URL schemata (http://server.tld/user/number) to http://server.tld/username
  * @todo Fetch profile data from profile page for Redmatrix users
  * @todo Detect if it is a forum
  */
-
-namespace Friendica\Protocol;
-
-use DOMDocument;
-use DOMXPath;
-use Exception;
-use Friendica\Content\Text\HTML;
-use Friendica\Core\Config;
-use Friendica\Core\Logger;
-use Friendica\Core\Protocol;
-use Friendica\Core\Worker;
-use Friendica\Database\DBA;
-use Friendica\Model\Contact;
-use Friendica\Model\GContact;
-use Friendica\Model\GServer;
-use Friendica\Model\Profile;
-use Friendica\Module\Register;
-use Friendica\Network\Probe;
-use Friendica\Util\DateTimeFormat;
-use Friendica\Util\Network;
-use Friendica\Util\Strings;
-use Friendica\Util\XML;
-
 class PortableContact
 {
 	const DISABLED = 0;
@@ -37,7 +48,7 @@ class PortableContact
 	const USERS_GCONTACTS_FALLBACK = 3;
 
 	/**
-	 * @brief Fetch POCO data
+	 * Fetch POCO data
 	 *
 	 * @param integer $cid  Contact ID
 	 * @param integer $uid  User ID
@@ -57,11 +68,11 @@ class PortableContact
 	public static function loadWorker($cid, $uid = 0, $zcid = 0, $url = null)
 	{
 		// Call the function "load" via the worker
-		Worker::add(PRIORITY_LOW, "DiscoverPoCo", "load", (int)$cid, (int)$uid, (int)$zcid, $url);
+		Worker::add(PRIORITY_LOW, 'FetchPoCo', (int)$cid, (int)$uid, (int)$zcid, $url);
 	}
 
 	/**
-	 * @brief Fetch POCO data from the worker
+	 * Fetch POCO data from the worker
 	 *
 	 * @param integer $cid  Contact ID
 	 * @param integer $uid  User ID
@@ -88,7 +99,7 @@ class PortableContact
 			return;
 		}
 
-		$url = $url . (($uid) ? '/@me/@all?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation' : '?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation');
+		$url = $url . (($uid) ? '/@me/@all?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,contactType,generation' : '?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,contactType,generation');
 
 		Logger::log('load: ' . $url, Logger::DEBUG);
 
@@ -123,7 +134,6 @@ class PortableContact
 			$location = '';
 			$about = '';
 			$keywords = '';
-			$gender = '';
 			$contact_type = -1;
 			$generation = 0;
 
@@ -168,10 +178,6 @@ class PortableContact
 				$about = HTML::toBBCode($entry['aboutMe']);
 			}
 
-			if (isset($entry['gender'])) {
-				$gender = $entry['gender'];
-			}
-
 			if (isset($entry['generation']) && ($entry['generation'] > 0)) {
 				$generation = ++$entry['generation'];
 			}
@@ -192,7 +198,6 @@ class PortableContact
 					"photo" => $profile_photo,
 					"about" => $about,
 					"location" => $location,
-					"gender" => $gender,
 					"keywords" => $keywords,
 					"connect" => $connect_url,
 					"updated" => $updated,
@@ -214,58 +219,8 @@ class PortableContact
 		DBA::delete('glink', $condition);
 	}
 
-	public static function alternateOStatusUrl($url)
-	{
-		return(preg_match("=https?://.+/user/\d+=ism", $url, $matches));
-	}
-
-	public static function updateNeeded($created, $updated, $last_failure, $last_contact)
-	{
-		$now = strtotime(DateTimeFormat::utcNow());
-
-		if ($updated > $last_contact) {
-			$contact_time = strtotime($updated);
-		} else {
-			$contact_time = strtotime($last_contact);
-		}
-
-		$failure_time = strtotime($last_failure);
-		$created_time = strtotime($created);
-
-		// If there is no "created" time then use the current time
-		if ($created_time <= 0) {
-			$created_time = $now;
-		}
-
-		// If the last contact was less than 24 hours then don't update
-		if (($now - $contact_time) < (60 * 60 * 24)) {
-			return false;
-		}
-
-		// If the last failure was less than 24 hours then don't update
-		if (($now - $failure_time) < (60 * 60 * 24)) {
-			return false;
-		}
-
-		// If the last contact was less than a week ago and the last failure is older than a week then don't update
-		//if ((($now - $contact_time) < (60 * 60 * 24 * 7)) && ($contact_time > $failure_time))
-		//	return false;
-
-		// If the last contact time was more than a week ago and the contact was created more than a week ago, then only try once a week
-		if ((($now - $contact_time) > (60 * 60 * 24 * 7)) && (($now - $created_time) > (60 * 60 * 24 * 7)) && (($now - $failure_time) < (60 * 60 * 24 * 7))) {
-			return false;
-		}
-
-		// If the last contact time was more than a month ago and the contact was created more than a month ago, then only try once a month
-		if ((($now - $contact_time) > (60 * 60 * 24 * 30)) && (($now - $created_time) > (60 * 60 * 24 * 30)) && (($now - $failure_time) < (60 * 60 * 24 * 30))) {
-			return false;
-		}
-
-		return true;
-	}
-
 	/**
-	 * @brief Returns a list of all known servers
+	 * Returns a list of all known servers
 	 * @return array List of server urls
 	 * @throws Exception
 	 */
@@ -289,7 +244,7 @@ class PortableContact
 	}
 
 	/**
-	 * @brief Fetch server list from remote servers and adds them when they are new.
+	 * Fetch server list from remote servers and adds them when they are new.
 	 *
 	 * @param string $poco URL to the POCO endpoint
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
@@ -315,72 +270,9 @@ class PortableContact
 
 			if (!DBA::isResult($r)) {
 				Logger::log("Call server check for server ".$server_url, Logger::DEBUG);
-				Worker::add(PRIORITY_LOW, "DiscoverPoCo", "server", $server_url);
+				Worker::add(PRIORITY_LOW, 'UpdateGServer', $server_url);
 			}
 		}
-	}
-
-	private static function discoverFederation()
-	{
-		$last = Config::get('poco', 'last_federation_discovery');
-
-		if ($last) {
-			$next = $last + (24 * 60 * 60);
-
-			if ($next > time()) {
-				return;
-			}
-		}
-
-		// Discover Friendica, Hubzilla and Diaspora servers
-		$curlResult = Network::fetchUrl("http://the-federation.info/pods.json");
-
-		if (!empty($curlResult)) {
-			$servers = json_decode($curlResult, true);
-
-			if (!empty($servers['pods'])) {
-				foreach ($servers['pods'] as $server) {
-					Worker::add(PRIORITY_LOW, "DiscoverPoCo", "server", "https://" . $server['host']);
-				}
-			}
-		}
-
-		// Disvover Mastodon servers
-		if (!Config::get('system', 'ostatus_disabled')) {
-			$accesstoken = Config::get('system', 'instances_social_key');
-
-			if (!empty($accesstoken)) {
-				$api = 'https://instances.social/api/1.0/instances/list?count=0';
-				$header = ['Authorization: Bearer '.$accesstoken];
-				$curlResult = Network::curl($api, false, ['headers' => $header]);
-
-				if ($curlResult->isSuccess()) {
-					$servers = json_decode($curlResult->getBody(), true);
-
-					foreach ($servers['instances'] as $server) {
-						$url = (is_null($server['https_score']) ? 'http' : 'https') . '://' . $server['name'];
-						Worker::add(PRIORITY_LOW, "DiscoverPoCo", "server", $url);
-					}
-				}
-			}
-		}
-
-		// Currently disabled, since the service isn't available anymore.
-		// It is not removed since I hope that there will be a successor.
-		// Discover GNU Social Servers.
-		//if (!Config::get('system','ostatus_disabled')) {
-		//	$serverdata = "http://gstools.org/api/get_open_instances/";
-
-		//	$curlResult = Network::curl($serverdata);
-		//	if ($curlResult->isSuccess()) {
-		//		$servers = json_decode($result->getBody(), true);
-
-		//		foreach($servers['data'] as $server)
-		//			GServer::check($server['instance_address']);
-		//	}
-		//}
-
-		Config::set('poco', 'last_federation_discovery', time());
 	}
 
 	public static function discoverSingleServer($id)
@@ -395,7 +287,7 @@ class PortableContact
 		self::fetchServerlist($server["poco"]);
 
 		// Fetch all users from the other server
-		$url = $server["poco"] . "/?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation";
+		$url = $server["poco"] . "/?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,contactType,generation";
 
 		Logger::info("Fetch all users from the server " . $server["url"]);
 
@@ -408,8 +300,8 @@ class PortableContact
 				self::discoverServer($data, 2);
 			}
 
-			if (Config::get('system', 'poco_discovery') >= self::USERS_GCONTACTS) {
-				$timeframe = Config::get('system', 'poco_discovery_since');
+			if (DI::config()->get('system', 'poco_discovery') >= self::USERS_GCONTACTS) {
+				$timeframe = DI::config()->get('system', 'poco_discovery_since');
 
 				if ($timeframe == 0) {
 					$timeframe = 30;
@@ -418,7 +310,7 @@ class PortableContact
 				$updatedSince = date(DateTimeFormat::MYSQL, time() - $timeframe * 86400);
 
 				// Fetch all global contacts from the other server (Not working with Redmatrix and Friendica versions before 3.3)
-				$url = $server["poco"]."/@global?updatedSince=".$updatedSince."&fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation";
+				$url = $server["poco"]."/@global?updatedSince=".$updatedSince."&fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,contactType,generation";
 
 				$success = false;
 
@@ -433,7 +325,7 @@ class PortableContact
 					}
 				}
 
-				if (!$success && !empty($data) && Config::get('system', 'poco_discovery') >= self::USERS_GCONTACTS_FALLBACK) {
+				if (!$success && !empty($data) && DI::config()->get('system', 'poco_discovery') >= self::USERS_GCONTACTS_FALLBACK) {
 					Logger::info("Fetch contacts from users of the server " . $server["nurl"]);
 					self::discoverServerUsers($data, $server);
 				}
@@ -452,48 +344,6 @@ class PortableContact
 			DBA::update('gserver', $fields, ['nurl' => $server["nurl"]]);
 
 			return false;
-		}
-	}
-
-	public static function discover($complete = false)
-	{
-		// Update the server list
-		self::discoverFederation();
-
-		$no_of_queries = 5;
-
-		$requery_days = intval(Config::get('system', 'poco_requery_days'));
-
-		if ($requery_days == 0) {
-			$requery_days = 7;
-		}
-
-		$last_update = date('c', time() - (60 * 60 * 24 * $requery_days));
-
-		$gservers = q("SELECT `id`, `url`, `nurl`, `network`
-			FROM `gserver`
-			WHERE `last_contact` >= `last_failure`
-			AND `poco` != ''
-			AND `last_poco_query` < '%s'
-			ORDER BY RAND()", DBA::escape($last_update)
-		);
-
-		if (DBA::isResult($gservers)) {
-			foreach ($gservers as $gserver) {
-				if (!GServer::check($gserver['url'], $gserver['network'])) {
-					// The server is not reachable? Okay, then we will try it later
-					$fields = ['last_poco_query' => DateTimeFormat::utcNow()];
-					DBA::update('gserver', $fields, ['nurl' => $gserver['nurl']]);
-					continue;
-				}
-
-				Logger::log('Update directory from server ' . $gserver['url'] . ' with ID ' . $gserver['id'], Logger::DEBUG);
-				Worker::add(PRIORITY_LOW, 'DiscoverPoCo', 'update_server_directory', (int) $gserver['id']);
-
-				if (!$complete && ( --$no_of_queries == 0)) {
-					break;
-				}
-			}
 		}
 	}
 
@@ -520,7 +370,7 @@ class PortableContact
 				Logger::log('Fetch contacts for the user ' . $username . ' from the server ' . $server['nurl'], Logger::DEBUG);
 
 				// Fetch all contacts from a given user from the other server
-				$url = $server['poco'] . '/' . $username . '/?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,gender,contactType,generation';
+				$url = $server['poco'] . '/' . $username . '/?fields=displayName,urls,photos,updated,network,aboutMe,currentLocation,tags,contactType,generation';
 
 				$curlResult = Network::curl($url);
 
@@ -553,7 +403,6 @@ class PortableContact
 			$location = '';
 			$about = '';
 			$keywords = '';
-			$gender = '';
 			$contact_type = -1;
 			$generation = $default_generation;
 
@@ -599,10 +448,6 @@ class PortableContact
 				$about = HTML::toBBCode($entry['aboutMe']);
 			}
 
-			if (isset($entry['gender'])) {
-				$gender = $entry['gender'];
-			}
-
 			if (isset($entry['generation']) && ($entry['generation'] > 0)) {
 				$generation = ++$entry['generation'];
 			}
@@ -628,7 +473,6 @@ class PortableContact
 						"photo" => $profile_photo,
 						"about" => $about,
 						"location" => $location,
-						"gender" => $gender,
 						"keywords" => $keywords,
 						"connect" => $connect_url,
 						"updated" => $updated,
@@ -647,5 +491,4 @@ class PortableContact
 		}
 		return $success;
 	}
-
 }

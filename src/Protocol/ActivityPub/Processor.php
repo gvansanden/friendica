@@ -1,18 +1,35 @@
 <?php
 /**
- * @file src/Protocol/ActivityPub/Processor.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Protocol\ActivityPub;
 
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\APContact;
 use Friendica\Model\Contact;
+use Friendica\Model\Conversation;
 use Friendica\Model\Event;
 use Friendica\Model\Item;
 use Friendica\Model\Mail;
@@ -116,6 +133,18 @@ class Processor
 				} else {
 					$item['body'] .= "\n[img=" . $attach['url'] . ']' . $attach['name'] . '[/img]';
 				}
+			} elseif ($filetype == 'audio') {
+				if (!empty($activity['source']) && strpos($activity['source'], $attach['url'])) {
+					continue;
+				}
+
+				$item['body'] .= "\n[audio]" . $attach['url'] . '[/audio]';
+			} elseif ($filetype == 'video') {
+				if (!empty($activity['source']) && strpos($activity['source'], $attach['url'])) {
+					continue;
+				}
+
+				$item['body'] .= "\n[video]" . $attach['url'] . '[/video]';
 			} else {
 				if (!empty($item["attach"])) {
 					$item["attach"] .= ',';
@@ -176,10 +205,13 @@ class Processor
 		} else {
 			$item['gravity'] = GRAVITY_COMMENT;
 			$item['object-type'] = Activity\ObjectType::COMMENT;
+
+			// Ensure that the comment reaches all receivers of the referring post
+			$activity['receiver'] = self::addReceivers($activity);
 		}
 
 		if (empty($activity['directmessage']) && ($activity['id'] != $activity['reply-to-id']) && !Item::exists(['uri' => $activity['reply-to-id']])) {
-			Logger::log('Parent ' . $activity['reply-to-id'] . ' not found. Try to refetch it.');
+			Logger::notice('Parent not found. Try to refetch it.', ['parent' => $activity['reply-to-id']]);
 			self::fetchMissingActivity($activity['reply-to-id'], $activity);
 		}
 
@@ -200,7 +232,7 @@ class Processor
 		$owner = Contact::getIdForURL($activity['actor']);
 
 		Logger::log('Deleting item ' . $activity['object_id'] . ' from ' . $owner, Logger::DEBUG);
-		Item::delete(['uri' => $activity['object_id'], 'owner-id' => $owner]);
+		Item::markForDeletion(['uri' => $activity['object_id'], 'owner-id' => $owner]);
 	}
 
 	/**
@@ -241,6 +273,35 @@ class Processor
 	}
 
 	/**
+	 * Add users to the receiver list of the given public activity.
+	 * This is used to ensure that the activity will be stored in every thread.
+	 *
+	 * @param array $activity Activity array
+	 * @return array Modified receiver list
+	 */
+	private static function addReceivers(array $activity)
+	{
+		if (!in_array(0, $activity['receiver'])) {
+			// Private activities will not be modified
+			return $activity['receiver'];
+		}
+
+		// Add all owners of the referring item to the receivers
+		$original = $receivers = $activity['receiver'];
+		$items = Item::select(['uid'], ['uri' => $activity['object_id']]);
+		while ($item = DBA::fetch($items)) {
+			$receivers['uid:' . $item['uid']] = $item['uid'];
+		}
+		DBA::close($items);
+
+		if (count($original) != count($receivers)) {
+			Logger::info('Improved data', ['id' => $activity['id'], 'object' => $activity['object_id'], 'original' => $original, 'improved' => $receivers]);
+		}
+
+		return $receivers;
+	}
+
+	/**
 	 * Prepare the item array for an activity
 	 *
 	 * @param array  $activity Activity array
@@ -257,6 +318,8 @@ class Processor
 		$item['object-type'] = Activity\ObjectType::NOTE;
 
 		$item['diaspora_signed_text'] = $activity['diaspora:like'] ?? '';
+
+		$activity['receiver'] = self::addReceivers($activity);
 
 		self::postItem($activity, $item);
 	}
@@ -325,7 +388,7 @@ class Processor
 					Logger::warning('Unknown parent item.', ['uri' => $item['thr-parent']]);
 					return false;
 				}
-				if ($item_private && !$parent['private']) {
+				if ($item_private && ($parent['private'] == Item::PRIVATE)) {
 					Logger::warning('Item is private but the parent is not. Dropping.', ['item-uri' => $item['uri'], 'thr-parent' => $item['thr-parent']]);
 					return false;
 				}
@@ -336,10 +399,6 @@ class Processor
 			}
 			$item['content-warning'] = HTML::toBBCode($activity['summary']);
 			$item['body'] = $content;
-
-			if (($activity['object_type'] == 'as:Video') && !empty($activity['alternate-url'])) {
-				$item['body'] .= "\n[video]" . $activity['alternate-url'] . '[/video]';
-			}
 		}
 
 		$item['tag'] = self::constructTagString($activity['tags'], $activity['sensitive']);
@@ -353,6 +412,26 @@ class Processor
 		$item['app'] = $activity['generator'];
 
 		return $item;
+	}
+
+	/**
+	 * Generate a GUID out of an URL
+	 *
+	 * @param string $url message URL
+	 * @return string with GUID
+	 */
+	private static function getGUIDByURL(string $url)
+	{
+		$parsed = parse_url($url);
+
+		$host_hash = hash('crc32', $parsed['host']);
+
+		unset($parsed["scheme"]);
+		unset($parsed["host"]);
+
+		$path = implode("/", $parsed);
+
+		return $host_hash . '-'. hash('fnv164', $path) . '-'. hash('joaat', $path);
 	}
 
 	/**
@@ -372,11 +451,29 @@ class Processor
 		}
 
 		$item['network'] = Protocol::ACTIVITYPUB;
-		$item['private'] = !in_array(0, $activity['receiver']);
 		$item['author-link'] = $activity['author'];
 		$item['author-id'] = Contact::getIdForURL($activity['author'], 0, true);
 		$item['owner-link'] = $activity['actor'];
 		$item['owner-id'] = Contact::getIdForURL($activity['actor'], 0, true);
+
+		if (in_array(0, $activity['receiver']) && !empty($activity['unlisted'])) {
+			$item['private'] = Item::UNLISTED;
+		} elseif (in_array(0, $activity['receiver'])) {
+			$item['private'] = Item::PUBLIC;
+		} else {
+			$item['private'] = Item::PRIVATE;
+		}
+
+		if (!empty($activity['raw'])) {
+			$item['source'] = $activity['raw'];
+			$item['protocol'] = Conversation::PARCEL_ACTIVITYPUB;
+			$item['conversation-href'] = $activity['context'] ?? '';
+			$item['conversation-uri'] = $activity['conversation'] ?? '';
+
+			if (isset($activity['push'])) {
+				$item['direction'] = $activity['push'] ? Conversation::PUSH : Conversation::PULL;
+			}
+		}
 
 		$isForum = false;
 
@@ -397,7 +494,7 @@ class Processor
 
 		$item['created'] = DateTimeFormat::utc($activity['published']);
 		$item['edited'] = DateTimeFormat::utc($activity['updated']);
-		$item['guid'] = $activity['diaspora:guid'];
+		$item['guid'] = $activity['diaspora:guid'] ?: $activity['sc:identifier'] ?: self::getGUIDByURL($item['uri']);
 
 		$item = self::processContent($activity, $item);
 		if (empty($item)) {
@@ -411,6 +508,10 @@ class Processor
 		$stored = false;
 
 		foreach ($activity['receiver'] as $receiver) {
+			if ($receiver == -1) {
+				continue;
+			}
+
 			$item['uid'] = $receiver;
 
 			if ($isForum) {
@@ -428,7 +529,7 @@ class Processor
 				continue;
 			}
 
-			if (PConfig::get($receiver, 'system', 'accept_only_sharer', false) && ($receiver != 0) && ($item['gravity'] == GRAVITY_PARENT)) {
+			if (DI::pConfig()->get($receiver, 'system', 'accept_only_sharer', false) && ($receiver != 0) && ($item['gravity'] == GRAVITY_PARENT)) {
 				$skip = !Contact::isSharingByURL($activity['author'], $receiver);
 
 				if ($skip && (($activity['type'] == 'as:Announce') || $isForum)) {
@@ -443,7 +544,7 @@ class Processor
 				Logger::info('Accepting post', ['uid' => $receiver, 'url' => $item['uri']]);
 			}
 
-			if ($activity['object_type'] == 'as:Event') {
+			if (($item['gravity'] != GRAVITY_ACTIVITY) && ($activity['object_type'] == 'as:Event')) {
 				self::createEvent($activity, $item);
 			}
 
@@ -460,7 +561,7 @@ class Processor
 		}
 
 		// Store send a follow request for every reshare - but only when the item had been stored
-		if ($stored && !$item['private'] && ($item['gravity'] == GRAVITY_PARENT) && ($item['author-link'] != $item['owner-link'])) {
+		if ($stored && ($item['private'] != Item::PRIVATE) && ($item['gravity'] == GRAVITY_PARENT) && ($item['author-link'] != $item['owner-link'])) {
 			$author = APContact::getByURL($item['owner-link'], false);
 			// We send automatic follow requests for reshared messages. (We don't need though for forum posts)
 			if ($author['type'] != 'Group') {
@@ -538,7 +639,7 @@ class Processor
 	 *
 	 * @param string $url message URL
 	 * @param array $child activity array with the child of this message
-	 * @return boolean success
+	 * @return string fetched message URL
 	 * @throws \Friendica\Network\HTTPException\InternalServerErrorException
 	 */
 	public static function fetchMissingActivity($url, $child = [])
@@ -552,12 +653,12 @@ class Processor
 		$object = ActivityPub::fetchContent($url, $uid);
 		if (empty($object)) {
 			Logger::log('Activity ' . $url . ' was not fetchable, aborting.');
-			return false;
+			return '';
 		}
 
 		if (empty($object['id'])) {
 			Logger::log('Activity ' . $url . ' has got not id, aborting. ' . json_encode($object));
-			return false;
+			return '';
 		}
 
 		if (!empty($child['author'])) {
@@ -594,10 +695,11 @@ class Processor
 
 		$ldactivity['thread-completion'] = true;
 
-		ActivityPub\Receiver::processActivity($ldactivity);
-		Logger::log('Activity ' . $url . ' had been fetched and processed.');
+		ActivityPub\Receiver::processActivity($ldactivity, json_encode($activity));
 
-		return true;
+		Logger::notice('Activity had been fetched and processed.', ['url' => $url, 'object' => $activity['id']]);
+
+		return $activity['id'];
 	}
 
 	/**
@@ -779,7 +881,7 @@ class Processor
 			return;
 		}
 
-		Item::delete(['uri' => $activity['object_id'], 'author-id' => $author_id, 'gravity' => GRAVITY_ACTIVITY]);
+		Item::markForDeletion(['uri' => $activity['object_id'], 'author-id' => $author_id, 'gravity' => GRAVITY_ACTIVITY]);
 	}
 
 	/**
@@ -823,13 +925,13 @@ class Processor
 	 */
 	private static function switchContact($cid)
 	{
-		$contact = DBA::selectFirst('contact', ['network'], ['id' => $cid, 'network' => Protocol::NATIVE_SUPPORT]);
-		if (!DBA::isResult($contact) || in_array($contact['network'], [Protocol::ACTIVITYPUB, Protocol::DFRN])) {
+		$contact = DBA::selectFirst('contact', ['network', 'url'], ['id' => $cid]);
+		if (!DBA::isResult($contact) || in_array($contact['network'], [Protocol::ACTIVITYPUB, Protocol::DFRN]) || Contact::isLocal($contact['url'])) {
 			return;
 		}
 
-		Logger::log('Change existing contact ' . $cid . ' from ' . $contact['network'] . ' to ActivityPub.');
-		Contact::updateFromProbe($cid, Protocol::ACTIVITYPUB);
+		Logger::info('Change existing contact', ['cid' => $cid, 'previous' => $contact['network']]);
+		Contact::updateFromProbe($cid);
 	}
 
 	/**
@@ -843,7 +945,7 @@ class Processor
 	 */
 	private static function getImplicitMentionList(array $parent)
 	{
-		if (Config::get('system', 'disable_implicit_mentions')) {
+		if (DI::config()->get('system', 'disable_implicit_mentions')) {
 			return [];
 		}
 
@@ -885,7 +987,7 @@ class Processor
 	 */
 	private static function removeImplicitMentionsFromBody($body, array $potential_mentions)
 	{
-		if (Config::get('system', 'disable_implicit_mentions')) {
+		if (DI::config()->get('system', 'disable_implicit_mentions')) {
 			return $body;
 		}
 
@@ -908,7 +1010,7 @@ class Processor
 
 	private static function convertImplicitMentionsInTags($activity_tags, array $potential_mentions)
 	{
-		if (Config::get('system', 'disable_implicit_mentions')) {
+		if (DI::config()->get('system', 'disable_implicit_mentions')) {
 			return $activity_tags;
 		}
 

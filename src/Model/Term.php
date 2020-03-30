@@ -1,13 +1,30 @@
 <?php
 /**
- * @file src/Model/Term.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Model;
 
-use Friendica\Core\Cache;
+use Friendica\Core\Cache\Duration;
 use Friendica\Core\Logger;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Util\Strings;
 
 /**
@@ -16,8 +33,6 @@ use Friendica\Util\Strings;
  * This Model class handles term table interactions.
  * This tables stores relevant terms related to posts, photos and searches, like hashtags, mentions and
  * user-applied categories.
- *
- * @package Friendica\Model
  */
 class Term
 {
@@ -57,7 +72,7 @@ class Term
 	 */
 	public static function getGlobalTrendingHashtags(int $period, $limit = 10)
 	{
-		$tags = Cache::get('global_trending_tags');
+		$tags = DI::cache()->get('global_trending_tags');
 
 		if (!$tags) {
 			$tagsStmt = DBA::p("SELECT t.`term`, COUNT(*) AS `score`
@@ -67,7 +82,7 @@ class Term
 				WHERE `thread`.`visible`
 				  AND NOT `thread`.`deleted`
 				  AND NOT `thread`.`moderated`
-				  AND NOT `thread`.`private`
+				  AND `thread`.`private` = ?
 				  AND t.`uid` = 0
 				  AND t.`otype` = ?
 				  AND t.`type` = ?
@@ -76,6 +91,7 @@ class Term
 				GROUP BY `term`
 				ORDER BY `score` DESC
 				LIMIT ?",
+				Item::PUBLIC,
 				Term::OBJECT_TYPE_POST,
 				Term::HASHTAG,
 				$period,
@@ -84,7 +100,7 @@ class Term
 
 			if (DBA::isResult($tagsStmt)) {
 				$tags = DBA::toArray($tagsStmt);
-				Cache::set('global_trending_tags', $tags, Cache::HOUR);
+				DI::cache()->set('global_trending_tags', $tags, Duration::HOUR);
 			}
 		}
 
@@ -100,18 +116,17 @@ class Term
 	 */
 	public static function getLocalTrendingHashtags(int $period, $limit = 10)
 	{
-		$tags = Cache::get('local_trending_tags');
+		$tags = DI::cache()->get('local_trending_tags');
 
 		if (!$tags) {
 			$tagsStmt = DBA::p("SELECT t.`term`, COUNT(*) AS `score`
 				FROM `term` t
 				JOIN `item` i ON i.`id` = t.`oid` AND i.`uid` = t.`uid`
 				JOIN `thread` ON `thread`.`iid` = i.`id`
-				JOIN `user` ON `user`.`uid` = `thread`.`uid` AND NOT `user`.`hidewall`
 				WHERE `thread`.`visible`
 				  AND NOT `thread`.`deleted`
 				  AND NOT `thread`.`moderated`
-				  AND NOT `thread`.`private`
+				  AND `thread`.`private` = ?
 				  AND `thread`.`wall`
 				  AND `thread`.`origin`
 				  AND t.`otype` = ?
@@ -121,6 +136,7 @@ class Term
 				GROUP BY `term`
 				ORDER BY `score` DESC
 				LIMIT ?",
+				Item::PUBLIC,
 				Term::OBJECT_TYPE_POST,
 				Term::HASHTAG,
 				$period,
@@ -129,7 +145,7 @@ class Term
 
 			if (DBA::isResult($tagsStmt)) {
 				$tags = DBA::toArray($tagsStmt);
-				Cache::set('local_trending_tags', $tags, Cache::HOUR);
+				DI::cache()->set('local_trending_tags', $tags, Duration::HOUR);
 			}
 		}
 
@@ -208,7 +224,7 @@ class Term
 	 */
 	public static function insertFromTagFieldByItemId($item_id, $tag_str)
 	{
-		$profile_base = System::baseUrl();
+		$profile_base = DI::baseUrl();
 		$profile_data = parse_url($profile_base);
 		$profile_path = $profile_data['path'] ?? '';
 		$profile_base_friendica = $profile_data['host'] . $profile_path . '/profile/';
@@ -329,7 +345,7 @@ class Term
 				'oid'      => $item_id,
 				'otype'    => self::OBJECT_TYPE_POST,
 				'type'     => $type,
-				'term'     => $term,
+				'term'     => substr($term, 0, 255),
 				'url'      => $link,
 				'guid'     => $item['guid'],
 				'created'  => $item['created'],
@@ -425,7 +441,7 @@ class Term
 			'implicit_mentions' => [],
 		];
 
-		$searchpath = System::baseUrl() . "/search?tag=";
+		$searchpath = DI::baseUrl() . "/search?tag=";
 
 		$taglist = DBA::select(
 			'term',
@@ -447,13 +463,13 @@ class Term
 						$item['body'] = str_replace($orig_tag, $tag['url'], $item['body']);
 					}
 
-					$return['hashtags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
-					$return['tags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
+					$return['hashtags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank" rel="noopener noreferrer">' . htmlspecialchars($tag['term']) . '</a>';
+					$return['tags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank" rel="noopener noreferrer">' . htmlspecialchars($tag['term']) . '</a>';
 					break;
 				case self::MENTION:
 					$tag['url'] = Contact::magicLink($tag['url']);
-					$return['mentions'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
-					$return['tags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank">' . $tag['term'] . '</a>';
+					$return['mentions'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank" rel="noopener noreferrer">' . htmlspecialchars($tag['term']) . '</a>';
+					$return['tags'][] = $prefix . '<a href="' . $tag['url'] . '" target="_blank" rel="noopener noreferrer">' . htmlspecialchars($tag['term']) . '</a>';
 					break;
 				case self::IMPLICIT_MENTION:
 					$return['implicit_mentions'][] = $prefix . $tag['term'];

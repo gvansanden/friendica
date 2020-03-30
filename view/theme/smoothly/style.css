@@ -104,6 +104,14 @@ input[type=submit]:active {
 	top: 1px;
 }
 
+.btn {
+	background-color: transparent;
+	box-shadow: none;
+	border: none;
+	padding: 0;
+	text-align: inherit;
+}
+
 #search-text,
 #search-submit,
 #search-save {
@@ -616,7 +624,7 @@ ul#user-menu-popup li a.nav-sep {
 	padding-left: 11px;
 }
 
-#notify-update {
+#notification-update {
 	background-position: 0px -168px;
 }
 
@@ -2038,30 +2046,12 @@ pre code {
 /* = Profile = */
 /* =========== */
 
-.advanced-profile-content {
-	margin-top: 5px;
-	margin-bottom: 10px;
-	margin-left: 30px;
-	width: 60%;
-}
-
-.advanced-profile-label {
-	margin-top: 10px;
-	margin-bottom: 0px;
-	padding-bottom: 5px;
-	font-size: 18px;
-}
-
 div[id$="wrapper"] {
 	height: 100%;
 }
 
 div[id$="wrapper"] br {
 	clear: left;
-}
-
-#advanced-profile-with {
-	margin-left: 20px;
 }
 
 #profile-listing-desc,
@@ -2125,6 +2115,10 @@ div[id$="wrapper"] br {
 	margin-left: 180px;
 	float: left;
 	position: absolute;
+}
+
+#profile-menu {
+	display: none;
 }
 
 #cropimage-wrapper {
@@ -3176,13 +3170,13 @@ margin-left: 0px;
 	color: #efefef;
 }
 
-.crepair-label {
+.contact-advanced-label {
 	margin-top: 10px;
 	float: left;
 	width: 250px;
 }
 
-.crepair-input {
+.contact-advanced-input {
 	margin-top: 10px;
 	float: left;
 	width: 200px;
@@ -3925,37 +3919,6 @@ margin-left: 0px;
 	color: #666666;
 }
 
-.field .onoff {
-	float: left;
-	width: 80px;
-}
-.field .onoff a {
-	display: block;
-	border: 1px solid #c1c1c1;
-	background-image: url("../../../images/onoff.jpg");
-	background-repeat: no-repeat;
-	padding: 4px 2px 2px 2px;
-	height: 16px;
-	text-decoration: none;
-}
-.field .onoff .off {
-	border-color: #c1c1c1;
-	padding-left: 40px;
-	background-position: left center;
-	background-color: #cccccc;
-	color: #666666;
-	text-align: right;
-}
-
-.field .onoff .on {
-	border-color: #c1c1c1;
-	padding-right: 40px;
-	background-position: right center;
-	background-color: #1873a2;
-	color: #FFFFFF;
-	text-align: left;
-}
-
 .field .radio .field_help {
 	margin-left: 0px;
 }
@@ -4211,7 +4174,7 @@ a.active {
 	margin-right: -20px;
 }
 
-.nav-notify {
+.nav-notification {
 	display: none;
 	position: absolute;
 	font-size: 10px;
@@ -4221,7 +4184,7 @@ a.active {
 	min-width: 15px;
 	text-align: right;
 }
-.nav-notify.show {
+.nav-notification.show {
 	display: block;
 }
 #nav-notifications-menu {
@@ -4353,11 +4316,11 @@ a.active {
 	filter: alpha(opacity=100);
 }
 
-.notify-seen {
+.notification-seen {
 	background: #000000;
 }
 
-.notify-seen a {
+.notification-seen a {
 	color: #efefef !important;
 }
 
@@ -4511,8 +4474,6 @@ hr.line-dots {
 
 .location,
 .location-label,
-.gender-label,
-.marital-label,
 .homepage-label,
 .network-label {
 	float: left;
@@ -4522,8 +4483,6 @@ hr.line-dots {
 }
 
 .adr,
-.x-gender,
-.marital-text,
 .homepage-url,
 .x-network {
 	float: left;
@@ -4604,7 +4563,7 @@ div #datebrowse-sidebar.widget {
 }
 
 #settings-activity-desc,
-#settings-notify-desc {
+#settings-notification-desc {
 	margin: 10px 10px 10px 0;
 	font-weight: bold;
 }
@@ -4660,10 +4619,6 @@ div #datebrowse-sidebar.widget {
 #page-settings-label{
 	width: auto !important;
 	margin-bottom: 5px !important;
-}
-
-.onoff {
-	margin-right: 10px;
 }
 
 .settings-heading {

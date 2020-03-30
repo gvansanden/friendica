@@ -1,29 +1,38 @@
 <?php
 /**
- * @file include/items.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
-use Friendica\BaseObject;
-use Friendica\Content\Feature;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Item;
 use Friendica\Protocol\DFRN;
 use Friendica\Protocol\Feed;
 use Friendica\Protocol\OStatus;
-use Friendica\Util\DateTimeFormat;
 use Friendica\Util\Network;
 use Friendica\Util\ParseUrl;
 use Friendica\Util\Strings;
-use Friendica\Util\Temporal;
 
 require_once __DIR__ . '/../mod/share.php';
 
@@ -79,7 +88,7 @@ function add_page_info_data(array $data, $no_photos = false)
 		$preview = str_replace(["[", "]"], ["&#91;", "&#93;"], htmlentities($data["images"][0]["src"], ENT_QUOTES, 'UTF-8', false));
 		// if the preview picture is larger than 500 pixels then show it in a larger mode
 		// But only, if the picture isn't higher than large (To prevent huge posts)
-		if (!Config::get('system', 'always_show_preview') && ($data["images"][0]["width"] >= 500)
+		if (!DI::config()->get('system', 'always_show_preview') && ($data["images"][0]["width"] >= 500)
 			&& ($data["images"][0]["width"] >= $data["images"][0]["height"])) {
 			$text .= " image='".$preview."'";
 		} else {
@@ -94,9 +103,8 @@ function add_page_info_data(array $data, $no_photos = false)
 		$hashtags = "\n";
 		foreach ($data["keywords"] as $keyword) {
 			/// @TODO make a positive list of allowed characters
-			$hashtag = str_replace([" ", "+", "/", ".", "#", "'", "’", "`", "(", ")", "„", "“"],
-						["", "", "", "", "", "", "", "", "", "", "", ""], $keyword);
-			$hashtags .= "#[url=" . System::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url] ";
+			$hashtag = str_replace([' ', '+', '/', '.', '#', '@', "'", '"', '’', '`', '(', ')', '„', '“'], '', $keyword);
+			$hashtags .= "#[url=" . DI::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url] ";
 		}
 	}
 
@@ -147,7 +155,7 @@ function add_page_keywords($url, $photo = "", $keywords = false, $keyword_blackl
 				$tags .= ", ";
 			}
 
-			$tags .= "#[url=" . System::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url]";
+			$tags .= "#[url=" . DI::baseUrl() . "/search?tag=" . $hashtag . "]" . $hashtag . "[/url]";
 		}
 	}
 
@@ -263,7 +271,7 @@ function consume_feed($xml, array $importer, array $contact, &$hub)
 
 	if ($contact['network'] === Protocol::FEED) {
 		Logger::log("Consume feeds", Logger::DEBUG);
-		Feed::import($xml, $importer, $contact, $hub);
+		Feed::import($xml, $importer, $contact);
 
 		return;
 	}
@@ -302,7 +310,7 @@ function subscribe_to_hub($url, array $importer, array $contact, $hubmode = 'sub
 		return;
 	}
 
-	$push_url = System::baseUrl() . '/pubsub/' . $user['nickname'] . '/' . $contact['id'];
+	$push_url = DI::baseUrl() . '/pubsub/' . $user['nickname'] . '/' . $contact['id'];
 
 	// Use a single verify token, even if multiple hubs
 	$verify_token = ((strlen($contact['hub-verify'])) ? $contact['hub-verify'] : Strings::getRandomHex());
@@ -344,7 +352,7 @@ function drop_items(array $items)
 
 function drop_item($id, $return = '')
 {
-	$a = BaseObject::getApp();
+	$a = DI::app();
 
 	// locate item to be deleted
 
@@ -352,8 +360,8 @@ function drop_item($id, $return = '')
 	$item = Item::selectFirstForUser(local_user(), $fields, ['id' => $id]);
 
 	if (!DBA::isResult($item)) {
-		notice(L10n::t('Item not found.') . EOL);
-		$a->internalRedirect('network');
+		notice(DI::l10n()->t('Item not found.') . EOL);
+		DI::baseUrl()->redirect('network');
 	}
 
 	if ($item['deleted']) {
@@ -372,7 +380,7 @@ function drop_item($id, $return = '')
 		if (!empty($_REQUEST['confirm'])) {
 			// <form> can't take arguments in its "action" parameter
 			// so add any arguments as hidden inputs
-			$query = explode_querystring($a->query_string);
+			$query = explode_querystring(DI::args()->getQueryString());
 			$inputs = [];
 
 			foreach ($query['args'] as $arg) {
@@ -384,17 +392,17 @@ function drop_item($id, $return = '')
 
 			return Renderer::replaceMacros(Renderer::getMarkupTemplate('confirm.tpl'), [
 				'$method' => 'get',
-				'$message' => L10n::t('Do you really want to delete this item?'),
+				'$message' => DI::l10n()->t('Do you really want to delete this item?'),
 				'$extra_inputs' => $inputs,
-				'$confirm' => L10n::t('Yes'),
+				'$confirm' => DI::l10n()->t('Yes'),
 				'$confirm_url' => $query['base'],
 				'$confirm_name' => 'confirmed',
-				'$cancel' => L10n::t('Cancel'),
+				'$cancel' => DI::l10n()->t('Cancel'),
 			]);
 		}
 		// Now check how the user responded to the confirmation query
 		if (!empty($_REQUEST['canceled'])) {
-			$a->internalRedirect('display/' . $item['guid']);
+			DI::baseUrl()->redirect('display/' . $item['guid']);
 		}
 
 		$is_comment = ($item['gravity'] == GRAVITY_COMMENT) ? true : false;
@@ -416,28 +424,28 @@ function drop_item($id, $return = '')
 		if ($is_comment) {
 			// Return to parent guid
 			if (!empty($parentitem)) {
-				$a->internalRedirect('display/' . $parentitem['guid']);
+				DI::baseUrl()->redirect('display/' . $parentitem['guid']);
 				//NOTREACHED
 			}
 			// In case something goes wrong
 			else {
-				$a->internalRedirect('network');
+				DI::baseUrl()->redirect('network');
 				//NOTREACHED
 			}
 		}
 		else {
 			// if unknown location or deleting top level post called from display
 			if (empty($return_url) || strpos($return_url, 'display') !== false) {
-				$a->internalRedirect('network');
+				DI::baseUrl()->redirect('network');
 				//NOTREACHED
 			} else {
-				$a->internalRedirect($return_url);
+				DI::baseUrl()->redirect($return_url);
 				//NOTREACHED
 			}
 		}
 	} else {
-		notice(L10n::t('Permission denied.') . EOL);
-		$a->internalRedirect('display/' . $item['guid']);
+		notice(DI::l10n()->t('Permission denied.') . EOL);
+		DI::baseUrl()->redirect('display/' . $item['guid']);
 		//NOTREACHED
 	}
 }

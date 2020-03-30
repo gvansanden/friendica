@@ -1,9 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Util;
 
-use Friendica\Core\Config\Cache\ConfigCache;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\Cache;
+use Friendica\Core\Config\IConfig;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
@@ -47,18 +66,18 @@ class Profiler implements ContainerInterface
 	/**
 	 * Updates the enabling of the current profiler
 	 *
-	 * @param Configuration $config
+	 * @param IConfig $config
 	 */
-	public function update(Configuration $config)
+	public function update(IConfig $config)
 	{
 		$this->enabled = $config->get('system', 'profiler');
 		$this->rendertime = $config->get('rendertime', 'callstack');
 	}
 
 	/**
-	 * @param ConfigCache $configCache The configuration cache
+	 * @param Cache $configCache The configuration cache
 	 */
-	public function __construct(ConfigCache $configCache)
+	public function __construct(Cache $configCache)
 	{
 		$this->enabled = $configCache->get('system', 'profiler');
 		$this->rendertime = $configCache->get('rendertime', 'callstack');

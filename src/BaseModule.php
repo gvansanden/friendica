@@ -1,8 +1,26 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica;
 
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 
 /**
@@ -14,10 +32,10 @@ use Friendica\Core\Logger;
  *
  * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
-abstract class BaseModule extends BaseObject
+abstract class BaseModule
 {
 	/**
-	 * @brief Initialization method common to both content() and post()
+	 * Initialization method common to both content() and post()
 	 *
 	 * Extend this method if you need to do any shared processing before both
 	 * content() or post()
@@ -27,7 +45,7 @@ abstract class BaseModule extends BaseObject
 	}
 
 	/**
-	 * @brief Module GET method to display raw content from technical endpoints
+	 * Module GET method to display raw content from technical endpoints
 	 *
 	 * Extend this method if the module is supposed to return communication data,
 	 * e.g. from protocol implementations.
@@ -39,7 +57,7 @@ abstract class BaseModule extends BaseObject
 	}
 
 	/**
-	 * @brief Module GET method to display any content
+	 * Module GET method to display any content
 	 *
 	 * Extend this method if the module is supposed to return any display
 	 * through a GET request. It can be an HTML page through templating or a
@@ -55,19 +73,18 @@ abstract class BaseModule extends BaseObject
 	}
 
 	/**
-	 * @brief Module POST method to process submitted data
+	 * Module POST method to process submitted data
 	 *
 	 * Extend this method if the module is supposed to process POST requests.
 	 * Doesn't display any content
 	 */
 	public static function post(array $parameters = [])
 	{
-		// $a = self::getApp();
-		// $a->internalRedirect('module');
+		// DI::baseurl()->redirect('module');
 	}
 
 	/**
-	 * @brief Called after post()
+	 * Called after post()
 	 *
 	 * Unknown purpose
 	 */
@@ -88,7 +105,7 @@ abstract class BaseModule extends BaseObject
 	 */
 	public static function getFormSecurityToken($typename = '')
 	{
-		$a = \get_app();
+		$a = DI::app();
 
 		$timestamp = time();
 		$sec_hash = hash('whirlpool', $a->user['guid'] . $a->user['prvkey'] . session_id() . $timestamp . $typename);
@@ -116,7 +133,7 @@ abstract class BaseModule extends BaseObject
 
 		$max_livetime = 10800; // 3 hours
 
-		$a = \get_app();
+		$a = DI::app();
 
 		$x = explode('.', $hash);
 		if (time() > (intval($x[0]) + $max_livetime)) {
@@ -130,24 +147,24 @@ abstract class BaseModule extends BaseObject
 
 	public static function getFormSecurityStandardErrorMessage()
 	{
-		return L10n::t("The form security token was not correct. This probably happened because the form has been opened for too long \x28>3 hours\x29 before submitting it.") . EOL;
+		return DI::l10n()->t("The form security token was not correct. This probably happened because the form has been opened for too long \x28>3 hours\x29 before submitting it.") . EOL;
 	}
 
 	public static function checkFormSecurityTokenRedirectOnError($err_redirect, $typename = '', $formname = 'form_security_token')
 	{
 		if (!self::checkFormSecurityToken($typename, $formname)) {
-			$a = \get_app();
+			$a = DI::app();
 			Logger::log('checkFormSecurityToken failed: user ' . $a->user['guid'] . ' - form element ' . $typename);
 			Logger::log('checkFormSecurityToken failed: _REQUEST data: ' . print_r($_REQUEST, true), Logger::DATA);
 			notice(self::getFormSecurityStandardErrorMessage());
-			$a->internalRedirect($err_redirect);
+			DI::baseUrl()->redirect($err_redirect);
 		}
 	}
 
 	public static function checkFormSecurityTokenForbiddenOnError($typename = '', $formname = 'form_security_token')
 	{
 		if (!self::checkFormSecurityToken($typename, $formname)) {
-			$a = \get_app();
+			$a = DI::app();
 			Logger::log('checkFormSecurityToken failed: user ' . $a->user['guid'] . ' - form element ' . $typename);
 			Logger::log('checkFormSecurityToken failed: _REQUEST data: ' . print_r($_REQUEST, true), Logger::DATA);
 

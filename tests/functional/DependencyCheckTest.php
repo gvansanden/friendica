@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace functional;
 
@@ -6,8 +25,8 @@ use Dice\Dice;
 use Friendica\App;
 use Friendica\Core\Cache\ICache;
 use Friendica\Core\Cache\IMemoryCache;
-use Friendica\Core\Config\Cache\ConfigCache;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\Cache;
+use Friendica\Core\Config\IConfig;
 use Friendica\Core\Lock\ILock;
 use Friendica\Database\Database;
 use Friendica\Test\Util\VFSTrait;
@@ -59,7 +78,7 @@ class dependencyCheck extends TestCase
 
 		$this->assertInstanceOf(ConfigFileLoader::class, $configFileLoader);
 
-		$configCache = new ConfigCache();
+		$configCache = new Cache();
 		$configFileLoader->setupCache($configCache);
 
 		$this->assertNotEmpty($configCache->getAll());
@@ -77,7 +96,7 @@ class dependencyCheck extends TestCase
 
 		$this->assertInstanceOf(Profiler::class, $profiler);
 
-		$configCache = new ConfigCache([
+		$configCache = new Cache([
 			'system' => [
 				'profiler' => true,
 			],
@@ -115,10 +134,10 @@ class dependencyCheck extends TestCase
 
 	public function testConfiguration()
 	{
-		/** @var Configuration $config */
-		$config = $this->dice->create(Configuration::class);
+		/** @var IConfig $config */
+		$config = $this->dice->create(IConfig::class);
 
-		$this->assertInstanceOf(Configuration::class, $config);
+		$this->assertInstanceOf(IConfig::class, $config);
 
 		$this->assertNotEmpty($config->get('database', 'username'));
 	}
@@ -133,6 +152,10 @@ class dependencyCheck extends TestCase
 
 	public function testDevLogger()
 	{
+		/** @var IConfig $config */
+		$config = $this->dice->create(IConfig::class);
+		$config->set('system', 'dlogfile', $this->root->url() . '/friendica.log');
+
 		/** @var LoggerInterface $logger */
 		$logger = $this->dice->create('$devLogger', ['dev']);
 

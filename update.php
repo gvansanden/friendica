@@ -1,30 +1,31 @@
 <?php
-
-use Friendica\Core\Addon;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
-use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
-use Friendica\Core\Update;
-use Friendica\Core\Worker;
-use Friendica\Database\DBA;
-use Friendica\Model\Contact;
-use Friendica\Model\GContact;
-use Friendica\Model\Item;
-use Friendica\Model\User;
-use Friendica\Util\DateTimeFormat;
-use Friendica\Worker\Delivery;
-
 /**
+ * @copyright Copyright (C) 2020, Friendica
  *
- * update.php - automatic system update
+ * @license GNU AGPL version 3 or any later version
  *
- * This function is responsible for doing post update changes to the data
- * (not the structure) in the database.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Automatic post-databse structure change updates
+ *
+ * These functions are responsible for doing critical post update changes to the data (not the structure) in the database.
  *
  * Database structure changes are done in static/dbstructure.config.php
  *
- * If there is a need for a post process to a structure change, update this file
+ * For non-critical database migrations, please add a method in the Database\PostUpdate class
+ *
+ * If there is a need for a post update to a structure change, update this file
  * by adding a new function at the end with the number of the new DB_UPDATE_VERSION.
  *
  * The numbered script in this file has to be exactly like the DB_UPDATE_VERSION
@@ -39,33 +40,24 @@ use Friendica\Worker\Delivery;
  * If you need to run a script before the database update, name the function "pre_update_4712()"
  */
 
-function update_1178()
-{
-	require_once 'mod/profiles.php';
-
-	$profiles = q("SELECT `uid`, `about`, `locality`, `pub_keywords`, `gender` FROM `profile` WHERE `is-default`");
-
-	foreach ($profiles as $profile) {
-		if ($profile["about"].$profile["locality"].$profile["pub_keywords"].$profile["gender"] == "") {
-			continue;
-		}
-
-		$profile["pub_keywords"] = profile_clean_keywords($profile["pub_keywords"]);
-
-		$r = q("UPDATE `contact` SET `about` = '%s', `location` = '%s', `keywords` = '%s', `gender` = '%s' WHERE `self` AND `uid` = %d",
-			DBA::escape($profile["about"]),
-			DBA::escape($profile["locality"]),
-			DBA::escape($profile["pub_keywords"]),
-			DBA::escape($profile["gender"]),
-			intval($profile["uid"])
-		);
-	}
-}
+use Friendica\Core\Addon;
+use Friendica\Core\Logger;
+use Friendica\Core\Update;
+use Friendica\Core\Worker;
+use Friendica\Database\DBA;
+use Friendica\DI;
+use Friendica\Model\Contact;
+use Friendica\Model\GContact;
+use Friendica\Model\Item;
+use Friendica\Model\User;
+use Friendica\Model\Storage;
+use Friendica\Util\DateTimeFormat;
+use Friendica\Worker\Delivery;
 
 function update_1179()
 {
-	if (Config::get('system', 'no_community_page')) {
-		Config::set('system', 'community_page_style', CP_NO_COMMUNITY_PAGE);
+	if (DI::config()->get('system', 'no_community_page')) {
+		DI::config()->set('system', 'community_page_style', CP_NO_COMMUNITY_PAGE);
 	}
 
 	// Update the central item storage with uid=0
@@ -86,10 +78,10 @@ function update_1181()
 function update_1189()
 {
 
-	if (strlen(Config::get('system', 'directory_submit_url')) &&
-		!strlen(Config::get('system', 'directory'))) {
-		Config::set('system', 'directory', dirname(Config::get('system', 'directory_submit_url')));
-		Config::delete('system', 'directory_submit_url');
+	if (strlen(DI::config()->get('system', 'directory_submit_url')) &&
+		!strlen(DI::config()->get('system', 'directory'))) {
+		DI::config()->set('system', 'directory', dirname(DI::config()->get('system', 'directory_submit_url')));
+		DI::config()->delete('system', 'directory_submit_url');
 	}
 
 	return Update::SUCCESS;
@@ -97,26 +89,10 @@ function update_1189()
 
 function update_1191()
 {
-	Config::set('system', 'maintenance', 1);
+	DI::config()->set('system', 'maintenance', 1);
 
 	if (Addon::isEnabled('forumlist')) {
-		$addon = 'forumlist';
-		$addons = Config::get('system', 'addon');
-		$addons_arr = [];
-
-		if ($addons) {
-			$addons_arr = explode(",", str_replace(" ", "", $addons));
-
-			$idx = array_search($addon, $addons_arr);
-			if ($idx !== false) {
-				unset($addons_arr[$idx]);
-				//delete forumlist manually from addon and hook table
-				// since Addon::uninstall() don't work here
-				q("DELETE FROM `addon` WHERE `name` = 'forumlist' ");
-				q("DELETE FROM `hook` WHERE `file` = 'addon/forumlist/forumlist.php' ");
-				Config::set('system', 'addon', implode(", ", $addons_arr));
-			}
-		}
+		Addon::uninstall('forumlist');
 	}
 
 	// select old formlist addon entries
@@ -133,28 +109,28 @@ function update_1191()
 			$value = $rr['v'];
 
 			if ($key === 'randomise') {
-				PConfig::delete($uid, $family, $key);
+				DI::pConfig()->delete($uid, $family, $key);
 			}
 
 			if ($key === 'show_on_profile') {
 				if ($value) {
-					PConfig::set($uid, feature, forumlist_profile, $value);
+					DI::pConfig()->set($uid, 'feature', 'forumlist_profile', $value);
 				}
 
-				PConfig::delete($uid, $family, $key);
+				DI::pConfig()->delete($uid, $family, $key);
 			}
 
 			if ($key === 'show_on_network') {
 				if ($value) {
-					PConfig::set($uid, feature, forumlist_widget, $value);
+					DI::pConfig()->set($uid, 'feature', 'forumlist_widget', $value);
 				}
 
-				PConfig::delete($uid, $family, $key);
+				DI::pConfig()->delete($uid, $family, $key);
 			}
 		}
 	}
 
-	Config::set('system', 'maintenance', 0);
+	DI::config()->set('system', 'maintenance', 0);
 
 	return Update::SUCCESS;
 }
@@ -187,13 +163,13 @@ function update_1244()
 
 function update_1245()
 {
-	$rino = Config::get('system', 'rino_encrypt');
+	$rino = DI::config()->get('system', 'rino_encrypt');
 
 	if (!$rino) {
 		return Update::SUCCESS;
 	}
 
-	Config::set('system', 'rino_encrypt', 1);
+	DI::config()->set('system', 'rino_encrypt', 1);
 
 	return Update::SUCCESS;
 }
@@ -210,11 +186,11 @@ WHERE `hook` LIKE 'plugin_%'");
 
 function update_1260()
 {
-	Config::set('system', 'maintenance', 1);
-	Config::set(
+	DI::config()->set('system', 'maintenance', 1);
+	DI::config()->set(
 		'system',
 		'maintenance_reason',
-		L10n::t(
+		DI::l10n()->t(
 			'%s: Updating author-id and owner-id in item and thread table. ',
 			DateTimeFormat::utcNow().' '.date('e')
 		)
@@ -252,7 +228,7 @@ function update_1260()
 	DBA::e("UPDATE `thread` INNER JOIN `item` ON `thread`.`iid` = `item`.`id`
 		SET `thread`.`author-id` = `item`.`author-id` WHERE `thread`.`author-id` = 0");
 
-	Config::set('system', 'maintenance', 0);
+	DI::config()->set('system', 'maintenance', 0);
 	return Update::SUCCESS;
 }
 
@@ -265,11 +241,11 @@ function update_1261()
 
 function update_1278()
 {
-	Config::set('system', 'maintenance', 1);
-	Config::set(
+	DI::config()->set('system', 'maintenance', 1);
+	DI::config()->set(
 		'system',
 		'maintenance_reason',
-		L10n::t(
+		DI::l10n()->t(
 			'%s: Updating post-type.',
 			DateTimeFormat::utcNow().' '.date('e')
 		)
@@ -278,7 +254,7 @@ function update_1278()
 	Item::update(['post-type' => Item::PT_PAGE], ['bookmark' => true]);
 	Item::update(['post-type' => Item::PT_PERSONAL_NOTE], ['type' => 'note']);
 
-	Config::set('system', 'maintenance', 0);
+	DI::config()->set('system', 'maintenance', 0);
 
 	return Update::SUCCESS;
 }
@@ -299,7 +275,7 @@ function update_1298()
 	$keys = ['gender', 'marital', 'sexual'];
 	foreach ($keys as $translateKey) {
 		$allData = DBA::select('profile', ['id', $translateKey]);
-		$allLangs = L10n::getAvailableLanguages();
+		$allLangs = DI::l10n()->getAvailableLanguages();
 		$success = 0;
 		$fail = 0;
 		foreach ($allData as $key => $data) {
@@ -364,7 +340,7 @@ function update_1309()
 
 		$deliver_options = ['priority' => PRIORITY_MEDIUM, 'dont_fork' => true];
 		Worker::add($deliver_options, 'Delivery', Delivery::POST, $item['id'], $entry['cid']);
-		Logger::info('Added delivery worker', ['command' => $cmd, 'item' => $item['id'], 'contact' => $entry['cid']]);
+		Logger::info('Added delivery worker', ['item' => $item['id'], 'contact' => $entry['cid']]);
 		DBA::delete('queue', ['id' => $entry['id']]);
 	}
 	return Update::SUCCESS;
@@ -408,3 +384,41 @@ function update_1327()
 	return Update::SUCCESS;
 }
 
+function update_1330()
+{
+	$currStorage = DI::config()->get('storage', 'class', '');
+
+	// set the name of the storage instead of the classpath as config
+	if (!empty($currStorage)) {
+		/** @var Storage\IStorage $currStorage */
+		if (!DI::config()->set('storage', 'name', $currStorage::getName())) {
+			return Update::FAILED;
+		}
+
+		// try to delete the class since it isn't needed. This won't work with config files
+		DI::config()->delete('storage', 'class');
+	}
+
+	// Update attachments and photos
+	if (!DBA::p("UPDATE `photo` SET `photo`.`backend-class` = SUBSTR(`photo`.`backend-class`, 25) WHERE `photo`.`backend-class` LIKE 'Friendica\\\Model\\\Storage\\\%' ESCAPE '|'") ||
+	    !DBA::p("UPDATE `attach` SET `attach`.`backend-class` = SUBSTR(`attach`.`backend-class`, 25) WHERE `attach`.`backend-class` LIKE 'Friendica\\\Model\\\Storage\\\%' ESCAPE '|'")) {
+		return Update::FAILED;
+	};
+
+	return Update::SUCCESS;
+}
+
+function update_1332()
+{
+	$condition = ["`is-default` IS NOT NULL"];
+	$profiles = DBA::select('profile', [], $condition);
+
+	while ($profile = DBA::fetch($profiles)) {
+		DI::profileField()->migrateFromLegacyProfile($profile);
+	}
+	DBA::close($profiles);
+
+	DBA::update('contact', ['profile-id' => null], ['`profile-id` IS NOT NULL']);
+
+	return Update::SUCCESS;
+}

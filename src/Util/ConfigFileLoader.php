@@ -1,13 +1,32 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Util;
 
 use Exception;
 use Friendica\Core\Addon;
-use Friendica\Core\Config\Cache\ConfigCache;
+use Friendica\Core\Config\Cache;
 
 /**
- * The ConfigFileLoader loads config-files and stores them in a ConfigCache ( @see ConfigCache )
+ * The ConfigFileLoader loads config-files and stores them in a ConfigCache ( @see Cache )
  *
  * It is capable of loading the following config files:
  * - *.config.php   (current)
@@ -77,12 +96,12 @@ class ConfigFileLoader
 	 * First loads the default value for all the configuration keys, then the legacy configuration files, then the
 	 * expected local.config.php
 	 *
-	 * @param ConfigCache $config The config cache to load to
-	 * @param bool        $raw    Setup the raw config format
+	 * @param Cache $config The config cache to load to
+	 * @param bool  $raw    Setup the raw config format
 	 *
 	 * @throws Exception
 	 */
-	public function setupCache(ConfigCache $config, $raw = false)
+	public function setupCache(Cache $config, $raw = false)
 	{
 		// Load static config files first, the order is important
 		$config->load($this->loadStaticConfig('defaults'));
@@ -128,13 +147,13 @@ class ConfigFileLoader
 	/**
 	 * Tries to load the specified core-configuration into the config cache.
 	 *
-	 * @param ConfigCache $config The Config cache
+	 * @param Cache $config The Config cache
 	 *
 	 * @return array The config array (empty if no config found)
 	 *
 	 * @throws Exception if the configuration file isn't readable
 	 */
-	private function loadCoreConfig(ConfigCache $config)
+	private function loadCoreConfig(Cache $config)
 	{
 		// try to load legacy ini-files first
 		foreach ($this->getConfigFiles(true) as $configFile) {

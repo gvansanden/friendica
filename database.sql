@@ -1,6 +1,6 @@
 -- ------------------------------------------
--- Friendica 2019.12-rc (Dalmatian Bellflower)
--- DB_UPDATE_VERSION 1326
+-- Friendica 2020.03-rc (Dalmatian Bellflower)
+-- DB_UPDATE_VERSION 1338
 -- ------------------------------------------
 
 
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS `contact` (
 	`location` varchar(255) DEFAULT '' COMMENT '',
 	`about` text COMMENT '',
 	`keywords` text COMMENT 'public keywords (interests) of the contact',
-	`gender` varchar(32) NOT NULL DEFAULT '' COMMENT '',
+	`gender` varchar(32) NOT NULL DEFAULT '' COMMENT 'Deprecated',
 	`xmpp` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`attag` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`avatar` varchar(255) NOT NULL DEFAULT '' COMMENT '',
@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS `contact` (
 	`reason` text COMMENT '',
 	`closeness` tinyint unsigned NOT NULL DEFAULT 99 COMMENT '',
 	`info` mediumtext COMMENT '',
-	`profile-id` int unsigned NOT NULL DEFAULT 0 COMMENT '',
+	`profile-id` int unsigned COMMENT 'Deprecated',
 	`bdyear` varchar(4) NOT NULL DEFAULT '' COMMENT '',
 	`bd` date NOT NULL DEFAULT '0001-01-01' COMMENT '',
 	`notify_new_posts` boolean NOT NULL DEFAULT '0' COMMENT '',
@@ -253,6 +253,17 @@ CREATE TABLE IF NOT EXISTS `contact` (
 	 INDEX `dfrn-id` (`dfrn-id`(64)),
 	 INDEX `issued-id` (`issued-id`(64))
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='contact table';
+
+--
+-- TABLE contact-relation
+--
+CREATE TABLE IF NOT EXISTS `contact-relation` (
+	`cid` int unsigned NOT NULL DEFAULT 0 COMMENT 'contact the related contact had interacted with',
+	`relation-cid` int unsigned NOT NULL DEFAULT 0 COMMENT 'related contact who had interacted with the contact',
+	`last-interaction` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Date of the last interaction',
+	 PRIMARY KEY(`cid`,`relation-cid`),
+	 INDEX `relation-cid` (`relation-cid`)
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Contact relations';
 
 --
 -- TABLE conv
@@ -279,6 +290,7 @@ CREATE TABLE IF NOT EXISTS `conversation` (
 	`conversation-uri` varbinary(255) NOT NULL DEFAULT '' COMMENT 'GNU Social conversation URI',
 	`conversation-href` varbinary(255) NOT NULL DEFAULT '' COMMENT 'GNU Social conversation link',
 	`protocol` tinyint unsigned NOT NULL DEFAULT 255 COMMENT 'The protocol of the item',
+	`direction` tinyint unsigned NOT NULL DEFAULT 0 COMMENT 'How the message arrived here: 1=push, 2=pull',
 	`source` mediumtext COMMENT 'Original source',
 	`received` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'Receiving date',
 	 PRIMARY KEY(`item-uri`),
@@ -392,12 +404,13 @@ CREATE TABLE IF NOT EXISTS `gcontact` (
 	`updated` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`last_contact` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`last_failure` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
+	`last_discovery` datetime DEFAULT '0001-01-01 00:00:00' COMMENT 'Date of the last contact discovery',
 	`archive_date` datetime DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`archived` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`location` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`about` text COMMENT '',
 	`keywords` text COMMENT 'puplic keywords (interests)',
-	`gender` varchar(32) NOT NULL DEFAULT '' COMMENT '',
+	`gender` varchar(32) NOT NULL DEFAULT '' COMMENT 'Deprecated',
 	`birthday` varchar(32) NOT NULL DEFAULT '0001-01-01' COMMENT '',
 	`community` boolean NOT NULL DEFAULT '0' COMMENT '1 if contact is forum account',
 	`contact-type` tinyint NOT NULL DEFAULT -1 COMMENT '',
@@ -417,6 +430,17 @@ CREATE TABLE IF NOT EXISTS `gcontact` (
 	 INDEX `hide_network_updated` (`hide`,`network`,`updated`),
 	 INDEX `updated` (`updated`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='global contacts';
+
+--
+-- TABLE gfollower
+--
+CREATE TABLE IF NOT EXISTS `gfollower` (
+	`gcid` int unsigned NOT NULL DEFAULT 0 COMMENT 'global contact',
+	`follower-gcid` int unsigned NOT NULL DEFAULT 0 COMMENT 'global contact of the follower',
+	`deleted` boolean NOT NULL DEFAULT '0' COMMENT '1 indicates that the connection has been deleted',
+	 PRIMARY KEY(`gcid`,`follower-gcid`),
+	 INDEX `follower-gcid` (`follower-gcid`)
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Followers of global contacts';
 
 --
 -- TABLE glink
@@ -470,6 +494,7 @@ CREATE TABLE IF NOT EXISTS `gserver` (
 	`info` text COMMENT '',
 	`register_policy` tinyint NOT NULL DEFAULT 0 COMMENT '',
 	`registered-users` int unsigned NOT NULL DEFAULT 0 COMMENT 'Number of registered users',
+	`directory-type` tinyint DEFAULT 0 COMMENT 'Type of directory service (Poco, Mastodon)',
 	`poco` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`noscrape` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`network` char(4) NOT NULL DEFAULT '' COMMENT '',
@@ -567,7 +592,7 @@ CREATE TABLE IF NOT EXISTS `item` (
 	`extid` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`post-type` tinyint unsigned NOT NULL DEFAULT 0 COMMENT 'Post type (personal note, bookmark, ...)',
 	`global` boolean NOT NULL DEFAULT '0' COMMENT '',
-	`private` boolean NOT NULL DEFAULT '0' COMMENT 'distribution is restricted',
+	`private` tinyint unsigned NOT NULL DEFAULT 0 COMMENT '0=public, 1=private, 2=unlisted',
 	`visible` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`moderated` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`deleted` boolean NOT NULL DEFAULT '0' COMMENT 'item has been deleted',
@@ -934,6 +959,7 @@ CREATE TABLE IF NOT EXISTS `photo` (
 	`allow_gid` mediumtext COMMENT 'Access Control - list of allowed groups',
 	`deny_cid` mediumtext COMMENT 'Access Control - list of denied contact.id',
 	`deny_gid` mediumtext COMMENT 'Access Control - list of denied groups',
+	`accessible` boolean NOT NULL DEFAULT '0' COMMENT 'Make photo publicly accessible, ignoring permissions',
 	`backend-class` tinytext COMMENT 'Storage backend class',
 	`backend-ref` text COMMENT 'Storage backend data reference',
 	`updated` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
@@ -994,40 +1020,40 @@ CREATE TABLE IF NOT EXISTS `process` (
 CREATE TABLE IF NOT EXISTS `profile` (
 	`id` int unsigned NOT NULL auto_increment COMMENT 'sequential ID',
 	`uid` mediumint unsigned NOT NULL DEFAULT 0 COMMENT 'Owner User id',
-	`profile-name` varchar(255) NOT NULL DEFAULT '' COMMENT 'Name of the profile',
-	`is-default` boolean NOT NULL DEFAULT '0' COMMENT 'Mark this profile as default profile',
+	`profile-name` varchar(255) COMMENT 'Deprecated',
+	`is-default` boolean COMMENT 'Deprecated',
 	`hide-friends` boolean NOT NULL DEFAULT '0' COMMENT 'Hide friend list from viewers of this profile',
 	`name` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`pdesc` varchar(255) NOT NULL DEFAULT '' COMMENT 'Title or description',
+	`pdesc` varchar(255) COMMENT 'Deprecated',
 	`dob` varchar(32) NOT NULL DEFAULT '0000-00-00' COMMENT 'Day of birth',
 	`address` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`locality` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`region` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`postal-code` varchar(32) NOT NULL DEFAULT '' COMMENT '',
 	`country-name` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`hometown` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`gender` varchar(32) NOT NULL DEFAULT '' COMMENT '',
-	`marital` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`with` text COMMENT '',
-	`howlong` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
-	`sexual` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`politic` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`religion` varchar(255) NOT NULL DEFAULT '' COMMENT '',
+	`hometown` varchar(255) COMMENT 'Deprecated',
+	`gender` varchar(32) COMMENT 'Deprecated',
+	`marital` varchar(255) COMMENT 'Deprecated',
+	`with` text COMMENT 'Deprecated',
+	`howlong` datetime COMMENT 'Deprecated',
+	`sexual` varchar(255) COMMENT 'Deprecated',
+	`politic` varchar(255) COMMENT 'Deprecated',
+	`religion` varchar(255) COMMENT 'Deprecated',
 	`pub_keywords` text COMMENT '',
 	`prv_keywords` text COMMENT '',
-	`likes` text COMMENT '',
-	`dislikes` text COMMENT '',
-	`about` text COMMENT '',
-	`summary` varchar(255) NOT NULL DEFAULT '' COMMENT '',
-	`music` text COMMENT '',
-	`book` text COMMENT '',
-	`tv` text COMMENT '',
-	`film` text COMMENT '',
-	`interest` text COMMENT '',
-	`romance` text COMMENT '',
-	`work` text COMMENT '',
-	`education` text COMMENT '',
-	`contact` text COMMENT '',
+	`likes` text COMMENT 'Deprecated',
+	`dislikes` text COMMENT 'Deprecated',
+	`about` text COMMENT 'Profile description',
+	`summary` varchar(255) COMMENT 'Deprecated',
+	`music` text COMMENT 'Deprecated',
+	`book` text COMMENT 'Deprecated',
+	`tv` text COMMENT 'Deprecated',
+	`film` text COMMENT 'Deprecated',
+	`interest` text COMMENT 'Deprecated',
+	`romance` text COMMENT 'Deprecated',
+	`work` text COMMENT 'Deprecated',
+	`education` text COMMENT 'Deprecated',
+	`contact` text COMMENT 'Deprecated',
 	`homepage` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`xmpp` varchar(255) NOT NULL DEFAULT '' COMMENT '',
 	`photo` varchar(255) NOT NULL DEFAULT '' COMMENT '',
@@ -1051,6 +1077,24 @@ CREATE TABLE IF NOT EXISTS `profile_check` (
 	`expire` int unsigned NOT NULL DEFAULT 0 COMMENT '',
 	 PRIMARY KEY(`id`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='DFRN remote auth use';
+
+--
+-- TABLE profile_field
+--
+CREATE TABLE IF NOT EXISTS `profile_field` (
+	`id` int unsigned NOT NULL auto_increment COMMENT 'sequential ID',
+	`uid` mediumint unsigned NOT NULL DEFAULT 0 COMMENT 'Owner user id',
+	`order` mediumint unsigned NOT NULL DEFAULT 1 COMMENT 'Field ordering per user',
+	`psid` int unsigned COMMENT 'ID of the permission set of this profile field - 0 = public',
+	`label` varchar(255) NOT NULL DEFAULT '' COMMENT 'Label of the field',
+	`value` text COMMENT 'Value of the field',
+	`created` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'creation time',
+	`edited` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT 'last edit time',
+	 PRIMARY KEY(`id`),
+	 INDEX `uid` (`uid`),
+	 INDEX `order` (`order`),
+	 INDEX `psid` (`psid`)
+) DEFAULT COLLATE utf8mb4_general_ci COMMENT='Custom profile fields';
 
 --
 -- TABLE push_subscriber
@@ -1159,7 +1203,7 @@ CREATE TABLE IF NOT EXISTS `thread` (
 	`received` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`changed` datetime NOT NULL DEFAULT '0001-01-01 00:00:00' COMMENT '',
 	`wall` boolean NOT NULL DEFAULT '0' COMMENT '',
-	`private` boolean NOT NULL DEFAULT '0' COMMENT '',
+	`private` tinyint unsigned NOT NULL DEFAULT 0 COMMENT '0=public, 1=private, 2=unlisted',
 	`pubmail` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`moderated` boolean NOT NULL DEFAULT '0' COMMENT '',
 	`visible` boolean NOT NULL DEFAULT '0' COMMENT '',
@@ -1284,8 +1328,10 @@ CREATE TABLE IF NOT EXISTS `user-item` (
 	`hidden` boolean NOT NULL DEFAULT '0' COMMENT 'Marker to hide an item from the user',
 	`ignored` boolean COMMENT 'Ignore this thread if set',
 	`pinned` boolean COMMENT 'The item is pinned on the profile page',
+	`notification-type` tinyint unsigned NOT NULL DEFAULT 0 COMMENT '',
 	 PRIMARY KEY(`uid`,`iid`),
-	 INDEX `uid_pinned` (`uid`,`pinned`)
+	 INDEX `uid_pinned` (`uid`,`pinned`),
+	 INDEX `iid_uid` (`iid`,`uid`)
 ) DEFAULT COLLATE utf8mb4_general_ci COMMENT='User specific item data';
 
 --

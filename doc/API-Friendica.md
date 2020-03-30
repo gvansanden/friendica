@@ -15,6 +15,15 @@ These endpoints uses the [Friendica API entities](help/API-Entities).
 
 ## Endpoints
 
+### GET api/friendica/events
+
+Returns a list of [Event](help/API-Entities#Event) entities for the current logged in user.
+
+#### Parameters
+
+- `since_id`: (optional) minimum event id for pagination
+- `count`: maximum number of items returned, default 20
+
 ### GET api/externalprofile/show
 
 Returns a [Contact](help/API-Entities#Contact) entity for the provided profile URL.
@@ -645,17 +654,12 @@ On error:
 
 ### GET api/friendica/profile/show
 
-Returns the [Profile](help/API-Entities#Profile) data of all profiles or a single profile of the authenticated user.
-
-#### Parameters
-
-* `profile_id` (optional): id of the profile to be returned. If omitted all profiles are returned by default.
+Returns the [Profile](help/API-Entities#Profile) data of the authenticated user.
 
 #### Return values
 
 On success: Array of:
 
-* `multi_profiles`: true if user has activated multi_profiles
 * `global_dir`: URL of the global directory set in server settings
 * `friendica_owner`: user data of the authenticated user
 * `profiles`: array of the profile data
@@ -665,6 +669,23 @@ HTTP 403 Forbidden: when no authentication was provided
 HTTP 400 Bad Request: if given profile_id is not in the database or is not assigned to the authenticated user
 
 General description of profile data in API returns:
+- hide_friends: true if friends are hidden
+- profile_photo
+- profile_thumb
+- publish: true if published on the server's local directory
+- net_publish: true if published to global_dir
+- fullname
+- date_of_birth
+- description
+- xmpp
+- homepage
+- address
+- locality
+- region
+- postal_code
+- country
+- pub_keywords
+- custom_fields: list of public custom fields
 
 ---
 

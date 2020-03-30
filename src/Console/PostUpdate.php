@@ -1,19 +1,33 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Console;
 
 use Friendica\App;
-use Friendica\Core\Config\Configuration;
-use Friendica\Core\L10n\L10n;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\L10n;
 use Friendica\Core\Update;
 
 /**
  * Performs database post updates
- *
- * License: AGPLv3 or later, same as Friendica
- *
- * @author Tobias Diekershoff <tobias.diekershoff@gmx.net>
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
  */
 class PostUpdate extends \Asika\SimpleConsole\Console
 {
@@ -24,7 +38,7 @@ class PostUpdate extends \Asika\SimpleConsole\Console
 	 */
 	private $appMode;
 	/**
-	 * @var Configuration
+	 * @var IConfig
 	 */
 	private $config;
 	/**
@@ -46,7 +60,7 @@ HELP;
 		return $help;
 	}
 
-	public function __construct(App\Mode $appMode, Configuration $config, L10n $l10n, array $argv = null)
+	public function __construct(App\Mode $appMode, IConfig $config, L10n $l10n, array $argv = null)
 	{
 		parent::__construct($argv);
 
@@ -57,7 +71,7 @@ HELP;
 
 	protected function doExecute()
 	{
-		$a = \Friendica\BaseObject::getApp();
+		$a = \Friendica\DI::app();
 
 		if ($this->getOption($this->helpOptions)) {
 			$this->out($this->getHelp());

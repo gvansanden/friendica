@@ -1,17 +1,30 @@
 <?php
-
 /**
- * @file mod/dfrn_poll.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 use Friendica\App;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
 use Friendica\Core\System;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
-use Friendica\Module\Login;
+use Friendica\DI;
 use Friendica\Protocol\DFRN;
 use Friendica\Protocol\OStatus;
 use Friendica\Util\Network;
@@ -20,7 +33,7 @@ use Friendica\Util\XML;
 
 function dfrn_poll_init(App $a)
 {
-	Login::sessionAuth();
+	DI::auth()->withSession($a);
 
 	$dfrn_id         =  $_GET['dfrn_id']         ?? '';
 	$type            = ($_GET['type']            ?? '') ?: 'data';
@@ -50,7 +63,7 @@ function dfrn_poll_init(App $a)
 	$hidewall = false;
 
 	if (($dfrn_id === '') && empty($_POST['dfrn_id'])) {
-		if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
+		if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
 			throw new \Friendica\Network\HTTPException\ForbiddenException();
 		}
 
@@ -90,7 +103,7 @@ function dfrn_poll_init(App $a)
 				$my_id = '0:' . $dfrn_id;
 				break;
 			default:
-				$a->internalRedirect();
+				DI::baseUrl()->redirect();
 				break; // NOTREACHED
 		}
 
@@ -120,7 +133,7 @@ function dfrn_poll_init(App $a)
 					Session::setVisitorsContacts();
 
 					if (!$quiet) {
-						info(L10n::t('%1$s welcomes %2$s', $r[0]['username'], $r[0]['name']) . EOL);
+						info(DI::l10n()->t('%1$s welcomes %2$s', $r[0]['username'], $r[0]['name']) . EOL);
 					}
 
 					// Visitors get 1 day session.
@@ -137,10 +150,10 @@ function dfrn_poll_init(App $a)
 			if (!empty($destination_url)) {
 				System::externalRedirect($destination_url);
 			} else {
-				$a->internalRedirect('profile/' . $profile);
+				DI::baseUrl()->redirect('profile/' . $profile);
 			}
 		}
-		$a->internalRedirect();
+		DI::baseUrl()->redirect();
 	}
 
 	if ($type === 'profile-check' && $dfrn_version < 2.2) {
@@ -324,7 +337,7 @@ function dfrn_poll_post(App $a)
 			$sql_extra = sprintf(" AND `dfrn-id` = '%s' AND `duplex` = 1 ", DBA::escape($dfrn_id));
 			break;
 		default:
-			$a->internalRedirect();
+			DI::baseUrl()->redirect();
 			break; // NOTREACHED
 	}
 
@@ -444,7 +457,7 @@ function dfrn_poll_content(App $a)
 				$my_id = '0:' . $dfrn_id;
 				break;
 			default:
-				$a->internalRedirect();
+				DI::baseUrl()->redirect();
 				break; // NOTREACHED
 		}
 
@@ -523,7 +536,7 @@ function dfrn_poll_content(App $a)
 					Session::setVisitorsContacts();
 
 					if (!$quiet) {
-						info(L10n::t('%1$s welcomes %2$s', $r[0]['username'], $r[0]['name']) . EOL);
+						info(DI::l10n()->t('%1$s welcomes %2$s', $r[0]['username'], $r[0]['name']) . EOL);
 					}
 
 					// Visitors get 1 day session.
@@ -540,18 +553,18 @@ function dfrn_poll_content(App $a)
 
 			switch ($destination_url) {
 				case 'profile':
-					$a->internalRedirect('profile/' . $profile . '?f=&tab=profile');
+					DI::baseUrl()->redirect('profile/' . $profile . '/profile');
 					break;
 				case 'photos':
-					$a->internalRedirect('photos/' . $profile);
+					DI::baseUrl()->redirect('photos/' . $profile);
 					break;
 				case 'status':
 				case '':
-					$a->internalRedirect('profile/' . $profile);
+					DI::baseUrl()->redirect('profile/' . $profile);
 					break;
 				default:
-					$appendix = (strstr($destination_url, '?') ? '&f=&redir=1' : '?f=&redir=1');
-					$a->redirect($destination_url . $appendix);
+					$appendix = (strstr($destination_url, '?') ? '&redir=1' : '?redir=1');
+					DI::baseUrl()->redirect($destination_url . $appendix);
 					break;
 			}
 			// NOTREACHED

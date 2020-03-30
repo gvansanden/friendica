@@ -1,22 +1,35 @@
 <?php
 /**
- * @file src/Network/Probe.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
-namespace Friendica\Network;
 
-/**
- * @file src/Network/Probe.php
- * @brief Functions for probing URL
- */
+namespace Friendica\Network;
 
 use DOMDocument;
 use DomXPath;
-use Friendica\Core\Cache;
-use Friendica\Core\Config;
+use Friendica\Core\Cache\Duration;
 use Friendica\Core\Logger;
 use Friendica\Core\Protocol;
 use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
+use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Protocol\ActivityNamespace;
 use Friendica\Protocol\ActivityPub;
@@ -28,8 +41,7 @@ use Friendica\Util\Strings;
 use Friendica\Util\XML;
 
 /**
- * @brief This class contain functions for probing URL
- *
+ * This class contain functions for probing URL
  */
 class Probe
 {
@@ -37,7 +49,32 @@ class Probe
 	private static $istimeout;
 
 	/**
-	 * @brief Rearrange the array so that it always has the same order
+	 * Remove stuff from an URI that doesn't belong there
+	 *
+	 * @param string $URI
+	 * @return string Cleaned URI
+	 */
+	public static function cleanURI(string $URI)
+	{
+		// At first remove leading and trailing junk
+		$URI = trim($URI, "@#?:/ \t\n\r\0\x0B");
+
+		$parts = parse_url($URI);
+
+		if (empty($parts['scheme'])) {
+			return $URI;
+		}
+
+		// Remove the URL fragment, since these shouldn't be part of any profile URL
+		unset($parts['fragment']);
+
+		$URI = Network::unparseURL($parts);
+
+		return $URI;
+	}
+
+	/**
+	 * Rearrange the array so that it always has the same order
 	 *
 	 * @param array $data Unordered data
 	 *
@@ -46,7 +83,7 @@ class Probe
 	private static function rearrangeData($data)
 	{
 		$fields = ["name", "nick", "guid", "url", "addr", "alias", "photo", "account-type",
-				"community", "keywords", "location", "about", "gender", "hide",
+				"community", "keywords", "location", "about", "hide",
 				"batch", "notify", "poll", "request", "confirm", "poco",
 				"following", "followers", "inbox", "outbox", "sharedinbox",
 				"priority", "network", "pubkey", "baseurl"];
@@ -67,7 +104,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check if the hostname belongs to the own server
+	 * Check if the hostname belongs to the own server
 	 *
 	 * @param string $host The hostname that is to be checked
 	 *
@@ -75,7 +112,7 @@ class Probe
 	 */
 	private static function ownHost($host)
 	{
-		$own_host = \get_app()->getHostName();
+		$own_host = DI::baseUrl()->getHostname();
 
 		$parts = parse_url($host);
 
@@ -90,7 +127,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Probes for webfinger path via "host-meta"
+	 * Probes for webfinger path via "host-meta"
 	 *
 	 * We have to check if the servers in the future still will offer this.
 	 * It seems as if it was dropped from the standard.
@@ -105,28 +142,48 @@ class Probe
 		// Reset the static variable
 		self::$baseurl = '';
 
-		$ssl_url = "https://".$host."/.well-known/host-meta";
-		$url = "http://".$host."/.well-known/host-meta";
+		// Handles the case when the hostname contains the scheme
+		if (!parse_url($host, PHP_URL_SCHEME)) {
+			$ssl_url = "https://" . $host . "/.well-known/host-meta";
+			$url = "http://" . $host . "/.well-known/host-meta";
+		} else {
+			$ssl_url = $host . "/.well-known/host-meta";
+			$url = '';
+		}
 
-		$xrd_timeout = Config::get('system', 'xrd_timeout', 20);
+		$xrd_timeout = DI::config()->get('system', 'xrd_timeout', 20);
 
-		Logger::log("Probing for ".$host, Logger::DEBUG);
+		Logger::info('Probing', ['host' => $host, 'ssl_url' => $ssl_url, 'url' => $url, 'callstack' => System::callstack(20)]);
 		$xrd = null;
 
 		$curlResult = Network::curl($ssl_url, false, ['timeout' => $xrd_timeout, 'accept_content' => 'application/xrd+xml']);
+		$ssl_connection_error = ($curlResult->getErrorNumber() == CURLE_COULDNT_CONNECT) || ($curlResult->getReturnCode() == 0);
 		if ($curlResult->isSuccess()) {
 			$xml = $curlResult->getBody();
 			$xrd = XML::parseString($xml, false);
-			$host_url = 'https://'.$host;
+			if (!empty($url)) {
+				$host_url = 'https://' . $host;
+			} else {
+				$host_url = $host;
+			}
+		} elseif ($curlResult->isTimeout()) {
+			Logger::info('Probing timeout', ['url' => $ssl_url], Logger::DEBUG);
+			self::$istimeout = true;
+			return false;
 		}
 
-		if (!is_object($xrd)) {
+		if (!is_object($xrd) && !empty($url)) {
 			$curlResult = Network::curl($url, false, ['timeout' => $xrd_timeout, 'accept_content' => 'application/xrd+xml']);
+			$connection_error = ($curlResult->getErrorNumber() == CURLE_COULDNT_CONNECT) || ($curlResult->getReturnCode() == 0);
 			if ($curlResult->isTimeout()) {
-				Logger::log("Probing timeout for " . $url, Logger::DEBUG);
+				Logger::info('Probing timeout', ['url' => $url], Logger::DEBUG);
+				self::$istimeout = true;
+				return false;
+			} elseif ($connection_error && $ssl_connection_error) {
 				self::$istimeout = true;
 				return false;
 			}
+
 			$xml = $curlResult->getBody();
 			$xrd = XML::parseString($xml, false);
 			$host_url = 'http://'.$host;
@@ -142,11 +199,7 @@ class Probe
 			return [];
 		}
 
-		$lrdd = [];
-		// The following webfinger path is defined in RFC 7033 https://tools.ietf.org/html/rfc7033
-		// Problem is that Hubzilla currently doesn't provide all data in the JSON webfinger
-		// compared to the XML webfinger. So this is commented out by now.
-		// $lrdd = array("application/jrd+json" => $host_url.'/.well-known/webfinger?resource={uri}');
+		$lrdd = ['application/jrd+json' => $host_url . '/.well-known/webfinger?resource={uri}'];
 
 		foreach ($links["xrd"]["link"] as $value => $link) {
 			if (!empty($link["@attributes"])) {
@@ -172,7 +225,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Perform Webfinger lookup and return DFRN data
+	 * Perform Webfinger lookup and return DFRN data
 	 *
 	 * Given an email style address, perform webfinger lookup and
 	 * return the resulting DFRN profile URL, or if no DFRN profile URL
@@ -215,11 +268,29 @@ class Probe
 	}
 
 	/**
-	 * @brief Check an URI for LRDD data
+	 * Get the link for the remote follow page for a given profile link
 	 *
-	 * this is a replacement for the "lrdd" function.
-	 * It isn't used in this class and has some redundancies in the code.
-	 * When time comes we can check the existing calls for "lrdd" if we can rework them.
+	 * @param sting $profile
+	 * @return string Remote follow page link
+	 */
+	public static function getRemoteFollowLink(string $profile)
+	{
+		$follow_link = '';
+
+		$links = self::lrdd($profile);
+
+		if (!empty($links) && is_array($links)) {
+			foreach ($links as $link) {
+				if ($link['@attributes']['rel'] === ActivityNamespace::OSTATUSSUB) {
+					$follow_link = $link['@attributes']['template'];
+				}
+			}
+		}
+		return $follow_link;
+	}
+
+	/**
+	 * Check an URI for LRDD data
 	 *
 	 * @param string $uri Address that should be probed
 	 *
@@ -241,7 +312,7 @@ class Probe
 				return [];
 			}
 
-			$host = $parts["host"];
+			$host = $parts['scheme'] . '://' . $parts["host"];
 			if (!empty($parts["port"])) {
 				$host .= ':'.$parts["port"];
 			}
@@ -311,7 +382,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Fetch information (protocol endpoints and user information) about a given uri
+	 * Fetch information (protocol endpoints and user information) about a given uri
 	 *
 	 * @param string  $uri     Address that should be probed
 	 * @param string  $network Test for this specific network
@@ -325,7 +396,7 @@ class Probe
 	public static function uri($uri, $network = '', $uid = -1, $cache = true)
 	{
 		if ($cache) {
-			$result = Cache::get('Probe::uri:' . $network . ':' . $uri);
+			$result = DI::cache()->get('Probe::uri:' . $network . ':' . $uri);
 			if (!is_null($result)) {
 				return $result;
 			}
@@ -362,10 +433,10 @@ class Probe
 			$data['url'] = $uri;
 		}
 
-		if (!empty($data['photo'])) {
-			$data['baseurl'] = Network::getUrlMatch(Strings::normaliseLink($data['baseurl'] ?? ''), Strings::normaliseLink($data['photo']));
-		} else {
-			$data['photo'] = System::baseUrl() . '/images/person-300.jpg';
+		if (!empty($data['photo']) && !empty($data['baseurl'])) {
+			$data['baseurl'] = Network::getUrlMatch(Strings::normaliseLink($data['baseurl']), Strings::normaliseLink($data['photo']));
+		} elseif (empty($data['photo'])) {
+			$data['photo'] = DI::baseUrl() . '/images/person-300.jpg';
 		}
 
 		if (empty($data['name'])) {
@@ -394,6 +465,11 @@ class Probe
 			$data['network'] = Protocol::PHANTOM;
 		}
 
+		// Ensure that local connections always are DFRN
+		if (($network == '') && ($data['network'] != Protocol::PHANTOM) && (self::ownHost($data['baseurl'] ?? '') || self::ownHost($data['url']))) {
+			$data['network'] = Protocol::DFRN;
+		}
+
 		if (!isset($data['hide']) && in_array($data['network'], Protocol::FEDERATED)) {
 			$data['hide'] = self::getHideStatus($data['url']);
 		}
@@ -402,7 +478,7 @@ class Probe
 
 		// Only store into the cache if the value seems to be valid
 		if (!in_array($data['network'], [Protocol::PHANTOM, Protocol::MAIL])) {
-			Cache::set('Probe::uri:' . $network . ':' . $uri, $data, Cache::DAY);
+			DI::cache()->set('Probe::uri:' . $network . ':' . $uri, $data, Duration::DAY);
 		}
 
 		return $data;
@@ -473,7 +549,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Checks if a profile url should be OStatus but only provides partial information
+	 * Checks if a profile url should be OStatus but only provides partial information
 	 *
 	 * @param array  $webfinger Webfinger data
 	 * @param string $lrdd      Path template for webfinger request
@@ -517,7 +593,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Fetch information (protocol endpoints and user information) about a given uri
+	 * Fetch information (protocol endpoints and user information) about a given uri
 	 *
 	 * This function is only called by the "uri" function that adds caching and rearranging of data.
 	 *
@@ -650,6 +726,9 @@ class Probe
 		if ((!$result && ($network == "")) || ($network == Protocol::OSTATUS)) {
 			$result = self::ostatus($webfinger);
 		}
+		if (in_array($network, ['', Protocol::ZOT])) {
+			$result = self::zot($webfinger, $result);
+		}
 		if ((!$result && ($network == "")) || ($network == Protocol::PUMPIO)) {
 			$result = self::pumpio($webfinger, $addr);
 		}
@@ -677,7 +756,7 @@ class Probe
 
 		Logger::log($uri." is ".$result["network"], Logger::DEBUG);
 
-		if (empty($result["baseurl"])) {
+		if (empty($result["baseurl"]) && ($result["network"] != Protocol::PHANTOM)) {
 			$pos = strpos($result["url"], $host);
 			if ($pos) {
 				$result["baseurl"] = substr($result["url"], 0, $pos).$host;
@@ -687,7 +766,146 @@ class Probe
 	}
 
 	/**
-	 * @brief Perform a webfinger request.
+	 * Check for Zot contact
+	 *
+	 * @param array $webfinger Webfinger data
+	 * @param array $data      previously probed data
+	 *
+	 * @return array Zot data
+	 * @throws HTTPException\InternalServerErrorException
+	 */
+	private static function zot($webfinger, $data)
+	{
+		if (!empty($webfinger["aliases"]) && is_array($webfinger["aliases"])) {
+			foreach ($webfinger["aliases"] as $alias) {
+				if (substr($alias, 0, 5) == 'acct:') {
+					$data["addr"] = substr($alias, 5);
+				}
+			}
+		}
+
+		if (!empty($webfinger["subject"]) && (substr($webfinger["subject"], 0, 5) == "acct:")) {
+			$data["addr"] = substr($webfinger["subject"], 5);
+		}
+
+		$zot_url = '';
+		foreach ($webfinger['links'] as $link) {
+			if (($link['rel'] == 'http://purl.org/zot/protocol') && !empty($link['href'])) {
+				$zot_url = $link['href'];
+			}
+		}
+
+		if (empty($zot_url) && !empty($data['addr']) && !empty(self::$baseurl)) {
+			$condition = ['nurl' => Strings::normaliseLink(self::$baseurl), 'platform' => ['hubzilla']];
+			if (!DBA::exists('gserver', $condition)) {
+				return $data;
+			}
+			$zot_url = self::$baseurl . '/.well-known/zot-info?address=' . $data['addr'];
+		}
+
+		if (empty($zot_url)) {
+			return $data;
+		}
+
+		$data = self::pollZot($zot_url, $data);
+
+		if (!empty($data['url']) && !empty($webfinger['aliases']) && is_array($webfinger['aliases'])) {
+			foreach ($webfinger['aliases'] as $alias) {
+				if (!strstr($alias, '@') && Strings::normaliseLink($alias) != Strings::normaliseLink($data['url'])) {
+					$data['alias'] = $alias;
+				}
+			}
+		}
+
+		return $data;
+	}
+
+	public static function pollZot($url, $data)
+	{
+		$curlResult = Network::curl($url);
+		if ($curlResult->isTimeout()) {
+			return $data;
+		}
+		$content = $curlResult->getBody();
+		if (!$content) {
+			return $data;
+		}
+
+		$json = json_decode($content, true);
+		if (!is_array($json)) {
+			return $data;
+		}
+
+		if (empty($data['network'])) {
+			if (!empty($json['protocols']) && in_array('zot', $json['protocols'])) {
+				$data['network'] = Protocol::ZOT;
+			} elseif (!isset($json['protocols'])) {
+				$data['network'] = Protocol::ZOT;
+			}
+		}
+
+		if (!empty($json['guid']) && empty($data['guid'])) {
+			$data['guid'] = $json['guid'];
+		}
+		if (!empty($json['key']) && empty($data['pubkey'])) {
+			$data['pubkey'] = $json['key'];
+		}
+		if (!empty($json['name'])) {
+			$data['name'] = $json['name'];
+		}
+		if (!empty($json['photo'])) {
+			$data['photo'] = $json['photo'];
+			if (!empty($json['photo_updated'])) {
+				$data['photo'] .= '?rev=' . urlencode($json['photo_updated']);
+			}
+		}
+		if (!empty($json['address'])) {
+			$data['addr'] = $json['address'];
+		}
+		if (!empty($json['url'])) {
+			$data['url'] = $json['url'];
+		}
+		if (!empty($json['connections_url'])) {
+			$data['poco'] = $json['connections_url'];
+		}
+		if (isset($json['searchable'])) {
+			$data['hide'] = !$json['searchable'];
+		}
+		if (!empty($json['public_forum'])) {
+			$data['community'] = $json['public_forum'];
+			$data['account-type'] = Contact::PAGE_COMMUNITY;
+		}
+
+		if (!empty($json['profile'])) {
+			$profile = $json['profile'];
+			if (!empty($profile['description'])) {
+				$data['about'] = $profile['description'];
+			}
+			if (!empty($profile['keywords'])) {
+				$keywords = implode(', ', $profile['keywords']);
+				if (!empty($keywords)) {
+					$data['keywords'] = $keywords;
+				}
+			}
+
+			$loc = [];
+			if (!empty($profile['region'])) {
+				$loc['region'] = $profile['region'];
+			}
+			if (!empty($profile['country'])) {
+				$loc['country-name'] = $profile['country'];
+			}
+			$location = Profile::formatLocation($loc);
+			if (!empty($location)) {
+				$data['location'] = $location;
+			}
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Perform a webfinger request.
 	 *
 	 * For details see RFC 7033: <https://tools.ietf.org/html/rfc7033>
 	 *
@@ -699,7 +917,7 @@ class Probe
 	 */
 	private static function webfinger($url, $type)
 	{
-		$xrd_timeout = Config::get('system', 'xrd_timeout', 20);
+		$xrd_timeout = DI::config()->get('system', 'xrd_timeout', 20);
 
 		$curlResult = Network::curl($url, false, ['timeout' => $xrd_timeout, 'accept_content' => $type]);
 		if ($curlResult->isTimeout()) {
@@ -757,7 +975,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Poll the Friendica specific noscrape page.
+	 * Poll the Friendica specific noscrape page.
 	 *
 	 * "noscrape" is a faster alternative to fetch the data from the hcard.
 	 * This functionality was originally created for the directory.
@@ -823,10 +1041,6 @@ class Probe
 			$data["about"] = $json["about"];
 		}
 
-		if (!empty($json["gender"])) {
-			$data["gender"] = $json["gender"];
-		}
-
 		if (!empty($json["key"])) {
 			$data["pubkey"] = $json["key"];
 		}
@@ -861,7 +1075,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for valid DFRN data
+	 * Check for valid DFRN data
 	 *
 	 * @param array $data DFRN data
 	 *
@@ -889,7 +1103,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Fetch data from a DFRN profile page and via "noscrape"
+	 * Fetch data from a DFRN profile page and via "noscrape"
 	 *
 	 * @param string $profile_link Link to the profile page
 	 *
@@ -941,7 +1155,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for DFRN contact
+	 * Check for DFRN contact
 	 *
 	 * @param array $webfinger Webfinger data
 	 *
@@ -1021,7 +1235,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Poll the hcard page (Diaspora and Friendica specific)
+	 * Poll the hcard page (Diaspora and Friendica specific)
 	 *
 	 * @param string  $hcard_url Link to the hcard page
 	 * @param array   $data      The already fetched data
@@ -1149,7 +1363,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for Diaspora contact
+	 * Check for Diaspora contact
 	 *
 	 * @param array $webfinger Webfinger data
 	 *
@@ -1160,6 +1374,7 @@ class Probe
 	{
 		$hcard_url = "";
 		$data = [];
+
 		// The array is reversed to take into account the order of preference for same-rel links
 		// See: https://tools.ietf.org/html/rfc7033#section-4.4.4
 		foreach (array_reverse($webfinger["links"]) as $link) {
@@ -1187,7 +1402,7 @@ class Probe
 			}
 		}
 
-		if (!isset($data["url"]) || ($hcard_url == "")) {
+		if (empty($data["url"]) || empty($hcard_url)) {
 			return false;
 		}
 
@@ -1212,11 +1427,11 @@ class Probe
 			return false;
 		}
 
-		if (isset($data["url"])
-			&& isset($data["guid"])
-			&& isset($data["baseurl"])
-			&& isset($data["pubkey"])
-			&& ($hcard_url != "")
+		if (!empty($data["url"])
+			&& !empty($data["guid"])
+			&& !empty($data["baseurl"])
+			&& !empty($data["pubkey"])
+			&& !empty($hcard_url)
 		) {
 			$data["network"] = Protocol::DIASPORA;
 
@@ -1236,7 +1451,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for OStatus contact
+	 * Check for OStatus contact
 	 *
 	 * @param array $webfinger Webfinger data
 	 * @param bool  $short     Short detection mode
@@ -1324,10 +1539,7 @@ class Probe
 			return false;
 		}
 		$feed = $curlResult->getBody();
-		$dummy1 = null;
-		$dummy2 = null;
-		$dummy2 = null;
-		$feed_data = Feed::import($feed, $dummy1, $dummy2, $dummy3, true);
+		$feed_data = Feed::import($feed);
 		if (!$feed_data) {
 			return false;
 		}
@@ -1366,7 +1578,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Fetch data from a pump.io profile page
+	 * Fetch data from a pump.io profile page
 	 *
 	 * @param string $profile_link Link to the profile page
 	 *
@@ -1374,8 +1586,13 @@ class Probe
 	 */
 	private static function pumpioProfileData($profile_link)
 	{
+		$curlResult = Network::curl($profile_link);
+		if (!$curlResult->isSuccess()) {
+			return false;
+		}
+
 		$doc = new DOMDocument();
-		if (!@$doc->loadHTMLFile($profile_link)) {
+		if (!@$doc->loadHTML($curlResult->getBody())) {
 			return false;
 		}
 
@@ -1422,11 +1639,10 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for pump.io contact
+	 * Check for pump.io contact
 	 *
-	 * @param array $webfinger Webfinger data
-	 *
-	 * @param       $addr
+	 * @param array  $webfinger Webfinger data
+	 * @param string $addr
 	 * @return array pump.io data
 	 */
 	private static function pumpio($webfinger, $addr)
@@ -1480,7 +1696,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for twitter contact
+	 * Check for twitter contact
 	 *
 	 * @param string $uri
 	 *
@@ -1540,7 +1756,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check page for feed link
+	 * Check page for feed link
 	 *
 	 * @param string $url Page link
 	 *
@@ -1548,9 +1764,13 @@ class Probe
 	 */
 	private static function getFeedLink($url)
 	{
-		$doc = new DOMDocument();
+		$curlResult = Network::curl($url);
+		if (!$curlResult->isSuccess()) {
+			return false;
+		}
 
-		if (!@$doc->loadHTMLFile($url)) {
+		$doc = new DOMDocument();
+		if (!@$doc->loadHTML($curlResult->getBody())) {
 			return false;
 		}
 
@@ -1583,7 +1803,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for feed contact
+	 * Check for feed contact
 	 *
 	 * @param string  $url   Profile link
 	 * @param boolean $probe Do a probe if the page contains a feed link
@@ -1599,8 +1819,7 @@ class Probe
 			return false;
 		}
 		$feed = $curlResult->getBody();
-		$dummy1 = $dummy2 = $dummy3 = null;
-		$feed_data = Feed::import($feed, $dummy1, $dummy2, $dummy3, true);
+		$feed_data = Feed::import($feed);
 
 		if (!$feed_data) {
 			if (!$probe) {
@@ -1647,7 +1866,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Check for mail contact
+	 * Check for mail contact
 	 *
 	 * @param string  $uri Profile link
 	 * @param integer $uid User ID
@@ -1735,7 +1954,7 @@ class Probe
 	}
 
 	/**
-	 * @brief Mix two paths together to possibly fix missing parts
+	 * Mix two paths together to possibly fix missing parts
 	 *
 	 * @param string $avatar Path to the avatar
 	 * @param string $base   Another path that is hopefully complete

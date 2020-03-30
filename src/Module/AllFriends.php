@@ -1,12 +1,31 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
 use Friendica\Content\ContactSelector;
 use Friendica\Content\Pager;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
+use Friendica\DI;
 use Friendica\Model;
 use Friendica\Network\HTTPException;
 use Friendica\Util\Proxy as ProxyUtils;
@@ -18,7 +37,7 @@ class AllFriends extends BaseModule
 {
 	public static function content(array $parameters = [])
 	{
-		$app = self::getApp();
+		$app = DI::app();
 
 		if (!local_user()) {
 			throw new HTTPException\ForbiddenException();
@@ -32,7 +51,7 @@ class AllFriends extends BaseModule
 		}
 
 		if (!$cid) {
-			throw new HTTPException\BadRequestException(L10n::t('Invalid contact.'));
+			throw new HTTPException\BadRequestException(DI::l10n()->t('Invalid contact.'));
 		}
 
 		$uid = $app->user['uid'];
@@ -40,19 +59,19 @@ class AllFriends extends BaseModule
 		$contact = Model\Contact::getContactForUser($cid, local_user(), ['name', 'url', 'photo', 'uid', 'id']);
 
 		if (empty($contact)) {
-			throw new HTTPException\BadRequestException(L10n::t('Invalid contact.'));
+			throw new HTTPException\BadRequestException(DI::l10n()->t('Invalid contact.'));
 		}
 
-		$app->page['aside'] = "";
-		Model\Profile::load($app, "", 0, Model\Contact::getDetailsByURL($contact["url"]));
+		DI::page()['aside'] = "";
+		Model\Profile::load($app, "", Model\Contact::getDetailsByURL($contact["url"]));
 
 		$total = Model\GContact::countAllFriends(local_user(), $cid);
 
-		$pager = new Pager($app->query_string);
+		$pager = new Pager(DI::l10n(), DI::args()->getQueryString());
 
 		$friends = Model\GContact::allFriends(local_user(), $cid, $pager->getStart(), $pager->getItemsPerPage());
 		if (empty($friends)) {
-			return L10n::t('No friends to display.');
+			return DI::l10n()->t('No friends to display.');
 		}
 
 		$id = 0;
@@ -69,10 +88,10 @@ class AllFriends extends BaseModule
 				$friend['id'] = $friend['cid'];
 				$photoMenu = Model\Contact::photoMenu($friend);
 			} else {
-				$connlnk = $app->getBaseURL() . '/follow/?url=' . $friend['url'];
+				$connlnk = DI::baseUrl()->get() . '/follow/?url=' . $friend['url'];
 				$photoMenu = [
-					'profile' => [L10n::t('View Profile'), Model\Contact::magicLinkbyId($friend['id'], $friend['url'])],
-					'follow'  => [L10n::t('Connect/Follow'), $connlnk]
+					'profile' => [DI::l10n()->t('View Profile'), Model\Contact::magicLinkbyId($friend['id'], $friend['url'])],
+					'follow'  => [DI::l10n()->t('Connect/Follow'), $connlnk]
 				];
 			}
 
@@ -88,7 +107,7 @@ class AllFriends extends BaseModule
 				'account_type' => Model\Contact::getAccountType($contactDetails),
 				'network'      => ContactSelector::networkToName($contactDetails['network'], $contactDetails['url']),
 				'photoMenu'    => $photoMenu,
-				'conntxt'      => L10n::t('Connect'),
+				'conntxt'      => DI::l10n()->t('Connect'),
 				'connlnk'      => $connlnk,
 				'id'           => ++$id,
 			];

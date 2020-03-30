@@ -1,18 +1,35 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Core\Cache;
 
 use Exception;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\BaseCache;
+use Friendica\Core\Config\IConfig;
 use Redis;
 
 /**
  * Redis Cache. This driver is based on Memcache driver
- *
- * @author Hypolite Petovan <hypolite@mrpetovan.com>
- * @author Roland Haeder <roland@mxchange.org>
  */
-class RedisCache extends Cache implements IMemoryCache
+class RedisCache extends BaseCache implements IMemoryCache
 {
 	/**
 	 * @var Redis
@@ -22,7 +39,7 @@ class RedisCache extends Cache implements IMemoryCache
 	/**
 	 * @throws Exception
 	 */
-	public function __construct(string $hostname, Configuration $config)
+	public function __construct(string $hostname, IConfig $config)
 	{
 		if (!class_exists('Redis', false)) {
 			throw new Exception('Redis class isn\'t available');
@@ -96,7 +113,7 @@ class RedisCache extends Cache implements IMemoryCache
 	/**
 	 * (@inheritdoc)
 	 */
-	public function set($key, $value, $ttl = Cache::FIVE_MINUTES)
+	public function set($key, $value, $ttl = Duration::FIVE_MINUTES)
 	{
 		$cachekey = $this->getCacheKey($key);
 
@@ -140,7 +157,7 @@ class RedisCache extends Cache implements IMemoryCache
 	/**
 	 * (@inheritdoc)
 	 */
-	public function add($key, $value, $ttl = Cache::FIVE_MINUTES)
+	public function add($key, $value, $ttl = Duration::FIVE_MINUTES)
 	{
 		$cachekey = $this->getCacheKey($key);
 		$cached = serialize($value);
@@ -151,7 +168,7 @@ class RedisCache extends Cache implements IMemoryCache
 	/**
 	 * (@inheritdoc)
 	 */
-	public function compareSet($key, $oldValue, $newValue, $ttl = Cache::FIVE_MINUTES)
+	public function compareSet($key, $oldValue, $newValue, $ttl = Duration::FIVE_MINUTES)
 	{
 		$cachekey = $this->getCacheKey($key);
 
@@ -199,6 +216,6 @@ class RedisCache extends Cache implements IMemoryCache
 	 */
 	public function getName()
 	{
-		return self::TYPE_REDIS;
+		return Type::REDIS;
 	}
 }

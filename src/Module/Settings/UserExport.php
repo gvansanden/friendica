@@ -1,25 +1,38 @@
 <?php
 /**
- * @file src/Modules/Settings/UserExport.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 namespace Friendica\Module\Settings;
 
 use Friendica\App;
-use Friendica\App\Arguments;
-use Friendica\BaseModule;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
 use Friendica\Database\DBStructure;
-use Friendica\Module\BaseSettingsModule;
+use Friendica\DI;
+use Friendica\Module\BaseSettings;
 
 /**
  * Module to export user data
  **/
-class UserExport extends BaseSettingsModule
+class UserExport extends BaseSettings
 {
 	/**
 	 * Handle the request to export data.
@@ -41,15 +54,15 @@ class UserExport extends BaseSettingsModule
 		 * list of array( 'link url', 'link text', 'help text' )
 		 */
 		$options = [
-			['settings/userexport/account', L10n::t('Export account'), L10n::t('Export your account info and contacts. Use this to make a backup of your account and/or to move it to another server.')],
-			['settings/userexport/backup', L10n::t('Export all'), L10n::t("Export your accout info, contacts and all your items as json. Could be a very big file, and could take a lot of time. Use this to make a full backup of your account \x28photos are not exported\x29")],
-			['settings/userexport/contact', L10n::t('Export Contacts to CSV'), L10n::t("Export the list of the accounts you are following as CSV file. Compatible to e.g. Mastodon.")],
+			['settings/userexport/account', DI::l10n()->t('Export account'), DI::l10n()->t('Export your account info and contacts. Use this to make a backup of your account and/or to move it to another server.')],
+			['settings/userexport/backup', DI::l10n()->t('Export all'), DI::l10n()->t("Export your account info, contacts and all your items as json. Could be a very big file, and could take a lot of time. Use this to make a full backup of your account \x28photos are not exported\x29")],
+			['settings/userexport/contact', DI::l10n()->t('Export Contacts to CSV'), DI::l10n()->t("Export the list of the accounts you are following as CSV file. Compatible to e.g. Mastodon.")],
 		];
 		Hook::callAll('uexport_options', $options);
 
 		$tpl = Renderer::getMarkupTemplate("settings/userexport.tpl");
 		return Renderer::replaceMacros($tpl, [
-			'$title' => L10n::t('Export personal data'),
+			'$title' => DI::l10n()->t('Export personal data'),
 			'$options' => $options
 		]);
 	}
@@ -61,22 +74,22 @@ class UserExport extends BaseSettingsModule
 	 **/
 	public static function rawContent(array $parameters = [])
 	{
-		$args = self::getClass(Arguments::class);
+		$args = DI::args();
 		if ($args->getArgc() == 3) {
 			// @TODO Replace with router-provided arguments
 			$action = $args->get(2);
-			$user = self::getApp()->user;
+			$user = DI::app()->user;
 			switch ($action) {
 				case "backup":
 					header("Content-type: application/json");
 					header('Content-Disposition: attachment; filename="' . $user['nickname'] . '.' . $action . '"');
-					self::exportAll(self::getApp());
+					self::exportAll(DI::app());
 					exit();
 					break;
 				case "account":
 					header("Content-type: application/json");
 					header('Content-Disposition: attachment; filename="' . $user['nickname'] . '.' . $action . '"');
-					self::exportAccount(self::getApp());
+					self::exportAccount(DI::app());
 					exit();
 					break;
 				case "contact":
@@ -92,7 +105,7 @@ class UserExport extends BaseSettingsModule
 	}
 	private static function exportMultiRow(string $query)
 	{
-		$dbStructure = DBStructure::definition(self::getApp()->getBasePath(), false);
+		$dbStructure = DBStructure::definition(DI::app()->getBasePath(), false);
 
 		preg_match("/\s+from\s+`?([a-z\d_]+)`?/i", $query, $match);
 		$table = $match[1];
@@ -119,7 +132,7 @@ class UserExport extends BaseSettingsModule
 
 	private static function exportRow(string $query)
 	{
-		$dbStructure = DBStructure::definition(self::getApp()->getBasePath(), false);
+		$dbStructure = DBStructure::definition(DI::app()->getBasePath(), false);
 
 		preg_match("/\s+from\s+`?([a-z\d_]+)`?/i", $query, $match);
 		$table = $match[1];
@@ -170,7 +183,11 @@ class UserExport extends BaseSettingsModule
 
 
 		$profile = self::exportMultiRow(
-			sprintf("SELECT * FROM `profile` WHERE `uid` = %d ", intval(local_user()))
+			sprintf("SELECT *, 'default' AS `profile_name`, 1 AS `is-default` FROM `profile` WHERE `uid` = %d ", intval(local_user()))
+		);
+
+		$profile_fields = self::exportMultiRow(
+			sprintf("SELECT * FROM `profile_field` WHERE `uid` = %d ", intval(local_user()))
 		);
 
 		$photo = self::exportMultiRow(
@@ -195,10 +212,11 @@ class UserExport extends BaseSettingsModule
 		$output = [
 			'version' => FRIENDICA_VERSION,
 			'schema' => DB_UPDATE_VERSION,
-			'baseurl' => System::baseUrl(),
+			'baseurl' => DI::baseUrl(),
 			'user' => $user,
 			'contact' => $contact,
 			'profile' => $profile,
+			'profile_fields' => $profile_fields,
 			'photo' => $photo,
 			'pconfig' => $pconfig,
 			'group' => $group,
@@ -212,7 +230,7 @@ class UserExport extends BaseSettingsModule
 	 * echoes account data and items as separated json, one per line
 	 *
 	 * @param App $a
-	 * @throws Exception
+	 * @throws \Exception
 	 */
 	private static function exportAll(App $a)
 	{

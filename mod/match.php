@@ -1,23 +1,37 @@
 <?php
 /**
- * @file mod/match.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 use Friendica\App;
-use Friendica\Content\Pager;
 use Friendica\Content\Widget;
-use Friendica\Core\Config;
-use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
+use Friendica\Core\Search;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Profile;
 use Friendica\Util\Network;
 use Friendica\Util\Proxy as ProxyUtils;
 
 /**
- * @brief Controller for /match.
+ * Controller for /match.
  *
  * It takes keywords from your profile and queries the directory server for
  * matching keywords from other profiles.
@@ -35,10 +49,10 @@ function match_content(App $a)
 		return '';
 	}
 
-	$a->page['aside'] .= Widget::findPeople();
-	$a->page['aside'] .= Widget::follow();
+	DI::page()['aside'] .= Widget::findPeople();
+	DI::page()['aside'] .= Widget::follow();
 
-	$_SESSION['return_path'] = $a->cmd;
+	$_SESSION['return_path'] = DI::args()->getCommand();
 
 	$profile = Profile::getByUID(local_user());
 
@@ -46,7 +60,7 @@ function match_content(App $a)
 		return '';
 	}
 	if (!$profile['pub_keywords'] && (!$profile['prv_keywords'])) {
-		notice(L10n::t('No keywords to match. Please add keywords to your default profile.') . EOL);
+		notice(DI::l10n()->t('No keywords to match. Please add keywords to your profile.') . EOL);
 		return '';
 	}
 
@@ -56,10 +70,10 @@ function match_content(App $a)
 	$params['s'] = $tags;
 	$params['n'] = 100;
 
-	if (strlen(Config::get('system', 'directory'))) {
-		$host = get_server();
+	if (strlen(DI::config()->get('system', 'directory'))) {
+		$host = Search::getGlobalDirectory();
 	} else {
-		$host = System::baseUrl();
+		$host = DI::baseUrl();
 	}
 
 	$msearch_json = Network::post($host . '/msearch', $params)->getBody();
@@ -80,12 +94,12 @@ function match_content(App $a)
 			}
 
 			// Workaround for wrong directory photo URL
-			$profile->photo = str_replace('http:///photo/', get_server() . '/photo/', $profile->photo);
+			$profile->photo = str_replace('http:///photo/', Search::getGlobalDirectory() . '/photo/', $profile->photo);
 
-			$connlnk = System::baseUrl() . '/follow/?url=' . $profile->url;
+			$connlnk = DI::baseUrl() . '/follow/?url=' . $profile->url;
 			$photo_menu = [
-				'profile' => [L10n::t("View Profile"), Contact::magicLink($profile->url)],
-				'follow' => [L10n::t("Connect/Follow"), $connlnk]
+				'profile' => [DI::l10n()->t("View Profile"), Contact::magicLink($profile->url)],
+				'follow' => [DI::l10n()->t("Connect/Follow"), $connlnk]
 			];
 
 			$contact_details = Contact::getDetailsByURL($profile->url, 0);
@@ -99,7 +113,7 @@ function match_content(App $a)
 				'about'        => $contact_details['about'] ?? '',
 				'account_type' => Contact::getAccountType($contact_details),
 				'thumb'        => ProxyUtils::proxifyUrl($profile->photo, false, ProxyUtils::SIZE_THUMB),
-				'conntxt'      => L10n::t('Connect'),
+				'conntxt'      => DI::l10n()->t('Connect'),
 				'connlnk'      => $connlnk,
 				'img_hover'    => $profile->tags,
 				'photo_menu'   => $photo_menu,
@@ -112,12 +126,12 @@ function match_content(App $a)
 			'class' => 'pager',
 			'first' => [
 				'url'   => 'match',
-				'text'  => L10n::t('first'),
+				'text'  => DI::l10n()->t('first'),
 				'class' => 'previous' . ($start == 0 ? 'disabled' : '')
 			],
 			'next'  => [
 				'url'   => 'match?start=' . $i,
-				'text'  => L10n::t('next'),
+				'text'  => DI::l10n()->t('next'),
 				'class' =>  'next' . ($i >= $msearch->total ? ' disabled' : '')
 			]
 		];
@@ -127,12 +141,12 @@ function match_content(App $a)
 	}
 
 	if (empty($entries)) {
-		info(L10n::t('No matches') . EOL);
+		info(DI::l10n()->t('No matches') . EOL);
 	}
 
 	$tpl = Renderer::getMarkupTemplate('viewcontact_template.tpl');
 	$o = Renderer::replaceMacros($tpl, [
-		'$title'    => L10n::t('Profile Match'),
+		'$title'    => DI::l10n()->t('Profile Match'),
 		'$contacts' => $entries,
 		'$paginate' => $paginate
 	]);

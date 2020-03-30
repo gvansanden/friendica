@@ -1,11 +1,30 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\src\Console;
 
 use Friendica\App;
 use Friendica\App\Mode;
 use Friendica\Console\Config;
-use Friendica\Core\Config\Configuration;
+use Friendica\Core\Config\IConfig;
 use Mockery\MockInterface;
 
 class ConfigConsoleTest extends ConsoleTest
@@ -14,6 +33,8 @@ class ConfigConsoleTest extends ConsoleTest
 	 * @var App\Mode|MockInterface $appMode
 	 */
 	private $appMode;
+	/** @var IConfig|\Mockery\LegacyMockInterface|MockInterface */
+	private $configMock;
 
 	protected function setUp()
 	{
@@ -29,7 +50,7 @@ class ConfigConsoleTest extends ConsoleTest
 		$this->appMode->shouldReceive('has')
 		        ->andReturn(true);
 
-		$this->configMock = \Mockery::mock(Configuration::class);
+		$this->configMock = \Mockery::mock(IConfig::class);
 	}
 
 	function testSetGetKeyValue()

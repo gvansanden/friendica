@@ -1,12 +1,31 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module\Contact;
 
 use Friendica\BaseModule;
-use Friendica\Core\Config;
 use Friendica\Core\Renderer;
 use Friendica\Core\Session;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\GContact;
 use Friendica\Network\HTTPException;
@@ -23,7 +42,7 @@ class Hovercard extends BaseModule
 		$contact_url = $_REQUEST['url'] ?? '';
 
 		// Get out if the system doesn't have public access allowed
-		if (Config::get('system', 'block_public') && !Session::isAuthenticated()) {
+		if (DI::config()->get('system', 'block_public') && !Session::isAuthenticated()) {
 			throw new HTTPException\ForbiddenException();
 		}
 
@@ -88,7 +107,6 @@ class Hovercard extends BaseModule
 				'url'          => Contact::magicLink($contact['url']),
 				'nurl'         => $contact['nurl'],
 				'location'     => $contact['location'],
-				'gender'       => $contact['gender'],
 				'about'        => $contact['about'],
 				'network_link' => Strings::formatNetworkName($contact['network'], $contact['url']),
 				'tags'         => $contact['keywords'],

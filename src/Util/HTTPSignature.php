@@ -1,18 +1,34 @@
 <?php
-
 /**
- * @file src/Util/HTTPSignature.php
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Util;
 
 use Friendica\Database\DBA;
-use Friendica\Core\Config;
 use Friendica\Core\Logger;
+use Friendica\DI;
 use Friendica\Model\User;
 use Friendica\Model\APContact;
 
 /**
- * @brief Implements HTTP Signatures per draft-cavage-http-signatures-07.
+ * Implements HTTP Signatures per draft-cavage-http-signatures-07.
  *
  * Ported from Hubzilla: https://framagit.org/hubzilla/core/blob/master/Zotlabs/Web/HTTPSig.php
  *
@@ -26,7 +42,7 @@ class HTTPSignature
 {
 	// See draft-cavage-http-signatures-08
 	/**
-	 * @brief Verifies a magic request
+	 * Verifies a magic request
 	 *
 	 * @param $key
 	 *
@@ -111,8 +127,6 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief
-	 *
 	 * @param array   $head
 	 * @param string  $prvkey
 	 * @param string  $keyid (optional, default 'Key')
@@ -145,8 +159,6 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief
-	 *
 	 * @param array  $head
 	 * @param string $prvkey
 	 * @param string $alg (optional) default 'sha256'
@@ -178,8 +190,6 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief
-	 *
 	 * @param string $header
 	 * @return array associate array with
 	 *   - \e string \b keyID
@@ -224,8 +234,6 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief
-	 *
 	 * @param string $header
 	 * @param string $prvkey (optional), if not set use site private key
 	 *
@@ -241,7 +249,7 @@ class HTTPSignature
 		$iv = $key = $alg = $data = null;
 
 		if (!$prvkey) {
-			$prvkey = Config::get('system', 'prvkey');
+			$prvkey = DI::config()->get('system', 'prvkey');
 		}
 
 		$matches = [];
@@ -274,7 +282,7 @@ class HTTPSignature
 	 */
 
 	/**
-	 * @brief Transmit given data to a target for a user
+	 * Transmit given data to a target for a user
 	 *
 	 * @param array   $data   Data that is about to be send
 	 * @param string  $target The URL of the inbox
@@ -323,7 +331,7 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief Set the delivery status for a given inbox
+	 * Set the delivery status for a given inbox
 	 *
 	 * @param string  $url     The URL of the inbox
 	 * @param boolean $success Transmission status
@@ -378,7 +386,7 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief Fetches JSON data for a user
+	 * Fetches JSON data for a user
 	 *
 	 * @param string  $request request url
 	 * @param integer $uid     User id of the requester
@@ -408,7 +416,7 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief Fetches raw data for a user
+	 * Fetches raw data for a user
 	 *
 	 * @param string  $request request url
 	 * @param integer $uid     User id of the requester
@@ -464,7 +472,7 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief Gets a signer from a given HTTP request
+	 * Gets a signer from a given HTTP request
 	 *
 	 * @param $content
 	 * @param $http_headers
@@ -596,7 +604,7 @@ class HTTPSignature
 	}
 
 	/**
-	 * @brief fetches a key for a given id and actor
+	 * fetches a key for a given id and actor
 	 *
 	 * @param $id
 	 * @param $actor

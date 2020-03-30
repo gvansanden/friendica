@@ -53,34 +53,17 @@
 
 {{$hide_wall nofilter}}
 
+{{$unlisted nofilter}}
+
+{{$accessiblephotos nofilter}}
+
 {{$blockwall nofilter}}
 
 {{$blocktags nofilter}}
 
-{{$suggestme nofilter}}
-
 {{$unkmail nofilter}}
 
-
 {{include file="field_input.tpl" field=$cntunkmail}}
-
-{{include file="field_input.tpl" field=$expire.days}}
-
-
-<div class="field input">
-	<span class="field_help"><a href="#advanced-expire-popup" id="advanced-expire" class='popupbox' title="{{$expire.advanced}}">{{$expire.label}}</a></span>
-	<div style="display: none;">
-		<div id="advanced-expire-popup" style="width:auto;height:auto;overflow:auto;">
-			<h3>{{$expire.advanced}}</h3>
-			{{include file="field_yesno.tpl" field=$expire.items}}
-			{{include file="field_yesno.tpl" field=$expire.notes}}
-			{{include file="field_yesno.tpl" field=$expire.starred}}
-			{{include file="field_yesno.tpl" field=$expire.network_only}}
-		</div>
-	</div>
-
-</div>
-
 
 <div id="settings-default-perms" class="settings-default-perms" >
 	<a href="#profile-jot-acl-wrapper" id="settings-default-perms-menu" class='popupbox'>{{$permissions}} {{$permdesc}}</a>
@@ -100,21 +83,31 @@
 <div id="settings-default-perms-end"></div>
 
 {{$group_select nofilter}}
-
-
 <div class="settings-submit-wrapper" >
 <input type="submit" name="submit" class="settings-submit" value="{{$submit}}" />
 </div>
 </div>
 
+<h3 class="settings-heading"><a href="javascript:;">{{$expire.label}}</a></h3>
+<div class="settings-content-block">
+<div id="settings-expiry">
+{{include file="field_input.tpl" field=$expire.days}}
+{{include file="field_checkbox.tpl" field=$expire.items}}
+{{include file="field_checkbox.tpl" field=$expire.notes}}
+{{include file="field_checkbox.tpl" field=$expire.starred}}
+{{include file="field_checkbox.tpl" field=$expire.network_only}}
 
-
+<div class="settings-submit-wrapper" >
+<input type="submit" name="submit" class="settings-submit" value="{{$submit}}" />
+</div>
+</div>
+</div>
 
 <h3 class="settings-heading"><a href="javascript:;">{{$h_not}}</a></h3>
 <div class="settings-content-block">
 <div id="settings-notifications">
 
-<div id="settings-notify-desc">{{$lbl_not}}</div>
+<div id="settings-notification-desc">{{$lbl_not}}</div>
 
 <div class="group">
 {{include file="field_intcheckbox.tpl" field=$notify1}}
@@ -130,50 +123,37 @@
 {{include file="field_checkbox.tpl" field=$email_textonly}}
 {{include file="field_checkbox.tpl" field=$detailed_notif}}
 
-{{include file="field_yesno.tpl" field=$desktop_notifications}}
+{{include file="field_checkbox.tpl" field=$desktop_notifications}}
 <script>
 (function(){
-    var elm = $("#id_{{$desktop_notifications.0}}_onoff");
-    var ckbox = $("#id_{{$desktop_notifications.0}}");
+	let $notificationField = $("#div_id_{{$desktop_notifications.0}}");
+	let $notificationCheckbox = $("#id_{{$desktop_notifications.0}}");
 
-    if (getNotificationPermission() === 'granted') {
-        ckbox.val(1);
-        elm.find(".off").addClass("hidden");
-        elm.find(".on").removeClass("hidden");
-    }
+	if (getNotificationPermission() === 'granted') {
+		$notificationCheckbox.prop('checked', true);
+	}
 	if (getNotificationPermission() === null) {
-		elm.parent(".field.yesno").hide();
+		$notificationField.hide();
 	}
 
-    $("#id_{{$desktop_notifications.0}}_onoff").on("click", function(e){
+	$notificationCheckbox.on('change', function(e) {
+		if (Notification.permission === 'granted') {
+			localStorage.setItem('notification-permissions', $notificationCheckbox.prop('checked') ? 'granted' : 'denied');
+		} else if (Notification.permission === 'denied') {
+			localStorage.setItem('notification-permissions', 'denied');
 
-        if (Notification.permission === 'granted') {
-            localStorage.setItem('notification-permissions', ckbox.val()==1 ? 'granted' : 'denied');
-        } else if (Notification.permission === 'denied') {
-            localStorage.setItem('notification-permissions', 'denied');
-
-            ckbox.val(0);
-            elm.find(".on").addClass("hidden");
-            elm.find(".off").removeClass("hidden");
-
-        } else if (Notification.permission === 'default') {
-            Notification.requestPermission(function(choice) {
-                if (choice === 'granted') {
-                    localStorage.setItem('notification-permissions', ckbox.val()==1 ? 'granted' : 'denied');
-
-                } else {
-                    localStorage.setItem('notification-permissions', 'denied');
-                    ckbox.val(0);
-                    elm.find(".on").addClass("hidden");
-                    elm.find(".off").removeClass("hidden");
-                }
-            });
-        }
-
-		//console.log(getNotificationPermission());
-
-
-    })
+			$notificationCheckbox.prop('checked', false);
+		} else if (Notification.permission === 'default') {
+			Notification.requestPermission(function(choice) {
+				if (choice === 'granted') {
+					localStorage.setItem('notification-permissions', $notificationCheckbox.prop('checked') ? 'granted' : 'denied');
+				} else {
+					localStorage.setItem('notification-permissions', 'denied');
+					$notificationCheckbox.prop('checked', false);
+				}
+			});
+		}
+	})
 })();
 </script>
 
@@ -183,7 +163,6 @@
 <input type="submit" name="submit" class="settings-submit" value="{{$submit}}" />
 </div>
 </div>
-
 
 <h3 class="settings-heading"><a href="javascript:;">{{$h_advn}}</a></h3>
 <div class="settings-content-block">
@@ -215,6 +194,3 @@
 <input type="submit" name="resend_relocate" class="settings-submit" value="{{$relocate_button}}" />
 </div>
 </div>
-
-
-

@@ -1,18 +1,50 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Test\src\App;
 
 use Friendica\App\Router;
+use Friendica\Core\L10n;
 use Friendica\Module;
 use Friendica\Network\HTTPException\MethodNotAllowedException;
 use Friendica\Network\HTTPException\NotFoundException;
+use Mockery\MockInterface;
 use PHPUnit\Framework\TestCase;
 
 class RouterTest extends TestCase
 {
+	/** @var L10n|MockInterface */
+	private $l10n;
+
+	protected function setUp()
+	{
+		parent::setUp();
+
+		$this->l10n = \Mockery::mock(L10n::class);
+		$this->l10n->shouldReceive('t')->andReturnUsing(function ($args) { return $args; });
+	}
+
 	public function testGetModuleClass()
 	{
-		$router = new Router(['REQUEST_METHOD' => Router::GET]);
+		$router = new Router(['REQUEST_METHOD' => Router::GET], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::GET], '/', 'IndexModuleClassName');
@@ -36,7 +68,7 @@ class RouterTest extends TestCase
 
 	public function testPostModuleClass()
 	{
-		$router = new Router(['REQUEST_METHOD' => Router::POST]);
+		$router = new Router(['REQUEST_METHOD' => Router::POST], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::POST], '/', 'IndexModuleClassName');
@@ -62,7 +94,7 @@ class RouterTest extends TestCase
 	{
 		$this->expectException(NotFoundException::class);
 
-		$router = new Router(['REQUEST_METHOD' => Router::GET]);
+		$router = new Router(['REQUEST_METHOD' => Router::GET], $this->l10n);
 
 		$router->getModuleClass('/unsupported');
 	}
@@ -71,7 +103,7 @@ class RouterTest extends TestCase
 	{
 		$this->expectException(NotFoundException::class);
 
-		$router = new Router(['REQUEST_METHOD' => Router::GET]);
+		$router = new Router(['REQUEST_METHOD' => Router::GET], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::GET], '/test', 'TestModuleClassName');
@@ -83,7 +115,7 @@ class RouterTest extends TestCase
 	{
 		$this->expectException(NotFoundException::class);
 
-		$router = new Router(['REQUEST_METHOD' => Router::GET]);
+		$router = new Router(['REQUEST_METHOD' => Router::GET], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::GET], '/optional[/option]', 'OptionalModuleClassName');
@@ -95,7 +127,7 @@ class RouterTest extends TestCase
 	{
 		$this->expectException(NotFoundException::class);
 
-		$router = new Router(['REQUEST_METHOD' => Router::GET]);
+		$router = new Router(['REQUEST_METHOD' => Router::GET], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::GET], '/variable/{var}', 'VariableModuleClassName');
@@ -107,7 +139,7 @@ class RouterTest extends TestCase
 	{
 		$this->expectException(MethodNotAllowedException::class);
 
-		$router = new Router(['REQUEST_METHOD' => Router::POST]);
+		$router = new Router(['REQUEST_METHOD' => Router::POST], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::GET], '/test', 'TestModuleClassName');
@@ -119,7 +151,7 @@ class RouterTest extends TestCase
 	{
 		$this->expectException(MethodNotAllowedException::class);
 
-		$router = new Router(['REQUEST_METHOD' => Router::GET]);
+		$router = new Router(['REQUEST_METHOD' => Router::GET], $this->l10n);
 
 		$routeCollector = $router->getRouteCollector();
 		$routeCollector->addRoute([Router::POST], '/test', 'TestModuleClassName');
@@ -146,7 +178,7 @@ class RouterTest extends TestCase
 					'/post' => [
 						'/it' => [Module\NodeInfo::class, [Router::POST]],
 					],
-					'/double' => [Module\Profile::class, [Router::GET, Router::POST]]
+					'/double' => [Module\Profile\Index::class, [Router::GET, Router::POST]]
 				],
 			],
 		];
@@ -159,12 +191,12 @@ class RouterTest extends TestCase
 	{
 		$router = (new Router([
 			'REQUEST_METHOD' => Router::GET
-		]))->loadRoutes($routes);
+		], $this->l10n))->loadRoutes($routes);
 
 		$this->assertEquals(Module\Home::class, $router->getModuleClass('/'));
 		$this->assertEquals(Module\Friendica::class, $router->getModuleClass('/group/route'));
 		$this->assertEquals(Module\Xrd::class, $router->getModuleClass('/group2/group3/route'));
-		$this->assertEquals(Module\Profile::class, $router->getModuleClass('/double'));
+		$this->assertEquals(Module\Profile\Index::class, $router->getModuleClass('/double'));
 	}
 
 	/**
@@ -174,10 +206,10 @@ class RouterTest extends TestCase
 	{
 		$router = (new Router([
 			'REQUEST_METHOD' => Router::POST
-		]))->loadRoutes($routes);
+		], $this->l10n))->loadRoutes($routes);
 
 		// Don't find GET
 		$this->assertEquals(Module\NodeInfo::class, $router->getModuleClass('/post/it'));
-		$this->assertEquals(Module\Profile::class, $router->getModuleClass('/double'));
+		$this->assertEquals(Module\Profile\Index::class, $router->getModuleClass('/double'));
 	}
 }

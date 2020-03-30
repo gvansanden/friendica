@@ -1,5 +1,22 @@
 <?php
 /**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  * Friendica implementation of statusnet/twitter API
  *
  * @file include/api.php
@@ -7,29 +24,25 @@
  */
 
 use Friendica\App;
-use Friendica\BaseObject;
 use Friendica\Content\ContactSelector;
-use Friendica\Content\Feature;
 use Friendica\Content\Text\BBCode;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\Config;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n;
 use Friendica\Core\Logger;
-use Friendica\Core\PConfig;
 use Friendica\Core\Protocol;
 use Friendica\Core\Session;
 use Friendica\Core\System;
 use Friendica\Core\Worker;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Model\Group;
 use Friendica\Model\Item;
 use Friendica\Model\Mail;
 use Friendica\Model\Notify;
 use Friendica\Model\Photo;
-use Friendica\Model\Profile;
 use Friendica\Model\User;
+use Friendica\Model\UserItem;
 use Friendica\Network\FKOAuth1;
 use Friendica\Network\HTTPException;
 use Friendica\Network\HTTPException\BadRequestException;
@@ -66,11 +79,11 @@ $API = [];
 $called_api = [];
 
 /**
+ * Auth API user
+ *
  * It is not sufficient to use local_user() to check whether someone is allowed to use the API,
  * because this will open CSRF holes (just embed an image with src=friendicasite.com/api/statuses/update?status=CSRF
  * into a page, and visitors will post something without noticing it).
- *
- * @brief Auth API user
  */
 function api_user()
 {
@@ -82,12 +95,12 @@ function api_user()
 }
 
 /**
+ * Get source name from API client
+ *
  * Clients can send 'source' parameter to be show in post metadata
  * as "sent via <source>".
  * Some clients doesn't send a source param, we support ones we know
  * (only Twidere, atm)
- *
- * @brief Get source name from API client
  *
  * @return string
  *        Client source name, default to "api" if unset/unknown
@@ -114,7 +127,7 @@ function api_source()
 }
 
 /**
- * @brief Format date for API
+ * Format date for API
  *
  * @param string $str Source date, as UTC
  * @return string Date in UTC formatted as "D M d H:i:s +0000 Y"
@@ -129,9 +142,7 @@ function api_date($str)
 /**
  * Register a function to be the endpoint for defined API path.
  *
- * @brief Register API endpoint
- *
- * @param string $path   API URL path, relative to System::baseUrl()
+ * @param string $path   API URL path, relative to DI::baseUrl()
  * @param string $func   Function name to call on path request
  * @param bool   $auth   API need logged user
  * @param string $method HTTP method reqiured to call this endpoint.
@@ -162,8 +173,6 @@ function api_register_func($path, $func, $auth = false, $method = API_METHOD_ANY
  * Log in user via OAuth1 or Simple HTTP Auth.
  * Simple Auth allow username in form of <pre>user@server</pre>, ignoring server part
  *
- * @brief Login API user
- *
  * @param App $a App
  * @throws ForbiddenException
  * @throws InternalServerErrorException
@@ -177,23 +186,6 @@ function api_register_func($path, $func, $auth = false, $method = API_METHOD_ANY
  */
 function api_login(App $a)
 {
-	$oauth1 = new FKOAuth1();
-	// login with oauth
-	try {
-		$request = OAuthRequest::from_request();
-		list($consumer, $token) = $oauth1->verify_request($request);
-		if (!is_null($token)) {
-			$oauth1->loginUser($token->uid);
-			Session::set('allow_api', true);
-			return;
-		}
-		echo __FILE__.__LINE__.__FUNCTION__ . "<pre>";
-		var_dump($consumer, $token);
-		die();
-	} catch (Exception $e) {
-		Logger::warning(API_LOG_PREFIX . 'error', ['module' => 'api', 'action' => 'login', 'exception' => $e->getMessage()]);
-	}
-
 	// workaround for HTTP-auth in CGI mode
 	if (!empty($_SERVER['REDIRECT_REMOTE_USER'])) {
 		$userpass = base64_decode(substr($_SERVER["REDIRECT_REMOTE_USER"], 6));
@@ -205,6 +197,24 @@ function api_login(App $a)
 	}
 
 	if (empty($_SERVER['PHP_AUTH_USER'])) {
+		// Try OAuth when no user is provided
+		$oauth1 = new FKOAuth1();
+		// login with oauth
+		try {
+			$request = OAuthRequest::from_request();
+			list($consumer, $token) = $oauth1->verify_request($request);
+			if (!is_null($token)) {
+				$oauth1->loginUser($token->uid);
+				Session::set('allow_api', true);
+				return;
+			}
+			echo __FILE__.__LINE__.__FUNCTION__ . "<pre>";
+			var_dump($consumer, $token);
+			die();
+		} catch (Exception $e) {
+			Logger::warning(API_LOG_PREFIX . 'OAuth error', ['module' => 'api', 'action' => 'login', 'exception' => $e->getMessage()]);
+		}
+
 		Logger::debug(API_LOG_PREFIX . 'failed', ['module' => 'api', 'action' => 'login', 'parameters' => $_SERVER]);
 		header('WWW-Authenticate: Basic realm="Friendica"');
 		throw new UnauthorizedException("This API requires login");
@@ -253,7 +263,7 @@ function api_login(App $a)
 		throw new UnauthorizedException("This API requires login");
 	}
 
-	Session::setAuthenticatedForUser($a, $record);
+	DI::auth()->setForUser($a, $record);
 
 	$_SESSION["allow_api"] = true;
 
@@ -261,11 +271,11 @@ function api_login(App $a)
 }
 
 /**
+ * Check HTTP method of called API
+ *
  * API endpoints can define which HTTP method to accept when called.
  * This function check the current HTTP method agains endpoint
  * registered method.
- *
- * @brief Check HTTP method of called API
  *
  * @param string $method Required methods, uppercase, separated by comma
  * @return bool
@@ -279,43 +289,46 @@ function api_check_method($method)
 }
 
 /**
+ * Main API entry point
+ *
  * Authenticate user, call registered API function, set HTTP headers
  *
- * @brief Main API entry point
- *
  * @param App $a App
+ * @param App\Arguments $args The app arguments (optional, will retrieved by the DI-Container in case of missing)
  * @return string|array API call result
  * @throws Exception
  */
-function api_call(App $a)
+function api_call(App $a, App\Arguments $args = null)
 {
 	global $API, $called_api;
 
+	if ($args == null) {
+		$args = DI::args();
+	}
+
 	$type = "json";
-	if (strpos($a->query_string, ".xml") > 0) {
+	if (strpos($args->getQueryString(), ".xml") > 0) {
 		$type = "xml";
 	}
-	if (strpos($a->query_string, ".json") > 0) {
+	if (strpos($args->getQueryString(), ".json") > 0) {
 		$type = "json";
 	}
-	if (strpos($a->query_string, ".rss") > 0) {
+	if (strpos($args->getQueryString(), ".rss") > 0) {
 		$type = "rss";
 	}
-	if (strpos($a->query_string, ".atom") > 0) {
+	if (strpos($args->getQueryString(), ".atom") > 0) {
 		$type = "atom";
 	}
 
 	try {
 		foreach ($API as $p => $info) {
-			if (strpos($a->query_string, $p) === 0) {
+			if (strpos($args->getQueryString(), $p) === 0) {
 				if (!api_check_method($info['method'])) {
 					throw new MethodNotAllowedException();
 				}
 
 				$called_api = explode("/", $p);
-				//unset($_SERVER['PHP_AUTH_USER']);
 
-				/// @TODO should be "true ==[=] $info['auth']", if you miss only one = character, you assign a variable (only with ==). Let's make all this even.
 				if (!empty($info['auth']) && api_user() === false) {
 					api_login($a);
 				}
@@ -329,7 +342,7 @@ function api_call(App $a)
 
 				Logger::info(API_LOG_PREFIX . 'username {username}', ['module' => 'api', 'action' => 'call', 'username' => $a->user['username'], 'duration' => round($duration, 2)]);
 
-				$a->getProfiler()->saveLog($a->getLogger(), API_LOG_PREFIX . 'performance');
+				DI::profiler()->saveLog(DI::logger(), API_LOG_PREFIX . 'performance');
 
 				if (false === $return) {
 					/*
@@ -366,31 +379,30 @@ function api_call(App $a)
 			}
 		}
 
-		Logger::warning(API_LOG_PREFIX . 'not implemented', ['module' => 'api', 'action' => 'call', 'query' => $a->query_string]);
+		Logger::warning(API_LOG_PREFIX . 'not implemented', ['module' => 'api', 'action' => 'call', 'query' => DI::args()->getQueryString()]);
 		throw new NotImplementedException();
 	} catch (HTTPException $e) {
 		header("HTTP/1.1 {$e->getCode()} {$e->httpdesc}");
-		return api_error($type, $e);
+		return api_error($type, $e, $args);
 	}
 }
 
 /**
- * @brief Format API error string
+ * Format API error string
  *
  * @param string $type Return type (xml, json, rss, as)
  * @param object $e    HTTPException Error object
+ * @param App\Arguments $args The App arguments
  * @return string|array error message formatted as $type
  */
-function api_error($type, $e)
+function api_error($type, $e, App\Arguments $args)
 {
-	$a = \get_app();
-
 	$error = ($e->getMessage() !== "" ? $e->getMessage() : $e->httpdesc);
 	/// @TODO:  https://dev.twitter.com/overview/api/response-codes
 
 	$error = ["error" => $error,
 			"code" => $e->getCode() . " " . $e->httpdesc,
-			"request" => $a->query_string];
+			"request" => $args->getQueryString()];
 
 	$return = api_format_data('status', $type, ['status' => $error]);
 
@@ -414,7 +426,7 @@ function api_error($type, $e)
 }
 
 /**
- * @brief Set values for RSS template
+ * Set values for RSS template
  *
  * @param App   $a
  * @param array $arr       Array to be passed to template
@@ -435,12 +447,12 @@ function api_rss_extra(App $a, $arr, $user_info)
 	$arr['$user'] = $user_info;
 	$arr['$rss'] = [
 		'alternate'    => $user_info['url'],
-		'self'         => System::baseUrl() . "/" . $a->query_string,
-		'base'         => System::baseUrl(),
+		'self'         => DI::baseUrl() . "/" . DI::args()->getQueryString(),
+		'base'         => DI::baseUrl(),
 		'updated'      => api_date(null),
 		'atom_updated' => DateTimeFormat::utcNow(DateTimeFormat::ATOM),
 		'language'     => $user_info['lang'],
-		'logo'         => System::baseUrl() . "/images/friendica-32.png",
+		'logo'         => DI::baseUrl() . "/images/friendica-32.png",
 	];
 
 	return $arr;
@@ -448,7 +460,7 @@ function api_rss_extra(App $a, $arr, $user_info)
 
 
 /**
- * @brief Unique contact to contact url.
+ * Unique contact to contact url.
  *
  * @param int $id Contact id
  * @return bool|string
@@ -467,7 +479,7 @@ function api_unique_id_to_nurl($id)
 }
 
 /**
- * @brief Get user info array.
+ * Get user info array.
  *
  * @param App        $a          App
  * @param int|string $contact_id Contact ID or URL
@@ -610,7 +622,7 @@ function api_get_user(App $a, $contact_id = null)
 				'id_str' => (string) $contact["id"],
 				'name' => $contact["name"],
 				'screen_name' => (($contact['nick']) ? $contact['nick'] : $contact['name']),
-				'location' => ($contact["location"] != "") ? $contact["location"] : ContactSelector::networkToName($contact['network'], $contact['url']),
+				'location' => ($contact["location"] != "") ? $contact["location"] : ContactSelector::networkToName($contact['network'], $contact['url'], $contact['protocol']),
 				'description' => BBCode::toPlaintext($contact["about"]),
 				'profile_image_url' => $contact["micro"],
 				'profile_image_url_https' => $contact["micro"],
@@ -676,7 +688,7 @@ function api_get_user(App $a, $contact_id = null)
 	} elseif (!empty($uinfo[0]["location"])) {
 		$location = $uinfo[0]["location"];
 	} else {
-		$location = ContactSelector::networkToName($uinfo[0]['network'], $uinfo[0]['url']);
+		$location = ContactSelector::networkToName($uinfo[0]['network'], $uinfo[0]['url'], $uinfo[0]['protocol']);
 	}
 
 	$ret = [
@@ -711,7 +723,7 @@ function api_get_user(App $a, $contact_id = null)
 		'statusnet_blocking' => false,
 		'notifications' => false,
 		/// @TODO old way?
-		//'statusnet_profile_url' => System::baseUrl()."/contact/".$uinfo[0]['cid'],
+		//'statusnet_profile_url' => DI::baseUrl()."/contact/".$uinfo[0]['cid'],
 		'statusnet_profile_url' => $uinfo[0]['url'],
 		'uid' => intval($uinfo[0]['uid']),
 		'cid' => intval($uinfo[0]['cid']),
@@ -724,7 +736,7 @@ function api_get_user(App $a, $contact_id = null)
 	if ($ret['self']) {
 		$theme_info = DBA::selectFirst('user', ['theme'], ['uid' => $ret['uid']]);
 		if ($theme_info['theme'] === 'frio') {
-			$schema = PConfig::get($ret['uid'], 'frio', 'schema');
+			$schema = DI::pConfig()->get($ret['uid'], 'frio', 'schema');
 
 			if ($schema && ($schema != '---')) {
 				if (file_exists('view/theme/frio/schema/'.$schema.'.php')) {
@@ -732,9 +744,9 @@ function api_get_user(App $a, $contact_id = null)
 					require_once $schemefile;
 				}
 			} else {
-				$nav_bg = PConfig::get($ret['uid'], 'frio', 'nav_bg');
-				$link_color = PConfig::get($ret['uid'], 'frio', 'link_color');
-				$bgcolor = PConfig::get($ret['uid'], 'frio', 'background_color');
+				$nav_bg = DI::pConfig()->get($ret['uid'], 'frio', 'nav_bg');
+				$link_color = DI::pConfig()->get($ret['uid'], 'frio', 'link_color');
+				$bgcolor = DI::pConfig()->get($ret['uid'], 'frio', 'background_color');
 			}
 			if (empty($nav_bg)) {
 				$nav_bg = "#708fa0";
@@ -756,7 +768,7 @@ function api_get_user(App $a, $contact_id = null)
 }
 
 /**
- * @brief return api-formatted array for item's author and owner
+ * return api-formatted array for item's author and owner
  *
  * @param App   $a    App
  * @param array $item item from db
@@ -772,7 +784,7 @@ function api_item_get_user(App $a, $item)
 
 	$author_user = $status_user;
 
-	$status_user["protected"] = $item['private'] ?? 0;
+	$status_user["protected"] = isset($item['private']) && ($item['private'] == Item::PRIVATE);
 
 	if (($item['thr-parent'] ?? '') == ($item['uri'] ?? '')) {
 		$owner_user = api_get_user($a, $item['owner-id'] ?? null);
@@ -784,7 +796,7 @@ function api_item_get_user(App $a, $item)
 }
 
 /**
- * @brief walks recursively through an array with the possibility to change value and key
+ * walks recursively through an array with the possibility to change value and key
  *
  * @param array    $array    The array to walk through
  * @param callable $callback The callback function
@@ -812,7 +824,7 @@ function api_walk_recursive(array &$array, callable $callback)
 }
 
 /**
- * @brief Callback function to transform the array in an array that can be transformed in a XML file
+ * Callback function to transform the array in an array that can be transformed in a XML file
  *
  * @param mixed  $item Array item value
  * @param string $key  Array key
@@ -838,7 +850,7 @@ function api_reformat_xml(&$item, &$key)
 }
 
 /**
- * @brief Creates the XML from a JSON style array
+ * Creates the XML from a JSON style array
  *
  * @param array  $data         JSON style array
  * @param string $root_element Name of the root element
@@ -883,7 +895,7 @@ function api_create_xml(array $data, $root_element)
 }
 
 /**
- * @brief Formats the data according to the data type
+ * Formats the data according to the data type
  *
  * @param string $root_element Name of the root element
  * @param string $type         Return type (atom, rss, xml, json)
@@ -927,7 +939,7 @@ function api_format_data($root_element, $type, $data)
  */
 function api_account_verify_credentials($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -995,7 +1007,7 @@ function requestdata($k)
  */
 function api_statuses_mediap($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		Logger::log('api_statuses_update: no user');
@@ -1049,7 +1061,7 @@ api_register_func('api/statuses/mediap', 'api_statuses_mediap', true, API_METHOD
  */
 function api_statuses_update($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		Logger::log('api_statuses_update: no user');
@@ -1098,7 +1110,7 @@ function api_statuses_update($type)
 
 	if (!$parent) {
 		// Check for throttling (maximum posts per day, week and month)
-		$throttle_day = Config::get('system', 'throttle_limit_day');
+		$throttle_day = DI::config()->get('system', 'throttle_limit_day');
 		if ($throttle_day > 0) {
 			$datefrom = date(DateTimeFormat::MYSQL, time() - 24*60*60);
 
@@ -1107,12 +1119,12 @@ function api_statuses_update($type)
 
 			if ($posts_day > $throttle_day) {
 				Logger::log('Daily posting limit reached for user '.api_user(), Logger::DEBUG);
-				// die(api_error($type, L10n::t("Daily posting limit of %d posts reached. The post was rejected.", $throttle_day));
-				throw new TooManyRequestsException(L10n::tt("Daily posting limit of %d post reached. The post was rejected.", "Daily posting limit of %d posts reached. The post was rejected.", $throttle_day));
+				// die(api_error($type, DI::l10n()->t("Daily posting limit of %d posts reached. The post was rejected.", $throttle_day));
+				throw new TooManyRequestsException(DI::l10n()->tt("Daily posting limit of %d post reached. The post was rejected.", "Daily posting limit of %d posts reached. The post was rejected.", $throttle_day));
 			}
 		}
 
-		$throttle_week = Config::get('system', 'throttle_limit_week');
+		$throttle_week = DI::config()->get('system', 'throttle_limit_week');
 		if ($throttle_week > 0) {
 			$datefrom = date(DateTimeFormat::MYSQL, time() - 24*60*60*7);
 
@@ -1121,12 +1133,12 @@ function api_statuses_update($type)
 
 			if ($posts_week > $throttle_week) {
 				Logger::log('Weekly posting limit reached for user '.api_user(), Logger::DEBUG);
-				// die(api_error($type, L10n::t("Weekly posting limit of %d posts reached. The post was rejected.", $throttle_week)));
-				throw new TooManyRequestsException(L10n::tt("Weekly posting limit of %d post reached. The post was rejected.", "Weekly posting limit of %d posts reached. The post was rejected.", $throttle_week));
+				// die(api_error($type, DI::l10n()->t("Weekly posting limit of %d posts reached. The post was rejected.", $throttle_week)));
+				throw new TooManyRequestsException(DI::l10n()->tt("Weekly posting limit of %d post reached. The post was rejected.", "Weekly posting limit of %d posts reached. The post was rejected.", $throttle_week));
 			}
 		}
 
-		$throttle_month = Config::get('system', 'throttle_limit_month');
+		$throttle_month = DI::config()->get('system', 'throttle_limit_month');
 		if ($throttle_month > 0) {
 			$datefrom = date(DateTimeFormat::MYSQL, time() - 24*60*60*30);
 
@@ -1135,8 +1147,8 @@ function api_statuses_update($type)
 
 			if ($posts_month > $throttle_month) {
 				Logger::log('Monthly posting limit reached for user '.api_user(), Logger::DEBUG);
-				// die(api_error($type, L10n::t("Monthly posting limit of %d posts reached. The post was rejected.", $throttle_month));
-				throw new TooManyRequestsException(L10n::t("Monthly posting limit of %d post reached. The post was rejected.", "Monthly posting limit of %d posts reached. The post was rejected.", $throttle_month));
+				// die(api_error($type, DI::l10n()->t("Monthly posting limit of %d posts reached. The post was rejected.", $throttle_month));
+				throw new TooManyRequestsException(DI::l10n()->t("Monthly posting limit of %d post reached. The post was rejected.", "Monthly posting limit of %d posts reached. The post was rejected.", $throttle_month));
 			}
 		}
 	}
@@ -1161,8 +1173,8 @@ function api_statuses_update($type)
 				$phototypes = Images::supportedTypes();
 				$ext = $phototypes[$r[0]['type']];
 				$description = $r[0]['desc'] ?? '';
-				$_REQUEST['body'] .= "\n\n" . '[url=' . System::baseUrl() . '/photos/' . $r[0]['nickname'] . '/image/' . $r[0]['resource-id'] . ']';
-				$_REQUEST['body'] .= '[img=' . System::baseUrl() . '/photo/' . $r[0]['resource-id'] . '-' . $r[0]['scale'] . '.' . $ext . ']' . $description . '[/img][/url]';
+				$_REQUEST['body'] .= "\n\n" . '[url=' . DI::baseUrl() . '/photos/' . $r[0]['nickname'] . '/image/' . $r[0]['resource-id'] . ']';
+				$_REQUEST['body'] .= '[img=' . DI::baseUrl() . '/photo/' . $r[0]['resource-id'] . '-' . $r[0]['scale'] . '.' . $ext . ']' . $description . '[/img][/url]';
 			}
 		}
 	}
@@ -1199,7 +1211,7 @@ api_register_func('api/statuses/update_with_media', 'api_statuses_update', true,
  */
 function api_media_upload()
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		Logger::log('no user');
@@ -1254,7 +1266,7 @@ api_register_func('api/media/upload', 'api_media_upload', true, API_METHOD_POST)
  */
 function api_media_metadata_create($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		Logger::info('no user');
@@ -1331,7 +1343,7 @@ function api_get_last_status($ownerId, $uid)
 		'author-id'=> $ownerId,
 		'uid'      => $uid,
 		'gravity'  => [GRAVITY_PARENT, GRAVITY_COMMENT],
-		'private'  => false
+		'private'  => [Item::PUBLIC, Item::UNLISTED]
 	];
 
 	$item = api_get_item($condition);
@@ -1367,7 +1379,7 @@ function api_get_item(array $condition)
  */
 function api_users_show($type)
 {
-	$a = BaseObject::getApp();
+	$a = Friendica\DI::app();
 
 	$user_info = api_get_user($a);
 
@@ -1401,7 +1413,7 @@ api_register_func('api/externalprofile/show', 'api_users_show');
  */
 function api_users_search($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	$userlist = [];
 
@@ -1463,7 +1475,7 @@ function api_users_lookup($type)
 	if (!empty($_REQUEST['user_id'])) {
 		foreach (explode(',', $_REQUEST['user_id']) as $id) {
 			if (!empty($id)) {
-				$users[] = api_get_user(get_app(), $id);
+				$users[] = api_get_user(DI::app(), $id);
 			}
 		}
 	}
@@ -1494,7 +1506,7 @@ api_register_func('api/users/lookup', 'api_users_lookup', true);
  */
 function api_search($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -1516,7 +1528,7 @@ function api_search($type)
 	} elseif (!empty($_REQUEST['count'])) {
 		$count = $_REQUEST['count'];
 	}
-	
+
 	$since_id = $_REQUEST['since_id'] ?? 0;
 	$max_id = $_REQUEST['max_id'] ?? 0;
 	$page = $_REQUEST['page'] ?? 1;
@@ -1552,7 +1564,7 @@ function api_search($type)
 
 		$condition = [implode(' AND ', $preCondition)];
 	} else {
-		$condition = ["`id` > ? 
+		$condition = ["`id` > ?
 			" . ($exclude_replies ? " AND `id` = `parent` " : ' ') . "
 			AND (`uid` = 0 OR (`uid` = ? AND NOT `global`))
 			AND `body` LIKE CONCAT('%',?,'%')",
@@ -1608,7 +1620,7 @@ api_register_func('api/search', 'api_search', true);
  */
 function api_statuses_home_timeline($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -1701,7 +1713,7 @@ api_register_func('api/statuses/friends_timeline', 'api_statuses_home_timeline',
  */
 function api_statuses_public_timeline($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -1721,8 +1733,8 @@ function api_statuses_public_timeline($type)
 	$start = max(0, ($page - 1) * $count);
 
 	if ($exclude_replies && !$conversation_id) {
-		$condition = ["`gravity` IN (?, ?) AND `iid` > ? AND NOT `private` AND `wall` AND NOT `user`.`hidewall` AND NOT `author`.`hidden`",
-			GRAVITY_PARENT, GRAVITY_COMMENT, $since_id];
+		$condition = ["`gravity` IN (?, ?) AND `iid` > ? AND `private` = ? AND `wall` AND NOT `author`.`hidden`",
+			GRAVITY_PARENT, GRAVITY_COMMENT, $since_id, Item::PUBLIC];
 
 		if ($max_id > 0) {
 			$condition[0] .= " AND `thread`.`iid` <= ?";
@@ -1734,8 +1746,8 @@ function api_statuses_public_timeline($type)
 
 		$r = Item::inArray($statuses);
 	} else {
-		$condition = ["`gravity` IN (?, ?) AND `id` > ? AND NOT `private` AND `wall` AND NOT `user`.`hidewall` AND `item`.`origin` AND NOT `author`.`hidden`",
-			GRAVITY_PARENT, GRAVITY_COMMENT, $since_id];
+		$condition = ["`gravity` IN (?, ?) AND `id` > ? AND `private` = ? AND `wall` AND `item`.`origin` AND NOT `author`.`hidden`",
+			GRAVITY_PARENT, GRAVITY_COMMENT, $since_id, Item::PUBLIC];
 
 		if ($max_id > 0) {
 			$condition[0] .= " AND `item`.`id` <= ?";
@@ -1774,8 +1786,6 @@ api_register_func('api/statuses/public_timeline', 'api_statuses_public_timeline'
 /**
  * Returns the most recent statuses posted by users this node knows about.
  *
- * @brief Returns the list of public federated posts this node knows about
- *
  * @param string $type Return format: json, xml, atom, rss
  * @return array|string
  * @throws BadRequestException
@@ -1786,7 +1796,7 @@ api_register_func('api/statuses/public_timeline', 'api_statuses_public_timeline'
  */
 function api_statuses_networkpublic_timeline($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -1802,8 +1812,8 @@ function api_statuses_networkpublic_timeline($type)
 
 	$start = max(0, ($page - 1) * $count);
 
-	$condition = ["`uid` = 0 AND `gravity` IN (?, ?) AND `thread`.`iid` > ? AND NOT `private`",
-		GRAVITY_PARENT, GRAVITY_COMMENT, $since_id];
+	$condition = ["`uid` = 0 AND `gravity` IN (?, ?) AND `thread`.`iid` > ? AND `private` = ?",
+		GRAVITY_PARENT, GRAVITY_COMMENT, $since_id, Item::PUBLIC];
 
 	if ($max_id > 0) {
 		$condition[0] .= " AND `thread`.`iid` <= ?";
@@ -1847,7 +1857,7 @@ api_register_func('api/statuses/networkpublic_timeline', 'api_statuses_networkpu
  */
 function api_statuses_show($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -1926,7 +1936,7 @@ api_register_func('api/statuses/show', 'api_statuses_show', true);
  */
 function api_conversation_show($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -2008,7 +2018,7 @@ function api_statuses_repeat($type)
 {
 	global $called_api;
 
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -2031,7 +2041,7 @@ function api_statuses_repeat($type)
 	Logger::log('API: api_statuses_repeat: '.$id);
 
 	$fields = ['body', 'title', 'attach', 'tag', 'author-name', 'author-link', 'author-avatar', 'guid', 'created', 'plink'];
-	$item = Item::selectFirst($fields, ['id' => $id, 'private' => false]);
+	$item = Item::selectFirst($fields, ['id' => $id, 'private' => [Item::PUBLIC, Item::UNLISTED]]);
 
 	if (DBA::isResult($item) && $item['body'] != "") {
 		if (strpos($item['body'], "[/share]") !== false) {
@@ -2085,7 +2095,7 @@ api_register_func('api/statuses/retweet', 'api_statuses_repeat', true, API_METHO
  */
 function api_statuses_destroy($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -2132,7 +2142,7 @@ api_register_func('api/statuses/destroy', 'api_statuses_destroy', true, API_METH
  */
 function api_statuses_mentions($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -2155,17 +2165,35 @@ function api_statuses_mentions($type)
 
 	$start = max(0, ($page - 1) * $count);
 
-	$condition = ["`uid` = ? AND `gravity` IN (?, ?) AND `item`.`id` > ? AND `author-id` != ? AND `mention`
-		AND `item`.`parent` IN (SELECT `iid` FROM `thread` WHERE `thread`.`uid` = ? AND NOT `thread`.`ignored`)",
-		api_user(), GRAVITY_PARENT, GRAVITY_COMMENT, $since_id, $user_info['pid'], api_user()];
+	$query = "SELECT `item`.`id` FROM `user-item`
+		INNER JOIN `item` ON `item`.`id` = `user-item`.`iid` AND `item`.`gravity` IN (?, ?)
+		WHERE (`user-item`.`hidden` IS NULL OR NOT `user-item`.`hidden`) AND
+			`user-item`.`uid` = ? AND `user-item`.`notification-type` & ? != 0
+			AND `user-item`.`iid` > ?";
+	$condition = [GRAVITY_PARENT, GRAVITY_COMMENT, api_user(),
+		UserItem::NOTIF_EXPLICIT_TAGGED | UserItem::NOTIF_IMPLICIT_TAGGED |
+		UserItem::NOTIF_THREAD_COMMENT | UserItem::NOTIF_DIRECT_COMMENT |
+		UserItem::NOTIF_DIRECT_THREAD_COMMENT,
+		$since_id];
 
 	if ($max_id > 0) {
-		$condition[0] .= " AND `item`.`id` <= ?";
+		$query .= " AND `item`.`id` <= ?";
 		$condition[] = $max_id;
 	}
 
+	$query .= " ORDER BY `user-item`.`iid` DESC LIMIT ?, ?";
+	$condition[] = $start;
+	$condition[] = $count;
+
+	$useritems = DBA::p($query, $condition);
+	$itemids = [];
+	while ($useritem = DBA::fetch($useritems)) {
+		$itemids[] = $useritem['id'];
+	}
+	DBA::close($useritems);
+
 	$params = ['order' => ['id' => true], 'limit' => [$start, $count]];
-	$statuses = Item::selectForUser(api_user(), [], $condition, $params);
+	$statuses = Item::selectForUser(api_user(), [], ['id' => $itemids], $params);
 
 	$ret = api_format_items(Item::inArray($statuses), $user_info, false, $type);
 
@@ -2188,8 +2216,6 @@ api_register_func('api/statuses/replies', 'api_statuses_mentions', true);
 /**
  * Returns the most recent statuses posted by the user.
  *
- * @brief Returns a user's public timeline
- *
  * @param string $type Either "json" or "xml"
  * @return string|array
  * @throws BadRequestException
@@ -2201,7 +2227,7 @@ api_register_func('api/statuses/replies', 'api_statuses_mentions', true);
  */
 function api_statuses_user_timeline($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -2285,7 +2311,7 @@ api_register_func('api/statuses/user_timeline', 'api_statuses_user_timeline', tr
  */
 function api_favorites_create_destroy($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -2368,7 +2394,7 @@ function api_favorites($type)
 {
 	global $called_api;
 
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
@@ -2727,7 +2753,7 @@ function api_get_entitities(&$text, $bbcode)
 			if ($image) {
 				// If image cache is activated, then use the following sizes:
 				// thumb  (150), small (340), medium (600) and large (1024)
-				if (!Config::get("system", "proxy_disabled")) {
+				if (!DI::config()->get("system", "proxy_disabled")) {
 					$media_url = ProxyUtils::proxifyUrl($url);
 
 					$sizes = [];
@@ -2783,7 +2809,7 @@ function api_format_items_embeded_images($item, $text)
 	$text = preg_replace_callback(
 		'|data:image/([^;]+)[^=]+=*|m',
 		function () use ($item) {
-			return System::baseUrl() . '/display/' . $item['guid'];
+			return DI::baseUrl() . '/display/' . $item['guid'];
 		},
 		$text
 	);
@@ -2791,7 +2817,7 @@ function api_format_items_embeded_images($item, $text)
 }
 
 /**
- * @brief return <a href='url'>name</a> as array
+ * return <a href='url'>name</a> as array
  *
  * @param string $txt text
  * @return array
@@ -2818,7 +2844,7 @@ function api_contactlink_to_array($txt)
 
 
 /**
- * @brief return likes, dislikes and attend status for item
+ * return likes, dislikes and attend status for item
  *
  * @param array  $item array
  * @param string $type Return type (atom, rss, xml, json)
@@ -2833,7 +2859,7 @@ function api_contactlink_to_array($txt)
  */
 function api_format_items_activities($item, $type = "json")
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	$activities = [
 		'like' => [],
@@ -2896,62 +2922,8 @@ function api_format_items_activities($item, $type = "json")
 	return $activities;
 }
 
-
 /**
- * @brief return data from profiles
- *
- * @param array $profile_row array containing data from db table 'profile'
- * @return array
- * @throws InternalServerErrorException
- */
-function api_format_items_profiles($profile_row)
-{
-	$profile = [
-		'profile_id'       => $profile_row['id'],
-		'profile_name'     => $profile_row['profile-name'],
-		'is_default'       => $profile_row['is-default'] ? true : false,
-		'hide_friends'     => $profile_row['hide-friends'] ? true : false,
-		'profile_photo'    => $profile_row['photo'],
-		'profile_thumb'    => $profile_row['thumb'],
-		'publish'          => $profile_row['publish'] ? true : false,
-		'net_publish'      => $profile_row['net-publish'] ? true : false,
-		'description'      => $profile_row['pdesc'],
-		'date_of_birth'    => $profile_row['dob'],
-		'address'          => $profile_row['address'],
-		'city'             => $profile_row['locality'],
-		'region'           => $profile_row['region'],
-		'postal_code'      => $profile_row['postal-code'],
-		'country'          => $profile_row['country-name'],
-		'hometown'         => $profile_row['hometown'],
-		'gender'           => $profile_row['gender'],
-		'marital'          => $profile_row['marital'],
-		'marital_with'     => $profile_row['with'],
-		'marital_since'    => $profile_row['howlong'],
-		'sexual'           => $profile_row['sexual'],
-		'politic'          => $profile_row['politic'],
-		'religion'         => $profile_row['religion'],
-		'public_keywords'  => $profile_row['pub_keywords'],
-		'private_keywords' => $profile_row['prv_keywords'],
-		'likes'            => BBCode::convert(api_clean_plain_items($profile_row['likes'])    , false, 2),
-		'dislikes'         => BBCode::convert(api_clean_plain_items($profile_row['dislikes']) , false, 2),
-		'about'            => BBCode::convert(api_clean_plain_items($profile_row['about'])    , false, 2),
-		'music'            => BBCode::convert(api_clean_plain_items($profile_row['music'])    , false, 2),
-		'book'             => BBCode::convert(api_clean_plain_items($profile_row['book'])     , false, 2),
-		'tv'               => BBCode::convert(api_clean_plain_items($profile_row['tv'])       , false, 2),
-		'film'             => BBCode::convert(api_clean_plain_items($profile_row['film'])     , false, 2),
-		'interest'         => BBCode::convert(api_clean_plain_items($profile_row['interest']) , false, 2),
-		'romance'          => BBCode::convert(api_clean_plain_items($profile_row['romance'])  , false, 2),
-		'work'             => BBCode::convert(api_clean_plain_items($profile_row['work'])     , false, 2),
-		'education'        => BBCode::convert(api_clean_plain_items($profile_row['education']), false, 2),
-		'social_networks'  => BBCode::convert(api_clean_plain_items($profile_row['contact'])  , false, 2),
-		'homepage'         => $profile_row['homepage'],
-		'users'            => null
-	];
-	return $profile;
-}
-
-/**
- * @brief format items to be returned by api
+ * format items to be returned by api
  *
  * @param array  $items       array of items
  * @param array  $user_info
@@ -2965,7 +2937,7 @@ function api_format_items_profiles($profile_row)
  */
 function api_format_items($items, $user_info, $filter_user = false, $type = "json")
 {
-	$a = BaseObject::getApp();
+	$a = Friendica\DI::app();
 
 	$ret = [];
 
@@ -2999,7 +2971,7 @@ function api_format_items($items, $user_info, $filter_user = false, $type = "jso
  */
 function api_format_item($item, $type = "json", $status_user = null, $author_user = null, $owner_user = null)
 {
-	$a = BaseObject::getApp();
+	$a = Friendica\DI::app();
 
 	if (empty($status_user) || empty($author_user) || empty($owner_user)) {
 		list($status_user, $author_user, $owner_user) = api_item_get_user($a, $item);
@@ -3034,11 +3006,11 @@ function api_format_item($item, $type = "json", $status_user = null, $author_use
 		'user' =>  $status_user,
 		'friendica_author' => $author_user,
 		'friendica_owner' => $owner_user,
-		'friendica_private' => $item['private'] == 1,
+		'friendica_private' => $item['private'] == Item::PRIVATE,
 		//'entities' => NULL,
 		'statusnet_html' => $converted["html"],
 		'statusnet_conversation_id' => $item['parent'],
-		'external_url' => System::baseUrl() . "/display/" . $item['guid'],
+		'external_url' => DI::baseUrl() . "/display/" . $item['guid'],
 		'friendica_activities' => api_format_items_activities($item, $type),
 		'friendica_title' => $item['title'],
 		'friendica_html' => BBCode::convert($item['body'], false)
@@ -3053,9 +3025,9 @@ function api_format_item($item, $type = "json", $status_user = null, $author_use
 	}
 
 	if ($status["source"] == 'web') {
-		$status["source"] = ContactSelector::networkToName($item['network'], $item['author-link']);
-	} elseif (ContactSelector::networkToName($item['network'], $item['author-link']) != $status["source"]) {
-		$status["source"] = trim($status["source"].' ('.ContactSelector::networkToName($item['network'], $item['author-link']).')');
+		$status["source"] = ContactSelector::networkToName($item['author-network'], $item['author-link'], $item['network']);
+	} elseif (ContactSelector::networkToName($item['author-network'], $item['author-link'], $item['network']) != $status["source"]) {
+		$status["source"] = trim($status["source"].' ('.ContactSelector::networkToName($item['author-network'], $item['author-link'], $item['network']).')');
 	}
 
 	$retweeted_item = [];
@@ -3254,7 +3226,7 @@ api_register_func('api/lists/subscriptions', 'api_lists_list', true);
  */
 function api_lists_ownerships($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -3303,7 +3275,7 @@ api_register_func('api/lists/ownerships', 'api_lists_ownerships', true);
  */
 function api_lists_statuses($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	$user_info = api_get_user($a);
 	if (api_user() === false || $user_info === false) {
@@ -3366,10 +3338,10 @@ function api_lists_statuses($type)
 api_register_func('api/lists/statuses', 'api_lists_statuses', true);
 
 /**
+ * Returns either the friends of the follower list
+ *
  * Considers friends and followers lists to be private and won't return
  * anything if any user_id parameter is passed.
- *
- * @brief Returns either the friends of the follower list
  *
  * @param string $qtype Either "friends" or "followers"
  * @return boolean|array
@@ -3381,7 +3353,7 @@ api_register_func('api/lists/statuses', 'api_lists_statuses', true);
  */
 function api_statuses_f($qtype)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -3457,9 +3429,7 @@ function api_statuses_f($qtype)
 
 
 /**
- * Returns the user's friends.
- *
- * @brief      Returns the list of friends of the provided user
+ * Returns the list of friends of the provided user
  *
  * @deprecated By Twitter API in favor of friends/list
  *
@@ -3478,9 +3448,7 @@ function api_statuses_friends($type)
 }
 
 /**
- * Returns the user's followers.
- *
- * @brief      Returns the list of followers of the provided user
+ * Returns the list of followers of the provided user
  *
  * @deprecated By Twitter API in favor of friends/list
  *
@@ -3564,17 +3532,15 @@ api_register_func('api/friendships/incoming', 'api_friendships_incoming', true);
  */
 function api_statusnet_config($type)
 {
-	$a = \get_app();
-
-	$name      = Config::get('config', 'sitename');
-	$server    = $a->getHostName();
-	$logo      = System::baseUrl() . '/images/friendica-64.png';
-	$email     = Config::get('config', 'admin_email');
-	$closed    = intval(Config::get('config', 'register_policy')) === \Friendica\Module\Register::CLOSED ? 'true' : 'false';
-	$private   = Config::get('system', 'block_public') ? 'true' : 'false';
-	$textlimit = (string) Config::get('config', 'api_import_size', Config::get('config', 'max_import_size', 200000));
-	$ssl       = Config::get('system', 'have_ssl') ? 'true' : 'false';
-	$sslserver = Config::get('system', 'have_ssl') ? str_replace('http:', 'https:', System::baseUrl()) : '';
+	$name      = DI::config()->get('config', 'sitename');
+	$server    = DI::baseUrl()->getHostname();
+	$logo      = DI::baseUrl() . '/images/friendica-64.png';
+	$email     = DI::config()->get('config', 'admin_email');
+	$closed    = intval(DI::config()->get('config', 'register_policy')) === \Friendica\Module\Register::CLOSED ? 'true' : 'false';
+	$private   = DI::config()->get('system', 'block_public') ? 'true' : 'false';
+	$textlimit = (string) DI::config()->get('config', 'api_import_size', DI::config()->get('config', 'max_import_size', 200000));
+	$ssl       = DI::config()->get('system', 'have_ssl') ? 'true' : 'false';
+	$sslserver = DI::config()->get('system', 'have_ssl') ? str_replace('http:', 'https:', DI::baseUrl()) : '';
 
 	$config = [
 		'site' => ['name' => $name,'server' => $server, 'theme' => 'default', 'path' => '',
@@ -3635,7 +3601,7 @@ function api_ff_ids($type, int $rel)
 		throw new ForbiddenException();
 	}
 
-	$a = \get_app();
+	$a = DI::app();
 
 	api_get_user($a);
 
@@ -3722,7 +3688,7 @@ api_register_func('api/followers/ids', 'api_followers_ids', true);
  */
 function api_direct_messages_new($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -3799,9 +3765,7 @@ function api_direct_messages_new($type)
 api_register_func('api/direct_messages/new', 'api_direct_messages_new', true, API_METHOD_POST);
 
 /**
- * Destroys a direct message.
- *
- * @brief delete a direct_message from mail table through api
+ * delete a direct_message from mail table through api
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -3814,7 +3778,7 @@ api_register_func('api/direct_messages/new', 'api_direct_messages_new', true, AP
  */
 function api_direct_messages_destroy($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -3886,8 +3850,6 @@ api_register_func('api/direct_messages/destroy', 'api_direct_messages_destroy', 
 
 /**
  * Unfollow Contact
- *
- * @brief unfollow contact
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -3982,7 +3944,7 @@ api_register_func('api/friendships/destroy', 'api_friendships_destroy', true, AP
  */
 function api_direct_messages_box($type, $box, $verbose)
 {
-	$a = \get_app();
+	$a = DI::app();
 	if (api_user() === false) {
 		throw new ForbiddenException();
 	}
@@ -4184,7 +4146,7 @@ api_register_func('api/oauth/access_token', 'api_oauth_access_token', false);
 
 
 /**
- * @brief delete a complete photoalbum with all containing photos from database through api
+ * delete a complete photoalbum with all containing photos from database through api
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -4239,7 +4201,7 @@ function api_fr_photoalbum_delete($type)
 }
 
 /**
- * @brief update the name of the album for all photos of an album
+ * update the name of the album for all photos of an album
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -4281,7 +4243,7 @@ function api_fr_photoalbum_update($type)
 
 
 /**
- * @brief list all photos of the authenticated user
+ * list all photos of the authenticated user
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -4312,7 +4274,7 @@ function api_fr_photos_list($type)
 			$photo['album'] = $rr['album'];
 			$photo['filename'] = $rr['filename'];
 			$photo['type'] = $rr['type'];
-			$thumb = System::baseUrl() . "/photo/" . $rr['resource-id'] . "-" . $rr['scale'] . "." . $typetoext[$rr['type']];
+			$thumb = DI::baseUrl() . "/photo/" . $rr['resource-id'] . "-" . $rr['scale'] . "." . $typetoext[$rr['type']];
 			$photo['created'] = $rr['created'];
 			$photo['edited'] = $rr['edited'];
 			$photo['desc'] = $rr['desc'];
@@ -4329,7 +4291,7 @@ function api_fr_photos_list($type)
 }
 
 /**
- * @brief upload a new photo or change an existing photo
+ * upload a new photo or change an existing photo
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -4468,7 +4430,7 @@ function api_fr_photo_create_update($type)
 }
 
 /**
- * @brief delete a single photo from the database through api
+ * delete a single photo from the database through api
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -4521,7 +4483,7 @@ function api_fr_photo_delete($type)
 
 
 /**
- * @brief returns the details of a specified photo id, if scale is given, returns the photo data in base 64
+ * returns the details of a specified photo id, if scale is given, returns the photo data in base 64
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -4550,9 +4512,7 @@ function api_fr_photo_detail($type)
 
 
 /**
- * Updates the user’s profile image.
- *
- * @brief updates the profile image for the user (either a specified profile or the default profile)
+ * updates the profile image for the user (either a specified profile or the default profile)
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  *
@@ -4597,7 +4557,7 @@ function api_account_update_profile_image($type)
 		$media = $_FILES['media'];
 	}
 	// save new profile image
-	$data = save_media_to_database("profileimage", $media, $type, L10n::t('Profile Photos'), "", "", "", "", "", $is_default_profile);
+	$data = save_media_to_database("profileimage", $media, $type, DI::l10n()->t('Profile Photos'), "", "", "", "", "", $is_default_profile);
 
 	// get filetype
 	if (is_array($media['type'])) {
@@ -4618,16 +4578,16 @@ function api_account_update_profile_image($type)
 		$condition = ["`profile` AND `resource-id` != ? AND `uid` = ?", $data['photo']['id'], api_user()];
 		Photo::update(['profile' => false], $condition);
 	} else {
-		$fields = ['photo' => System::baseUrl() . '/photo/' . $data['photo']['id'] . '-4.' . $fileext,
-			'thumb' => System::baseUrl() . '/photo/' . $data['photo']['id'] . '-5.' . $fileext];
+		$fields = ['photo' => DI::baseUrl() . '/photo/' . $data['photo']['id'] . '-4.' . $fileext,
+			'thumb' => DI::baseUrl() . '/photo/' . $data['photo']['id'] . '-5.' . $fileext];
 		DBA::update('profile', $fields, ['id' => $_REQUEST['profile'], 'uid' => api_user()]);
 	}
 
 	Contact::updateSelfFromUserID(api_user(), true);
 
 	// Update global directory in background
-	$url = System::baseUrl() . '/profile/' . \get_app()->user['nickname'];
-	if ($url && strlen(Config::get('system', 'directory'))) {
+	$url = DI::baseUrl() . '/profile/' . DI::app()->user['nickname'];
+	if ($url && strlen(DI::config()->get('system', 'directory'))) {
 		Worker::add(PRIORITY_LOW, "Directory", $url);
 	}
 
@@ -4667,7 +4627,7 @@ api_register_func('api/account/update_profile_image', 'api_account_update_profil
 function api_account_update_profile($type)
 {
 	$local_user = api_user();
-	$api_user = api_get_user(get_app());
+	$api_user = api_get_user(DI::app());
 
 	if (!empty($_POST['name'])) {
 		DBA::update('profile', ['name' => $_POST['name']], ['uid' => $local_user]);
@@ -4684,7 +4644,7 @@ function api_account_update_profile($type)
 
 	Worker::add(PRIORITY_LOW, 'ProfileUpdate', $local_user);
 	// Update global directory in background
-	if ($api_user['url'] && strlen(Config::get('system', 'directory'))) {
+	if ($api_user['url'] && strlen(DI::config()->get('system', 'directory'))) {
 		Worker::add(PRIORITY_LOW, "Directory", $api_user['url']);
 	}
 
@@ -4792,7 +4752,7 @@ function save_media_to_database($mediatype, $media, $type, $album, $allow_cid, $
 		throw new InternalServerErrorException("image size exceeds PHP config settings, file was rejected by server");
 	}
 	// check against max upload size within Friendica instance
-	$maximagesize = Config::get('system', 'maximagesize');
+	$maximagesize = DI::config()->get('system', 'maximagesize');
 	if ($maximagesize && ($filesize > $maximagesize)) {
 		$formattedBytes = Strings::formatBytes($maximagesize);
 		throw new InternalServerErrorException("image size exceeds Friendica config setting (uploaded size: $formattedBytes)");
@@ -4810,7 +4770,7 @@ function save_media_to_database($mediatype, $media, $type, $album, $allow_cid, $
 	@unlink($src);
 
 	// check max length of images on server
-	$max_length = Config::get('system', 'max_image_length');
+	$max_length = DI::config()->get('system', 'max_image_length');
 	if (!$max_length) {
 		$max_length = MAX_IMAGE_LENGTH;
 	}
@@ -4938,8 +4898,8 @@ function post_photo_item($hash, $allow_cid, $deny_cid, $allow_gid, $deny_gid, $f
 			];
 
 	// adds link to the thumbnail scale photo
-	$arr['body'] = '[url=' . System::baseUrl() . '/photos/' . $owner_record['nick'] . '/image/' . $hash . ']'
-				. '[img]' . System::baseUrl() . '/photo/' . $hash . '-' . "2" . '.'. $typetoext[$filetype] . '[/img]'
+	$arr['body'] = '[url=' . DI::baseUrl() . '/photos/' . $owner_record['nick'] . '/image/' . $hash . ']'
+				. '[img]' . DI::baseUrl() . '/photo/' . $hash . '-' . "2" . '.'. $typetoext[$filetype] . '[/img]'
 				. '[/url]';
 
 	// do the magic for storing the item in the database and trigger the federation to other contacts
@@ -4962,7 +4922,7 @@ function post_photo_item($hash, $allow_cid, $deny_cid, $allow_gid, $deny_gid, $f
  */
 function prepare_photo_data($type, $scale, $photo_id)
 {
-	$a = \get_app();
+	$a = DI::app();
 	$user_info = api_get_user($a);
 
 	if ($user_info === false) {
@@ -5007,14 +4967,14 @@ function prepare_photo_data($type, $scale, $photo_id)
 			for ($k = intval($data['photo']['minscale']); $k <= intval($data['photo']['maxscale']); $k++) {
 				$data['photo']['links'][$k . ":link"]["@attributes"] = ["type" => $data['photo']['type'],
 										"scale" => $k,
-										"href" => System::baseUrl() . "/photo/" . $data['photo']['resource-id'] . "-" . $k . "." . $typetoext[$data['photo']['type']]];
+										"href" => DI::baseUrl() . "/photo/" . $data['photo']['resource-id'] . "-" . $k . "." . $typetoext[$data['photo']['type']]];
 			}
 		} else {
 			$data['photo']['link'] = [];
 			// when we have profile images we could have only scales from 4 to 6, but index of array always needs to start with 0
 			$i = 0;
 			for ($k = intval($data['photo']['minscale']); $k <= intval($data['photo']['maxscale']); $k++) {
-				$data['photo']['link'][$i] = System::baseUrl() . "/photo/" . $data['photo']['resource-id'] . "-" . $k . "." . $typetoext[$data['photo']['type']];
+				$data['photo']['link'][$i] = DI::baseUrl() . "/photo/" . $data['photo']['resource-id'] . "-" . $k . "." . $typetoext[$data['photo']['type']];
 				$i++;
 			}
 		}
@@ -5028,6 +4988,9 @@ function prepare_photo_data($type, $scale, $photo_id)
 	// retrieve item element for getting activities (like, dislike etc.) related to photo
 	$condition = ['uid' => local_user(), 'resource-id' => $photo_id, 'type' => 'photo'];
 	$item = Item::selectFirstForUser(local_user(), ['id'], $condition);
+	if (!DBA::isResult($item)) {
+		throw new NotFoundException('Photo-related item not found.');
+	}
 
 	$data['photo']['friendica_activities'] = api_format_items_activities($item, $type);
 
@@ -5161,7 +5124,7 @@ function api_get_announce($item)
 }
 
 /**
- * @brief Return the item shared, if the item contains only the [share] tag
+ * Return the item shared, if the item contains only the [share] tag
  *
  * @param array $item Sharer item
  * @return array|false Shared item or false if not a reshare
@@ -5390,7 +5353,7 @@ function api_best_nickname(&$contacts)
  */
 function api_friendica_group_show($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5460,7 +5423,7 @@ api_register_func('api/friendica/group_show', 'api_friendica_group_show', true);
  */
 function api_friendica_group_delete($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5527,7 +5490,7 @@ api_register_func('api/friendica/group_delete', 'api_friendica_group_delete', tr
  */
 function api_lists_destroy($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5649,7 +5612,7 @@ function group_create($name, $uid, $users = [])
  */
 function api_friendica_group_create($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5683,7 +5646,7 @@ api_register_func('api/friendica/group_create', 'api_friendica_group_create', tr
  */
 function api_lists_create($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5722,7 +5685,7 @@ api_register_func('api/lists/create', 'api_lists_create', true, API_METHOD_POST)
  */
 function api_friendica_group_update($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5801,7 +5764,7 @@ api_register_func('api/friendica/group_update', 'api_friendica_group_update', tr
  */
 function api_lists_update($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5851,7 +5814,7 @@ api_register_func('api/lists/update', 'api_lists_update', true, API_METHOD_POST)
  */
 function api_friendica_activity($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5861,7 +5824,7 @@ function api_friendica_activity($type)
 
 	$id = $_REQUEST['id'] ?? 0;
 
-	$res = Item::performLike($id, $verb);
+	$res = Item::performActivity($id, $verb);
 
 	if ($res) {
 		if ($type == "xml") {
@@ -5888,17 +5851,18 @@ api_register_func('api/friendica/activity/unattendno', 'api_friendica_activity',
 api_register_func('api/friendica/activity/unattendmaybe', 'api_friendica_activity', true, API_METHOD_POST);
 
 /**
- * @brief Returns notifications
+ * Returns notifications
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
+ *
  * @return string|array
- * @throws BadRequestException
  * @throws ForbiddenException
- * @throws InternalServerErrorException
+ * @throws BadRequestException
+ * @throws Exception
  */
 function api_friendica_notification($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -5906,28 +5870,31 @@ function api_friendica_notification($type)
 	if ($a->argc!==3) {
 		throw new BadRequestException("Invalid argument count");
 	}
-	/** @var Notify $nm */
-	$nm = BaseObject::getClass(Notify::class);
 
-	$notes = $nm->getAll([], ['seen' => 'ASC', 'date' => 'DESC'], 50);
+	$notifications = DI::notification()->getApiList(local_user());
 
 	if ($type == "xml") {
-		$xmlnotes = [];
-		if (!empty($notes)) {
-			foreach ($notes as $note) {
-				$xmlnotes[] = ["@attributes" => $note];
+		$xmlnotes = false;
+		if (!empty($notifications)) {
+			foreach ($notifications as $notification) {
+				$xmlnotes[] = ["@attributes" => $notification->toArray()];
 			}
 		}
 
-		$notes = $xmlnotes;
+		$result = $xmlnotes;
+	} elseif (count($notifications) > 0) {
+		$result = $notifications->getArrayCopy();
+	} else {
+		$result = false;
 	}
-	return api_format_data("notes", $type, ['note' => $notes]);
+
+	return api_format_data("notes", $type, ['note' => $result]);
 }
 
 /**
- * POST request with 'id' param as notification id
+ * Set notification as seen and returns associated item (if possible)
  *
- * @brief Set notification as seen and returns associated item (if possible)
+ * POST request with 'id' param as notification id
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array
@@ -5939,38 +5906,38 @@ function api_friendica_notification($type)
  */
 function api_friendica_notification_seen($type)
 {
-	$a = \get_app();
+	$a         = DI::app();
 	$user_info = api_get_user($a);
 
 	if (api_user() === false || $user_info === false) {
 		throw new ForbiddenException();
 	}
-	if ($a->argc!==4) {
+	if ($a->argc !== 4) {
 		throw new BadRequestException("Invalid argument count");
 	}
 
 	$id = (!empty($_REQUEST['id']) ? intval($_REQUEST['id']) : 0);
 
-	/** @var Notify $nm */
-	$nm = BaseObject::getClass(Notify::class);
-	$note = $nm->getByID($id);
-	if (is_null($note)) {
-		throw new BadRequestException("Invalid argument");
-	}
+	try {
+		$notify = DI::notify()->getByID($id, api_user());
+		DI::notify()->setSeen(true, $notify);
 
-	$nm->setSeen($note);
-	if ($note['otype']=='item') {
-		// would be really better with an ItemsManager and $im->getByID() :-P
-		$item = Item::selectFirstForUser(api_user(), [], ['id' => $note['iid'], 'uid' => api_user()]);
-		if (DBA::isResult($item)) {
-			// we found the item, return it to the user
-			$ret = api_format_items([$item], $user_info, false, $type);
-			$data = ['status' => $ret];
-			return api_format_data("status", $type, $data);
+		if ($notify->otype === Notify\ObjectType::ITEM) {
+			$item = Item::selectFirstForUser(api_user(), [], ['id' => $notify->iid, 'uid' => api_user()]);
+			if (DBA::isResult($item)) {
+				// we found the item, return it to the user
+				$ret  = api_format_items([$item], $user_info, false, $type);
+				$data = ['status' => $ret];
+				return api_format_data("status", $type, $data);
+			}
+			// the item can't be found, but we set the notification as seen, so we count this as a success
 		}
-		// the item can't be found, but we set the note as seen, so we count this as a success
+		return api_format_data('result', $type, ['result' => "success"]);
+	} catch (NotFoundException $e) {
+		throw new BadRequestException('Invalid argument', $e);
+	} catch (Exception $e) {
+		throw new InternalServerErrorException('Internal Server exception', $e);
 	}
-	return api_format_data('result', $type, ['result' => "success"]);
 }
 
 /// @TODO move to top of file or somewhere better
@@ -5978,7 +5945,7 @@ api_register_func('api/friendica/notification/seen', 'api_friendica_notification
 api_register_func('api/friendica/notification', 'api_friendica_notification', true, API_METHOD_GET);
 
 /**
- * @brief update a direct_message to seen state
+ * update a direct_message to seen state
  *
  * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
  * @return string|array (success result=ok, error result=error with error message)
@@ -5990,7 +5957,7 @@ api_register_func('api/friendica/notification', 'api_friendica_notification', tr
  */
 function api_friendica_direct_messages_setseen($type)
 {
-	$a = \get_app();
+	$a = DI::app();
 	if (api_user() === false) {
 		throw new ForbiddenException();
 	}
@@ -6029,7 +5996,7 @@ function api_friendica_direct_messages_setseen($type)
 api_register_func('api/friendica/direct_messages_setseen', 'api_friendica_direct_messages_setseen', true);
 
 /**
- * @brief search for direct_messages containing a searchstring through api
+ * search for direct_messages containing a searchstring through api
  *
  * @param string $type      Known types are 'atom', 'rss', 'xml' and 'json'
  * @param string $box
@@ -6044,7 +6011,7 @@ api_register_func('api/friendica/direct_messages_setseen', 'api_friendica_direct
  */
 function api_friendica_direct_messages_search($type, $box = "")
 {
-	$a = \get_app();
+	$a = DI::app();
 
 	if (api_user() === false) {
 		throw new ForbiddenException();
@@ -6100,78 +6067,6 @@ function api_friendica_direct_messages_search($type, $box = "")
 api_register_func('api/friendica/direct_messages_search', 'api_friendica_direct_messages_search', true);
 
 /**
- * @brief return data of all the profiles a user has to the client
- *
- * @param string $type Known types are 'atom', 'rss', 'xml' and 'json'
- * @return string|array
- * @throws BadRequestException
- * @throws ForbiddenException
- * @throws ImagickException
- * @throws InternalServerErrorException
- * @throws UnauthorizedException
- */
-function api_friendica_profile_show($type)
-{
-	$a = \get_app();
-
-	if (api_user() === false) {
-		throw new ForbiddenException();
-	}
-
-	// input params
-	$profile_id = $_REQUEST['profile_id'] ?? 0;
-
-	// retrieve general information about profiles for user
-	$multi_profiles = Feature::isEnabled(api_user(), 'multi_profiles');
-	$directory = Config::get('system', 'directory');
-
-	// get data of the specified profile id or all profiles of the user if not specified
-	if ($profile_id != 0) {
-		$r = Profile::getById(api_user(), $profile_id);
-		// error message if specified gid is not in database
-		if (!DBA::isResult($r)) {
-			throw new BadRequestException("profile_id not available");
-		}
-	} else {
-		$r = Profile::getListByUser(api_user());
-	}
-	// loop through all returned profiles and retrieve data and users
-	$k = 0;
-	$profiles = [];
-	if (DBA::isResult($r)) {
-		foreach ($r as $rr) {
-			$profile = api_format_items_profiles($rr);
-
-			// select all users from contact table, loop and prepare standard return for user data
-			$users = [];
-			$nurls = Contact::selectToArray(['id', 'nurl'], ['uid' => api_user(), 'profile-id' => $rr['id']]);
-			foreach ($nurls as $nurl) {
-				$user = api_get_user($a, $nurl['nurl']);
-				($type == "xml") ? $users[$k++ . ":user"] = $user : $users[] = $user;
-			}
-			$profile['users'] = $users;
-
-			// add prepared profile data to array for final return
-			if ($type == "xml") {
-				$profiles[$k++ . ":profile"] = $profile;
-			} else {
-				$profiles[] = $profile;
-			}
-		}
-	}
-
-	// return settings, authenticated user and profiles data
-	$self = DBA::selectFirst('contact', ['nurl'], ['uid' => api_user(), 'self' => true]);
-
-	$result = ['multi_profiles' => $multi_profiles ? true : false,
-					'global_dir' => $directory,
-					'friendica_owner' => api_get_user($a, $self['nurl']),
-					'profiles' => $profiles];
-	return api_format_data("friendica_profiles", $type, ['$result' => $result]);
-}
-api_register_func('api/friendica/profile/show', 'api_friendica_profile_show', true, API_METHOD_GET);
-
-/**
  * Returns a list of saved searches.
  *
  * @see https://developer.twitter.com/en/docs/accounts-and-users/manage-account-settings/api-reference/get-saved_searches-list
@@ -6206,9 +6101,9 @@ function api_saved_searches_list($type)
 api_register_func('api/saved_searches/list', 'api_saved_searches_list', true);
 
 /*
- * Bind comment numbers(friendica_comments: Int) on each statuses page of *_timeline / favorites / search
+ * Number of comments
  *
- * @brief Number of comments
+ * Bind comment numbers(friendica_comments: Int) on each statuses page of *_timeline / favorites / search
  *
  * @param object $data [Status, Status]
  *

@@ -2,8 +2,7 @@
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
-use Friendica\Core\L10n;
-use Friendica\Model\Introduction;
+use Friendica\DI;
 
 /**
  * Process follow request confirmations
@@ -12,11 +11,9 @@ class FollowConfirm extends BaseModule
 {
 	public static function post(array $parameters = [])
 	{
-		$a = self::getApp();
-
 		$uid = local_user();
 		if (!$uid) {
-			notice(L10n::t('Permission denied.') . EOL);
+			notice(DI::l10n()->t('Permission denied.') . EOL);
 			return;
 		}
 
@@ -24,14 +21,12 @@ class FollowConfirm extends BaseModule
 		$duplex   = intval($_POST['duplex']     ?? 0);
 		$hidden   = intval($_POST['hidden']     ?? 0);
 
-		/** @var Introduction $Intro */
-		$Intro = self::getClass(Introduction::class);
-		$Intro->fetch(['id' => $intro_id, 'uid' => local_user()]);
+		$intro = DI::intro()->selectFirst(['id' => $intro_id, 'uid' => local_user()]);
 
-		$cid = $Intro->{'contact-id'};
+		$cid = $intro->{'contact-id'};
 
-		$Intro->confirm($duplex, $hidden);
+		$intro->confirm($duplex, $hidden);
 
-		$a->internalRedirect('contact/' . intval($cid));
+		DI::baseUrl()->redirect('contact/' . intval($cid));
 	}
 }

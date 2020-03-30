@@ -1,8 +1,28 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\Module;
 
 use Friendica\BaseModule;
+use Friendica\DI;
 use Friendica\Model\Item;
 
 /**
@@ -35,7 +55,7 @@ class Starred extends BaseModule
 		$returnPath = $_REQUEST['return'] ?? '';
 		if (!empty($returnPath)) {
 			$rand = '_=' . time() . (strpos($returnPath, '?') ? '&' : '?') . 'rand';
-			self::getApp()->internalRedirect($returnPath . $rand);
+			DI::baseUrl()->redirect($returnPath . $rand);
 		}
 
 		// the json doesn't really matter, it will either be 0 or 1

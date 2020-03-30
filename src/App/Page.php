@@ -1,4 +1,23 @@
 <?php
+/**
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 namespace Friendica\App;
 
@@ -7,14 +26,15 @@ use DOMDocument;
 use DOMXPath;
 use Friendica\App;
 use Friendica\Content\Nav;
-use Friendica\Core\Config\Configuration;
-use Friendica\Core\Config\PConfiguration;
+use Friendica\Core\Config\IConfig;
+use Friendica\Core\PConfig\IPConfig;
 use Friendica\Core\Hook;
-use Friendica\Core\L10n\L10n;
+use Friendica\Core\L10n;
 use Friendica\Core\Renderer;
 use Friendica\Core\Theme;
 use Friendica\Module\Special\HTTPException as ModuleHTTPException;
 use Friendica\Network\HTTPException;
+use Friendica\Util\Network;
 use Friendica\Util\Strings;
 
 /**
@@ -151,6 +171,8 @@ class Page implements ArrayAccess
 	 */
 	public function registerStylesheet($path)
 	{
+		$path = Network::appendQueryParam($path, ['v' => FRIENDICA_VERSION]);
+
 		if (mb_strpos($path, $this->basePath . DIRECTORY_SEPARATOR) === 0) {
 			$path = mb_substr($path, mb_strlen($this->basePath . DIRECTORY_SEPARATOR));
 		}
@@ -168,15 +190,15 @@ class Page implements ArrayAccess
 	 * - Infinite scroll data
 	 * - head.tpl template
 	 *
-	 * @param App            $app     The Friendica App instance
-	 * @param Module         $module  The loaded Friendica module
-	 * @param L10n           $l10n    The l10n language instance
-	 * @param Configuration  $config  The Friendica configuration
-	 * @param PConfiguration $pConfig The Friendica personal configuration (for user)
+	 * @param App      $app     The Friendica App instance
+	 * @param Module   $module  The loaded Friendica module
+	 * @param L10n     $l10n    The l10n language instance
+	 * @param IConfig  $config  The Friendica configuration
+	 * @param IPConfig $pConfig The Friendica personal configuration (for user)
 	 *
 	 * @throws HTTPException\InternalServerErrorException
 	 */
-	private function initHead(App $app, Module $module, L10n $l10n, Configuration $config, PConfiguration $pConfig)
+	private function initHead(App $app, Module $module, L10n $l10n, IConfig $config, IPConfig $pConfig)
 	{
 		$interval = ((local_user()) ? $pConfig->get(local_user(), 'system', 'update_interval') : 40000);
 
@@ -334,6 +356,8 @@ class Page implements ArrayAccess
 	 */
 	public function registerFooterScript($path)
 	{
+		$path = Network::appendQueryParam($path, ['v' => FRIENDICA_VERSION]);
+
 		$url = str_replace($this->basePath . DIRECTORY_SEPARATOR, '', $path);
 
 		$this->footerScripts[] = trim($url, '/');
@@ -342,17 +366,17 @@ class Page implements ArrayAccess
 	/**
 	 * Executes the creation of the current page and prints it to the screen
 	 *
-	 * @param App            $app     The Friendica App
-	 * @param BaseURL        $baseURL The Friendica Base URL
-	 * @param Mode           $mode    The current node mode
-	 * @param Module         $module  The loaded Friendica module
-	 * @param L10n           $l10n    The l10n language class
-	 * @param Configuration  $config  The Configuration of this node
-	 * @param PConfiguration $pconfig The personal/user configuration
+	 * @param App      $app     The Friendica App
+	 * @param BaseURL  $baseURL The Friendica Base URL
+	 * @param Mode     $mode    The current node mode
+	 * @param Module   $module  The loaded Friendica module
+	 * @param L10n     $l10n    The l10n language class
+	 * @param IConfig  $config  The Configuration of this node
+	 * @param IPConfig $pconfig The personal/user configuration
 	 *
 	 * @throws HTTPException\InternalServerErrorException
 	 */
-	public function run(App $app, BaseURL $baseURL, Mode $mode, Module $module, L10n $l10n, Configuration $config, PConfiguration $pconfig)
+	public function run(App $app, BaseURL $baseURL, Mode $mode, Module $module, L10n $l10n, IConfig $config, IPConfig $pconfig)
 	{
 		$moduleName = $module->getName();
 

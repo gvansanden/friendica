@@ -1,26 +1,41 @@
 <?php
 /**
- * @file src/Content/ForumManager.php
- * @brief ForumManager class with its methods related to forum functionality
+ * @copyright Copyright (C) 2020, Friendica
+ *
+ * @license GNU AGPL version 3 or any later version
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
  */
+
 namespace Friendica\Content;
 
-use Friendica\Core\Protocol;
 use Friendica\Content\Text\HTML;
-use Friendica\Core\L10n;
+use Friendica\Core\Protocol;
 use Friendica\Core\Renderer;
-use Friendica\Core\System;
 use Friendica\Database\DBA;
+use Friendica\DI;
 use Friendica\Model\Contact;
 use Friendica\Util\Proxy as ProxyUtils;
 
 /**
- * @brief This class handles methods related to the forum functionality
+ * This class handles methods related to the forum functionality
  */
 class ForumManager
 {
 	/**
-	 * @brief Function to list all forums a user is connected with
+	 * Function to list all forums a user is connected with
 	 *
 	 * @param int     $uid         of the profile owner
 	 * @param boolean $lastitem    Sort by lastitem
@@ -80,7 +95,7 @@ class ForumManager
 
 
 	/**
-	 * @brief Forumlist widget
+	 * Forumlist widget
 	 *
 	 * Sidebar widget to show subcribed friendica forums. If activated
 	 * in the settings, it appears at the notwork page sidebar
@@ -116,7 +131,7 @@ class ForumManager
 					'name' => $contact['name'],
 					'cid' => $contact['id'],
 					'selected' 	=> $selected,
-					'micro' => System::removedBaseUrl(ProxyUtils::proxifyUrl($contact['micro'], false, ProxyUtils::SIZE_MICRO)),
+					'micro' => DI::baseUrl()->remove(ProxyUtils::proxifyUrl($contact['micro'], false, ProxyUtils::SIZE_MICRO)),
 					'id' => ++$id,
 				];
 				$entries[] = $entry;
@@ -127,12 +142,12 @@ class ForumManager
 			$o .= Renderer::replaceMacros(
 				$tpl,
 				[
-					'$title'	=> L10n::t('Forums'),
+					'$title'	=> DI::l10n()->t('Forums'),
 					'$forums'	=> $entries,
-					'$link_desc'	=> L10n::t('External link to forum'),
+					'$link_desc'	=> DI::l10n()->t('External link to forum'),
 					'$total'	=> $total,
 					'$visible_forums' => $visible_forums,
-					'$showmore'	=> L10n::t('show more')]
+					'$showmore'	=> DI::l10n()->t('show more')]
 			);
 		}
 
@@ -140,7 +155,7 @@ class ForumManager
 	}
 
 	/**
-	 * @brief Format forumlist as contact block
+	 * Format forumlist as contact block
 	 *
 	 * This function is used to show the forumlist in
 	 * the advanced profile.
@@ -153,8 +168,8 @@ class ForumManager
 	public static function profileAdvanced($uid)
 	{
 		$profile = intval(Feature::isEnabled($uid, 'forumlist_profile'));
-		if (! $profile) {
-			return;
+		if (!$profile) {
+			return '';
 		}
 
 		$o = '';
@@ -168,23 +183,19 @@ class ForumManager
 		$contacts = self::getList($uid, $lastitem, false, false);
 
 		$total_shown = 0;
-		$forumlist = '';
 		foreach ($contacts as $contact) {
-			$forumlist .= HTML::micropro($contact, true, 'forumlist-profile-advanced');
-			$total_shown ++;
+			$o .= HTML::micropro($contact, true, 'forumlist-profile-advanced');
+			$total_shown++;
 			if ($total_shown == $show_total) {
 				break;
 			}
 		}
 
-		if (count($contacts) > 0) {
-			$o .= $forumlist;
-			return $o;
-		}
+		return $o;
 	}
 
 	/**
-	 * @brief count unread forum items
+	 * count unread forum items
 	 *
 	 * Count unread items of connected forums and private groups
 	 *
